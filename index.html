@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f9f6fc" />
+  <meta name="description" content="A gentle, personal sleep tracker with monthly circles and a detailed daily timeline." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Sleep Bloom" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="icon" href="./icons/icon-192.png" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="stylesheet" href="./styles.css" />
+  <title>Sleep in Bloom · Your Sleep Tracker</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand-mark" aria-hidden="true">☾</div>
+      <div class="brand-text">
+        <div class="eyebrow">LIFE IN BLOOM</div>
+        <div class="brand-name">Sleep in Bloom<span class="star">✦</span></div>
+      </div>
+      <button class="icon-button" id="help-btn" type="button" title="How to use this tracker" aria-label="How to use this tracker">?</button>
+    </header>
+
+    <main>
+      <div class="welcome-banner">
+        <div class="banner-stars" aria-hidden="true">✧ &nbsp; ✦ &nbsp; ✧</div>
+        <h1>Every restful moment counts.</h1>
+        <p>Notice your patterns. Find your rhythm. No perfect nights required.</p>
+      </div>
+
+      <nav class="view-tabs" aria-label="Sleep tracker views">
+        <button type="button" class="view-tab active" data-view="month" aria-current="page">◫ &nbsp; Month</button>
+        <button type="button" class="view-tab" data-view="circle">◉ &nbsp; Moon Wheel</button>
+        <button type="button" class="view-tab" data-view="day">☾ &nbsp; Daily Log</button>
+      </nav>
+      <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+      <section id="content" aria-live="polite"></section>
+    </main>
+
+    <footer class="app-footer">
+      <div><span class="footer-moon">✦</span> Stored on this device — use <strong>Export backup</strong> regularly.</div>
+      <div class="backup-actions">
+        <button id="export-btn" class="footer-button" type="button">↓ Export backup</button>
+        <label for="import-file" class="footer-button import-label">↑ Import backup</label>
+        <input id="import-file" type="file" accept="application/json,.json" hidden />
+      </div>
+      <p>Times are approximated in 30-minute blocks. Unmarked time is unknown, not automatically awake. Your information is not uploaded to a server by this app.</p>
+    </footer>
+  </div>
+  <dialog id="help-dialog" class="help-dialog">
+    <div class="dialog-inner">
+      <div class="dialog-top"><h2>How this tracker works</h2><button type="button" class="icon-button" id="close-help" aria-label="Close help">×</button></div>
+      <p><strong>Month:</strong> Tap any day to see its 24-hour sleep timeline. Each filled dot represents one recorded hour of sleep; a half-filled dot represents another 30 minutes.</p>
+      <p><strong>Daily log:</strong> Choose Asleep, Resting / unsure, or Awake, then tap 30-minute blocks. Or use the time-range shortcut to fill multiple blocks at once.</p>
+      <p><strong>Moon Wheel:</strong> Tap a segment of the circle to open that day's detail. Colors reflect estimated hours you recorded, not how well you did.</p>
+      <p><strong>Important:</strong> This is a self-reporting journal, not a medical sleep monitor. Logging time in bed as asleep will overestimate your sleep.</p>
+      <p><strong>Backups:</strong> Entries are saved in your browser or installed web app on this device. They do not automatically sync with your other devices. Export your JSON backup regularly.</p>
+      <button type="button" class="button primary" id="got-it-btn">Got it</button>
+    </div>
+  </dialog>
+  <script src="./app.js" defer></script>
+</body>
+</html>
