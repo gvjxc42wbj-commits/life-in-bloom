@@ -168,3 +168,4 @@
   background: #fff2f7;
 }
 .grocery-purchase-notice p { margin: .5rem 0 .85rem; }
+.grocery-meal-source { color: var(--accent, #9e436d); line-height: 1.5; overflow-wrap: anywhere; }

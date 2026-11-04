@@ -4,6 +4,8 @@
   const M = root.BloomFoodModel || (typeof require === 'function' ? require('./bloom-food-model.js') : null);
   const RECIPE_FIELDS = ['name', 'servings', 'ingredient_text', 'instructions', 'source_url', 'notes', 'nutrition_mode', 'nutrition_source'];
   const LOG_FIELDS = ['occurred_on', 'person_slot', 'kind', 'source_kind', 'recipe_id', 'product_id', 'servings', 'notes'];
+  const PLAN_FIELDS = ['recipe_id', 'cook_on', 'servings', 'person1_servings', 'person2_servings', 'notes'];
+  const PLAN_REJECTIONS = new Set(['22023', '23514', '23503', '23505', '40001', '42501']);
   const uuid = () => {
     if (root.crypto && root.crypto.randomUUID) return root.crypto.randomUUID();
     const bytes = new Uint8Array(16);
@@ -55,8 +57,23 @@
     try { const parsed = new URL(address); return ['https:', 'http:'].includes(parsed.protocol) && !parsed.username && !parsed.password ? parsed.href : ''; }
     catch (_) { return ''; }
   }
-  function recipeDraft() { return { id: '', request_id: uuid(), revision: null, name: '', servings: '', ingredient_text: '', ingredients: [{ product_id: '', quantity: '', unit: 'each' }], instructions: '', source_url: '', notes: '', nutrition_mode: 'ingredients', nutrition_reference: referenceDraft(), nutrition_source: '', archived: false }; }
+  function shoppingIngredientDraft() { return { name: '', quantity: '', unit: '', product_id: '', optional: false, notes: '', included: true }; }
+  function recipeDraft() { return { id: '', request_id: uuid(), revision: null, name: '', servings: '', ingredient_text: '', ingredients: [{ product_id: '', quantity: '', unit: 'each' }], planning_ingredients: [], instructions: '', source_url: '', notes: '', nutrition_mode: 'ingredients', nutrition_reference: referenceDraft(), nutrition_source: '', archived: false }; }
   function logDraft(date) { return { id: '', request_id: uuid(), revision: null, occurred_on: date, person_slot: '1', kind: 'eaten', source_kind: 'recipe', recipe_id: '', product_id: '', servings: '1', notes: '', nutrition_original: null, original_servings: null, original_recipe_id: null, original_product_id: null, original_label: '' }; }
+  function planDraft(date) { return { id: '', request_id: uuid(), revision: null, recipe_id: '', recipe_revision: null, recipe_name: '', base_servings: null, shopping_month: null, cook_on: date, servings: '', person1_servings: '', person2_servings: '', notes: '', ingredients: [] }; }
+  function planningRows(recipe, products) {
+    if (!recipe) return [];
+    const explicit = Array.isArray(recipe.planning_ingredients) && recipe.planning_ingredients.length;
+    if (!explicit && String(recipe.ingredient_text || '').trim()) return [];
+    const rows = typeof M.recipePlanningIngredients === 'function' ? M.recipePlanningIngredients(recipe, products || []) : explicit ? recipe.planning_ingredients : (recipe.ingredients || []).map(item => ({ ...item, name: ((products || []).find(product => product.id === item.product_id) || {}).name || '', optional: false, notes: '' }));
+    return rows.map(item => ({ ...shoppingIngredientDraft(), ...copy(item), quantity: item.quantity == null ? '' : item.quantity, product_id: item.product_id || '', included: Object.hasOwn(item, 'included') ? item.included !== false : item.optional !== true }));
+  }
+  function portionDivision(value, label) {
+    if (value == null || String(value).trim() === '') return null;
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount < 0 || amount > 10000) throw new Error(label + ' must be from 0 to 10,000, or left blank.');
+    return amount;
+  }
   function scaledSnapshot(snapshot, multiplier) {
     if (!snapshot || !snapshot.values || typeof snapshot.values !== 'object' || !Number.isFinite(multiplier) || multiplier <= 0) return null;
     return { ...M.nutritionProvenance(snapshot), values: Object.fromEntries(M.NUTRIENTS.map(({ key }) => [key, snapshot.values[key] == null ? null : Number((Number(snapshot.values[key]) * multiplier).toPrecision(13))])), missing: Object.fromEntries(M.NUTRIENTS.map(({ key }) => [key, Number(snapshot.missing && snapshot.missing[key]) || (snapshot.values[key] == null ? 1 : 0)])), complete: snapshot.complete === true };
@@ -116,35 +133,43 @@
     const draftStore = options.draftStore || null;
     const openGrocery = options.openGrocery || (() => navigate('grocery'));
     let identity = null, generation = 0, busy = null, pending = Promise.resolve(), currentPage = 'food';
-    let tab = 'recipes', selectedDate = dayKey(getNow()), search = '', editor = false, openedRecipeId = '', logging = false;
+    let tab = 'recipes', selectedDate = dayKey(getNow()), search = '', editor = false, openedRecipeId = '', logging = false, planning = false;
     let selectedFile = null, fileUrls = new Map(), draftSaved = false, draftWarningShown = false;
-    let drafts = { recipe: recipeDraft(), log: logDraft(selectedDate) }, baselines = copy(drafts);
+    let planAttempt = null, planProblem = '', planIngredientsOpen = false;
+    let drafts = { recipe: recipeDraft(), log: logDraft(selectedDate), plan: planDraft(selectedDate) }, baselines = copy(drafts);
 
     const dirty = group => JSON.stringify(drafts[group]) !== JSON.stringify(baselines[group]);
-    function resetGroup(group, value) { drafts[group] = copy(value); baselines[group] = copy(value); }
+    function resetGroup(group, value) { drafts[group] = copy(value); baselines[group] = copy(value); if (group === 'plan') planIngredientsOpen = !(value.ingredients || []).length; }
     function restoreDrafts(saved) {
       if (!saved || saved.version !== 1 || !saved.drafts || !saved.baselines || !Array.isArray(saved.drafts.recipe && saved.drafts.recipe.ingredients) || saved.drafts.recipe.ingredients.length > 100) return false;
-      for (const group of ['recipe', 'log']) {
-        const empty = group === 'recipe' ? recipeDraft() : logDraft(selectedDate);
+      for (const group of ['recipe', 'log', 'plan']) {
+        const empty = group === 'recipe' ? recipeDraft() : group === 'log' ? logDraft(selectedDate) : planDraft(selectedDate);
         const restore = source => {
           const result = copy(empty);
           for (const key of Object.keys(empty)) if (source && Object.hasOwn(source, key)) result[key] = copy(source[key]);
-          if (group === 'recipe') result.nutrition_reference = referenceDraft(result.nutrition_reference);
+          if (group === 'recipe') {
+            result.nutrition_reference = referenceDraft(result.nutrition_reference);
+            if (!Array.isArray(result.planning_ingredients) || result.planning_ingredients.length > 100) result.planning_ingredients = [];
+          }
+          if (group === 'plan' && (!Array.isArray(result.ingredients) || result.ingredients.length > 100)) return copy(empty);
           return result;
         };
         drafts[group] = restore(saved.drafts[group]); baselines[group] = restore(saved.baselines[group]);
       }
-      tab = ['recipes', 'soon', 'log'].includes(saved.tab) ? saved.tab : 'recipes';
+      tab = ['recipes', 'plans', 'soon', 'log'].includes(saved.tab) ? saved.tab : 'recipes';
       selectedDate = M.dateNumber(saved.selectedDate) == null ? dayKey(getNow()) : saved.selectedDate;
-      editor = Boolean(saved.editor); logging = Boolean(saved.logging); openedRecipeId = String(saved.openedRecipeId || '');
+      editor = Boolean(saved.editor); logging = Boolean(saved.logging); planning = Boolean(saved.planning); openedRecipeId = String(saved.openedRecipeId || '');
+      if (saved.planAttempt && ['save', 'cancel'].includes(saved.planAttempt.action) && saved.planAttempt.payload && typeof saved.planAttempt.payload === 'object' && typeof saved.planAttempt.payload.request_id === 'string') planAttempt = copy(saved.planAttempt);
+      planProblem = String(saved.planProblem || '');
+      planIngredientsOpen = typeof saved.planIngredientsOpen === 'boolean' ? saved.planIngredientsOpen : !drafts.plan.ingredients.length;
       return true;
     }
     function snapshot() {
       const current = store.snapshot() || {};
       const key = (current.user && current.user.id || '') + ':' + (current.household && current.household.id || '');
       if (key !== identity) {
-        identity = key; generation++; busy = null; selectedDate = dayKey(getNow()); tab = 'recipes'; search = ''; editor = false; logging = false; openedRecipeId = ''; selectedFile = null; fileUrls = new Map();
-        drafts = { recipe: recipeDraft(), log: logDraft(selectedDate) }; baselines = copy(drafts); draftSaved = false; draftWarningShown = false;
+        identity = key; generation++; busy = null; selectedDate = dayKey(getNow()); tab = 'recipes'; search = ''; editor = false; logging = false; planning = false; planAttempt = null; planProblem = ''; planIngredientsOpen = false; openedRecipeId = ''; selectedFile = null; fileUrls = new Map();
+        drafts = { recipe: recipeDraft(), log: logDraft(selectedDate), plan: planDraft(selectedDate) }; baselines = copy(drafts); draftSaved = false; draftWarningShown = false;
         if (draftStore && current.user && current.household) {
           try { const saved = draftStore.read(current.user.id, current.household.id, 'food'); draftSaved = Boolean(saved && restoreDrafts(saved.data)); }
           catch (_) { notify('A saved Food draft could not be opened. Your stored copy has not been changed.', true); }
@@ -154,7 +179,7 @@
     }
     function updateDraftIndicators() {
       if (!root.document || typeof root.document.querySelector !== 'function') return;
-      for (const group of ['recipe', 'log']) {
+      for (const group of ['recipe', 'log', 'plan']) {
         const element = root.document.querySelector('[data-food-draft-status="' + group + '"]');
         if (element) { element.hidden = !dirty(group); element.textContent = draftSaved ? 'Draft saved on this device. Choose Save to share the finished entry with your household.' : 'Draft in progress. Save before closing this page.'; }
       }
@@ -163,26 +188,27 @@
       const current = snapshot();
       if (!draftStore || !current.user || !current.household) { updateDraftIndicators(); return; }
       try {
-        const changed = dirty('recipe') || dirty('log');
-        const ok = changed ? draftStore.write(current.user.id, current.household.id, 'food', { version: 1, drafts, baselines, tab, selectedDate, editor, logging, openedRecipeId }) : draftStore.clear(current.user.id, current.household.id, 'food');
+        const changed = dirty('recipe') || dirty('log') || dirty('plan') || Boolean(planAttempt);
+        const ok = changed ? draftStore.write(current.user.id, current.household.id, 'food', { version: 1, drafts, baselines, tab, selectedDate, editor, logging, planning, openedRecipeId, planAttempt, planProblem, planIngredientsOpen }) : draftStore.clear(current.user.id, current.household.id, 'food');
         draftSaved = changed && ok !== false;
         if (ok === false && !draftWarningShown) { draftWarningShown = true; notify('This browser could not save your Food draft. Keep this page open until you save it online.', true); }
       } catch (_) { draftSaved = false; if (!draftWarningShown) { draftWarningShown = true; notify('Your Food draft could not be saved on this device. Keep the page open until you save it online.', true); } }
       updateDraftIndicators();
     }
-    function hasUnsavedDraft() { snapshot(); return Boolean(busy || selectedFile || dirty('recipe') || dirty('log')); }
+    function hasUnsavedDraft() { snapshot(); return Boolean(busy || selectedFile || dirty('recipe') || dirty('log') || dirty('plan') || planAttempt); }
     function discardDraft() {
       if (busy) return false;
-      resetGroup('recipe', recipeDraft()); resetGroup('log', logDraft(selectedDate)); selectedFile = null; editor = false; logging = false; persist(); return true;
+      if (planAttempt) { notify('Confirm the pending meal-plan save before discarding it. Its exact request is kept for a safe retry.', true); return false; }
+      resetGroup('recipe', recipeDraft()); resetGroup('log', logDraft(selectedDate)); resetGroup('plan', planDraft(dayKey(getNow()))); planProblem = ''; selectedFile = null; editor = false; logging = false; planning = false; persist(); return true;
     }
     function ready(current) {
       if (!current.user || !current.household || current.status !== 'ready') throw new Error('Open Grocery and connect your household before saving Food records.');
       if (current.offline) throw new Error('You are offline. Your draft stays on this device. Reconnect to save it to your household.');
     }
-    function run(label, work, success, focus) {
+    function run(label, work, success, focus, onError) {
       if (busy) return false;
       const token = generation; busy = { label }; refresh();
-      pending = Promise.resolve().then(work).then(result => { snapshot(); if (token !== generation) return; if (success) success(result); persist(); }).catch(error => { snapshot(); if (token !== generation) return; persist(); notify(error && error.message || 'This change could not be saved. Your draft is still here.', true); }).finally(() => { snapshot(); if (token !== generation) return; busy = null; refresh(focus); });
+      pending = Promise.resolve().then(work).then(result => { snapshot(); if (token !== generation) return; if (success) success(result); persist(); }).catch(error => { snapshot(); if (token !== generation) return; if (onError) onError(error); persist(); notify(error && error.message || 'This change could not be saved. Your draft is still here.', true); }).finally(() => { snapshot(); if (token !== generation) return; busy = null; refresh(focus); });
       return true;
     }
     function button(action, label, data, primary, disabled) {
@@ -190,10 +216,10 @@
     }
     function field(group, name, label, type, attrs) {
       const value = drafts[group][name];
-      return '<label class="food-field" for="food-' + group + '-' + name + '"><span>' + label + '</span><input id="food-' + group + '-' + name + '" name="' + name + '" type="' + (type || 'text') + '" data-food-field="' + group + '.' + name + '" value="' + esc(value) + '"' + (attrs || '') + (busy ? ' disabled' : '') + '></label>';
+      return '<label class="food-field" for="food-' + group + '-' + name + '"><span>' + label + '</span><input id="food-' + group + '-' + name + '" name="' + name + '" type="' + (type || 'text') + '" data-food-field="' + group + '.' + name + '" value="' + esc(value) + '"' + (attrs || '') + (busy || group === 'plan' && planAttempt ? ' disabled' : '') + '></label>';
     }
     function textarea(group, name, label, limit, attrs) {
-      return '<label class="food-field" for="food-' + group + '-' + name + '"><span>' + label + '</span><textarea id="food-' + group + '-' + name + '" name="' + name + '" data-food-field="' + group + '.' + name + '" maxlength="' + limit + '"' + (attrs || '') + (busy ? ' disabled' : '') + '>' + esc(drafts[group][name]) + '</textarea></label>';
+      return '<label class="food-field" for="food-' + group + '-' + name + '"><span>' + label + '</span><textarea id="food-' + group + '-' + name + '" name="' + name + '" data-food-field="' + group + '.' + name + '" maxlength="' + limit + '"' + (attrs || '') + (busy || group === 'plan' && planAttempt ? ' disabled' : '') + '>' + esc(drafts[group][name]) + '</textarea></label>';
     }
     function estimateNotice(value) {
       if (!value || value.estimated !== true) return '';
@@ -225,17 +251,97 @@
       if (selectedFile) html += '<p class="food-help">Ready to upload: ' + esc(selectedFile.name) + '</p>';
       return html + '<div class="food-actions">' + button('upload-file', 'Save file to this recipe', ' data-id="' + esc(recipe.id) + '"', false, !selectedFile || current.offline) + '</div></div>';
     }
+    function shoppingIngredientEditor(group, current) {
+      const rows = group === 'recipe' ? drafts.recipe.planning_ingredients : drafts.plan.ingredients;
+      const locked = Boolean(busy || group === 'plan' && planAttempt);
+      const dis = locked ? ' disabled' : '';
+      const products = (current.products || []).filter(product => product.category !== 'household' && (!product.archived || rows.some(item => item.product_id === product.id)));
+      const count = drafts.plan.base_servings;
+      let html = '<fieldset class="food-ingredient-editor food-planning-editor"><legend>' + (group === 'recipe' ? 'Shopping ingredients for the whole recipe' : 'Ingredients for this meal') + '</legend><p class="food-help">The amounts in these rows are for the original recipe' + (group === 'plan' && Number(count) > 0 ? ' that makes <strong>' + esc(fmt(count)) + ' servings</strong>' : '') + '. ' + (group === 'recipe' ? 'Use the whole-recipe serving count entered above. Save each ingredient once; planning scales these amounts to the servings you choose.' : 'The app scales them to the servings you chose above. Changes here apply to this meal only.') + ' Leave an uncertain amount blank for review.</p>';
+      if (!rows.length) html += '<p class="food-alert">Add the recipe’s shopping ingredients below. Its written list is kept as a reference; uncertain amounts are never guessed.</p>';
+      html += '<datalist id="food-' + group + '-planning-units">' + M.UNITS.map(unit => '<option value="' + esc(unit.value) + '">' + esc(unit.label) + '</option>').join('') + ['clove', 'stalk', 'slice', 'piece', 'pinch'].map(unit => '<option value="' + unit + '"></option>').join('') + '</datalist>';
+      html += rows.map((ingredient, index) => {
+        const prefix = 'food-' + group + '-shopping-' + index;
+        const data = ' data-food-planning-group="' + group + '" data-food-planning-index="' + index + '"';
+        return '<div class="food-planning-row' + (group === 'plan' && ingredient.included === false ? ' is-excluded' : '') + '"><div class="food-planning-row-heading"><strong>Ingredient ' + (index + 1) + '</strong>' + (group === 'plan' ? '<label class="food-checkbox"><input type="checkbox" name="planning_' + index + '_included"' + data + ' data-food-planning-part="included"' + (ingredient.included !== false ? ' checked' : '') + dis + '> Include in this meal' + (ingredient.optional ? ' · optional' : '') + '</label>' : '<label class="food-checkbox"><input type="checkbox" name="planning_' + index + '_optional"' + data + ' data-food-planning-part="optional"' + (ingredient.optional ? ' checked' : '') + dis + '> Optional ingredient</label>') + '</div><div class="food-planning-amounts"><label class="food-field" for="' + prefix + '-name"><span>Ingredient name</span><input id="' + prefix + '-name" name="planning_' + index + '_name"' + data + ' data-food-planning-part="name" maxlength="160" value="' + esc(ingredient.name) + '"' + dis + '></label><label class="food-field" for="' + prefix + '-quantity"><span>Whole-recipe amount</span><input id="' + prefix + '-quantity" name="planning_' + index + '_quantity"' + data + ' data-food-planning-part="quantity" type="number" min="0.000001" max="1000000000" step="any" inputmode="decimal" placeholder="Unknown" value="' + esc(ingredient.quantity) + '"' + dis + '></label><label class="food-field" for="' + prefix + '-unit"><span>Unit</span><input id="' + prefix + '-unit" name="planning_' + index + '_unit"' + data + ' data-food-planning-part="unit" list="food-' + group + '-planning-units" maxlength="30" placeholder="g, cup, each…" value="' + esc(ingredient.unit) + '"' + dis + '></label></div><label class="food-field" for="' + prefix + '-product"><span>Catalog product (optional)</span><select id="' + prefix + '-product" name="planning_' + index + '_product_id"' + data + ' data-food-planning-part="product_id"' + dis + '><option value="">Choose later · add an ingredient reminder</option>' + products.map(product => '<option value="' + esc(product.id) + '"' + (ingredient.product_id === product.id ? ' selected' : '') + '>' + esc(product.name + (product.brand ? ' · ' + product.brand : '')) + '</option>').join('') + '</select></label><label class="food-field" for="' + prefix + '-notes"><span>Ingredient notes (optional)</span><input id="' + prefix + '-notes" name="planning_' + index + '_notes"' + data + ' data-food-planning-part="notes" maxlength="1000" value="' + esc(ingredient.notes) + '"' + dis + '></label><div class="food-actions">' + button('remove-shopping-ingredient', 'Remove ingredient', ' data-group="' + group + '" data-index="' + index + '"', false, locked) + '</div></div>';
+      }).join('');
+      html += '<div class="food-actions">' + button('add-shopping-ingredient', '+ Add shopping ingredient', ' data-group="' + group + '"', false, locked || rows.length >= 100) + button('grocery', 'Open product catalog ↗', ' data-tab="catalog"') + '</div><p class="food-help">Catalog links let the app compare food at home, package sizes, and reference prices. Unlinked ingredients remain visible on the list for review. Measurements such as cloves and stalks keep their own units.</p></fieldset>';
+      return html;
+    }
+    function planPreview(current, value) {
+      const recipe = { ...(current.recipes || []).find(row => row.id === value.recipe_id), name: value.recipe_name, servings: value.base_servings, planning_ingredients: value.ingredients };
+      return M.cookingPlanPreview(recipe, value.ingredients, value.servings, current.products || []);
+    }
+    function renderPlanPreview(current) {
+      const preview = planPreview(current, drafts.plan);
+      return '<h3>Recipe amounts for ' + (preview.servings == null ? 'your chosen' : esc(fmt(preview.servings))) + ' servings</h3><p class="food-help">These are the meal’s full ingredient needs. Saving checks your available stock and other planned meals, then updates what still needs buying.</p>' + (preview.rows.length ? '<ul class="food-plan-requirements">' + preview.rows.map(item => '<li' + (!item.included ? ' class="is-excluded"' : '') + '><strong>' + esc(item.name || 'Unnamed ingredient') + '</strong><span>' + (!item.included ? 'Not included' : item.required_quantity == null ? 'Amount needs review' : esc(fmt(item.required_quantity)) + ' ' + esc(item.unit || '· unit needs review')) + '</span></li>').join('') + '</ul>' : '') + (preview.issues.length ? '<details class="food-plan-review"><summary>' + preview.issues.length + ' ingredient detail' + (preview.issues.length === 1 ? '' : 's') + ' to review</summary><ul>' + preview.issues.map(issue => '<li>' + esc(issue) + '</li>').join('') + '</ul>' : '');
+    }
+    function updatePlanPreview(current) {
+      if (!root.document || typeof root.document.querySelector !== 'function') return;
+      const preview = root.document.querySelector('#food-plan-preview');
+      if (preview) preview.innerHTML = renderPlanPreview(current);
+    }
+    function renderPlanForm(current) {
+      const value = drafts.plan;
+      const recipe = (current.recipes || []).find(row => row.id === value.recipe_id);
+      const locked = Boolean(busy || planAttempt);
+      const saveButton = '<button type="submit" class="button primary"' + (busy || current.offline || planAttempt && planAttempt.action !== 'save' ? ' disabled' : '') + '>' + (planAttempt && planAttempt.action === 'save' ? 'Retry the same meal save' : 'Save meal & update grocery list') + '</button>';
+      let html = '<section class="panel food-plan-panel"><p class="page-kicker">Cook on a day you choose</p><h2>' + (value.id ? 'Edit your planned meal' : 'Plan this meal') + '</h2><p class="food-help">Save the date and servings. Missing ingredients go onto your current grocery list immediately, with the cooking date beside them.</p><form id="food-plan-form" class="food-form" data-food-form="plan">';
+      if (value.id) html += '<h3>' + esc(value.recipe_name || recipe && recipe.name || 'Saved recipe') + '</h3>';
+      else html += '<label class="food-field" for="food-plan-recipe_id"><span>Saved recipe</span><select id="food-plan-recipe_id" name="recipe_id" data-food-field="plan.recipe_id" required' + (locked ? ' disabled' : '') + '><option value="">Choose a recipe</option>' + (current.recipes || []).filter(row => !row.archived).map(row => '<option value="' + esc(row.id) + '"' + (row.id === value.recipe_id ? ' selected' : '') + '>' + esc(row.name) + '</option>').join('') + '</select></label>';
+      html += '<div class="food-form-grid">' + field('plan', 'cook_on', 'Day you want to cook', 'date', ' required min="' + dayKey(getNow()) + '" max="2200-12-31"') + field('plan', 'servings', 'Total servings to make', 'number', ' required min="0.000001" max="10000" step="any" inputmode="decimal"') + '</div>';
+      html += '<section id="food-plan-preview" class="food-plan-preview" aria-label="Scaled recipe ingredients">' + renderPlanPreview(current) + '</section>';
+      if (recipe && Number(recipe.revision) !== Number(value.recipe_revision)) html += '<p class="food-alert">The saved recipe has changed since this plan was opened. Load its latest ingredients and review them before saving.</p>' + button('reload-plan-recipe', 'Load latest recipe ingredients', '', false, Boolean(planAttempt));
+      if (recipe) html += allergyNotice(recipe, current);
+      if (planProblem) html += '<p class="food-alert">This draft needs a fresh review before saving. You can reload the saved plan, or load the latest recipe ingredients when the recipe changed.</p><div class="food-actions">' + button('reload-plan', 'Reload saved plan') + button('reload-plan-recipe', 'Load latest recipe ingredients', '', false, Boolean(planAttempt)) + '</div>';
+      html += '<div class="food-actions">' + saveButton + button('close-plan', 'Close for now') + '</div>';
+      html += '<details class="food-plan-ingredient-details"' + (planIngredientsOpen ? ' open' : '') + '><summary id="food-plan-ingredients-toggle" data-food-action="toggle-plan-ingredients">Adjust ingredients</summary>' + shoppingIngredientEditor('plan', current) + '</details>';
+      html += '<details class="food-plan-portions"><summary>Divide the servings between people (optional)</summary><div class="food-form-grid"><div class="food-person-pink">' + field('plan', 'person1_servings', 'Person 1 servings', 'number', ' min="0" max="10000" step="any" inputmode="decimal"') + '</div><div class="food-person-purple">' + field('plan', 'person2_servings', 'Person 2 servings', 'number', ' min="0" max="10000" step="any" inputmode="decimal"') + '</div></div><p class="food-help">You can leave extra servings for leftovers. This division belongs to the cooking plan; log eaten portions in the Food log when you eat them.</p></details>';
+      html += textarea('plan', 'notes', 'Meal notes (optional)', 4000);
+      if (recipe && recipe.ingredient_text) html += '<details><summary>Original written ingredient list</summary><p class="food-prose">' + esc(recipe.ingredient_text) + '</p></details>';
+      html += '<div class="food-actions">' + saveButton + (!planAttempt ? button('discard-plan', 'Discard meal draft') : '') + '</div>' + draftStatus('plan') + '</form></section>';
+      return html;
+    }
+    function planRequirementRows(plan, current) {
+      return M.cookingPlanPreview({ servings: plan.base_servings, planning_ingredients: plan.ingredients || [] }, plan.ingredients || [], plan.servings, current.products || []).rows;
+    }
+    function renderPlanCard(plan, current, history) {
+      const refs = (current.mealShoppingLinks || []).filter(link => (link.plan_refs || []).some(ref => ref.plan_id === plan.id));
+      const rows = planRequirementRows(plan, current).filter(row => row.included);
+      const issues = Array.isArray(plan.issues) ? plan.issues : [];
+      let html = '<article class="food-meal-card"><div class="food-heading"><div><span class="food-date-badge">' + (plan.status === 'cancelled' ? 'Cancelled' : history ? 'Past cooking date · saved plan' : dateLabel(plan.cook_on)) + '</span><h3>' + esc(plan.recipe_name || 'Saved recipe') + '</h3></div><strong>' + esc(fmt(plan.servings)) + ' servings</strong></div><p class="food-help">' + (history ? dateLabel(plan.cook_on) + ' · ' : '') + 'Recipe makes ' + esc(fmt(plan.base_servings)) + ' servings before scaling.' + (plan.person1_servings != null ? ' Person 1: ' + esc(fmt(plan.person1_servings)) + '.' : '') + (plan.person2_servings != null ? ' Person 2: ' + esc(fmt(plan.person2_servings)) + '.' : '') + '</p>';
+      if (plan.notes) html += '<p class="food-prose">' + esc(plan.notes) + '</p>';
+      html += '<details><summary>Ingredients for this meal</summary><ul class="food-plan-requirements">' + rows.map(item => '<li><strong>' + esc(item.name) + '</strong><span>' + (item.required_quantity == null ? 'Amount needs review' : esc(fmt(item.required_quantity)) + ' ' + esc(item.unit || '· unit needs review')) + '</span></li>').join('') + '</ul></details>';
+      if (!history && plan.status === 'planned') {
+        if (issues.length) html += '<details class="food-plan-review" open><summary>Shopping details to review</summary><ul>' + issues.map(issue => '<li>' + esc(typeof issue === 'string' ? issue : issue.message || JSON.stringify(issue)) + '</li>').join('') + '</ul></details>';
+        html += '<p class="food-help">' + (refs.length ? refs.length + ' grocery item' + (refs.length === 1 ? '' : 's') + ' linked to this meal.' : 'Saved for grocery planning. Open the list to review what still needs buying.') + '</p><div class="food-actions">' + button('grocery', 'Open grocery list', ' data-tab="list" data-month="' + esc(String(plan.shopping_month || dayKey(getNow())).slice(0, 7)) + '"', true) + button('edit-plan', 'Edit date or servings', ' data-id="' + esc(plan.id) + '"', false, Boolean(planAttempt)) + button('cancel-plan', 'Cancel meal', ' data-id="' + esc(plan.id) + '"', false, Boolean(planAttempt) || current.offline) + '</div>';
+      } else html += '<p class="food-help">' + (plan.status === 'cancelled' ? 'The saved plan remains in history. Actual purchases stay recorded.' : 'A past cooking date does not mark food cooked or eaten.') + '</p>';
+      return html + '</article>';
+    }
+    function renderPlans(current) {
+      const today = dayKey(getNow());
+      const all = [...(current.cookingPlans || [])].sort((left, right) => String(left.cook_on).localeCompare(String(right.cook_on)) || String(left.id).localeCompare(String(right.id)));
+      const upcoming = all.filter(plan => plan.status === 'planned' && plan.cook_on >= today);
+      const history = all.filter(plan => plan.status !== 'planned' || plan.cook_on < today);
+      let html = '<section class="panel" id="food-plans"><div class="food-heading"><div><p class="page-kicker">A meal, a date, a ready list</p><h2>Your meal plan</h2></div>' + button('new-plan', '+ Plan a meal', '', true, Boolean(planAttempt)) + '</div><p class="food-help">Plan ahead from your saved recipes. Food at home is shared across planned meals so the same stock is counted once. Saving or changing a plan updates its unpurchased grocery needs.</p><div class="food-actions">' + button('grocery', 'Open grocery list', ' data-tab="list"') + button('refresh-meal-shopping', 'Check groceries against food at home', '', false, current.offline || Boolean(planAttempt)) + (dirty('plan') && !planning ? button('resume-plan', 'Resume meal draft') : '') + '</div></section>';
+      if (planAttempt) html += '<section class="panel food-plan-pending"><h3>' + (planAttempt.action === 'cancel' ? 'Confirming your cancellation' : 'Confirming your saved meal') + '</h3><p class="food-help">The last request has not been confirmed on this device. Retry keeps the exact same request, so it cannot create a second meal or duplicate groceries.</p><div class="food-actions">' + button('retry-plan', 'Retry the same request', '', true, current.offline) + button('reload-plan', 'Check saved result', '', false, current.offline) + '</div></section>';
+      if (planning) html += renderPlanForm(current);
+      html += '<section class="panel"><h2>Upcoming meals</h2>' + (upcoming.length ? '<div class="food-meal-list">' + upcoming.map(plan => renderPlanCard(plan, current, false)).join('') + '</div>' : '<div class="food-empty"><h3>Choose your first meal</h3><p>Open a saved recipe and tap Plan this meal, or choose Plan a meal above.</p></div>') + '</section>';
+      if (history.length) html += '<section class="panel"><details><summary>Saved meal history · ' + history.length + '</summary><div class="food-meal-list">' + history.reverse().map(plan => renderPlanCard(plan, current, true)).join('') + '</div></details></section>';
+      return html;
+    }
     function renderRecipeDetail(current, recipe) {
       const products = new Map((current.products || []).map(product => [product.id, product]));
       let html = '<section class="panel food-recipe-detail"><p class="page-kicker">Saved recipe</p><h2>' + esc(recipe.name) + '</h2><p class="food-help">Makes ' + esc(fmt(recipe.servings)) + ' servings. Ingredient quantities below are for the whole recipe.</p>' + allergyNotice(recipe, current);
       if (recipe.ingredient_text) html += '<h3>Ingredients as written</h3><p class="food-prose">' + esc(recipe.ingredient_text) + '</p>';
       if ((recipe.ingredients || []).length) html += '<h3>Foods linked to your catalog</h3><ul class="food-ingredients">' + recipe.ingredients.map(item => '<li><strong>' + esc(products.get(item.product_id) && products.get(item.product_id).name || 'Ingredient no longer available') + '</strong><span>' + esc(fmt(item.quantity)) + ' ' + esc(item.unit) + '</span></li>').join('') + '</ul>';
       else html += '<p class="food-help">You can link catalog foods when you want pantry matches or calculations from their nutrition labels.</p>';
+      if ((recipe.planning_ingredients || []).length) html += '<details><summary>Shopping ingredients for meal planning</summary><ul class="food-plan-requirements">' + recipe.planning_ingredients.map(item => '<li><strong>' + esc(item.name) + (item.optional ? ' <small>optional</small>' : '') + '</strong><span>' + (item.quantity == null ? 'Amount needs review' : esc(fmt(item.quantity)) + ' ' + esc(item.unit)) + '</span></li>').join('') + '</ul><p class="food-help">Amounts are for the whole recipe. Planning scales them to the servings you choose.</p></details>';
       if (recipe.instructions) html += '<h3>Instructions</h3><p class="food-prose">' + esc(recipe.instructions) + '</p>';
       if (recipe.notes) html += '<p class="food-prose food-help">' + esc(recipe.notes) + '</p>';
       if (safeUrl(recipe.source_url)) html += '<p><a href="' + esc(safeUrl(recipe.source_url)) + '" target="_blank" rel="noopener noreferrer">Original recipe ↗</a></p>';
       html += nutritionTable(M.recipeNutrition(recipe, current.products || [], 1), 'Nutrition per recipe serving');
-      html += '<div class="food-actions">' + button('log-recipe', 'Log for Person 1', ' data-id="' + esc(recipe.id) + '" data-person="1"', true) + button('log-recipe', 'Log for Person 2', ' data-id="' + esc(recipe.id) + '" data-person="2"') + button('edit-recipe', 'Edit recipe', ' data-id="' + esc(recipe.id) + '"') + button('archive-recipe', 'Archive recipe', ' data-id="' + esc(recipe.id) + '"', false, current.offline) + '</div>';
+      html += '<div class="food-actions">' + button('plan-recipe', 'Plan this meal', ' data-id="' + esc(recipe.id) + '"', true, Boolean(planAttempt)) + button('log-recipe', 'Log for Person 1', ' data-id="' + esc(recipe.id) + '" data-person="1"') + button('log-recipe', 'Log for Person 2', ' data-id="' + esc(recipe.id) + '" data-person="2"') + button('edit-recipe', 'Edit recipe', ' data-id="' + esc(recipe.id) + '"') + button('archive-recipe', 'Archive recipe', ' data-id="' + esc(recipe.id) + '"', false, current.offline) + '</div>';
       return html + renderFiles(current, recipe) + '</section>';
     }
     function renderRecipeForm(current) {
@@ -244,6 +350,7 @@
       let html = '<section class="panel"><p class="page-kicker">' + (value.id ? 'Edit your recipe' : 'A recipe to keep') + '</p><h2>' + (value.id ? 'Edit recipe' : 'Save a recipe') + '</h2><p class="food-help">Keep the original ingredient list, including ranges and optional ingredients. Link catalog foods when you want pantry matches or calculations from their labels.</p><form id="food-recipe-form" class="food-form" data-food-form="recipe"><div class="food-form-grid">' + field('recipe', 'name', 'Recipe name', 'text', ' maxlength="160" required') + field('recipe', 'servings', 'Servings made by the whole recipe', 'number', ' min="0.01" max="10000" step="any" required') + '</div>' + textarea('recipe', 'ingredient_text', 'Ingredients as written', 12000) + '<fieldset class="food-ingredient-editor"><legend>Optional catalog links for the whole recipe</legend>';
       html += value.ingredients.map((ingredient, index) => '<div class="food-ingredient-row"><label class="food-field" for="food-ingredient-' + index + '-product"><span>Ingredient ' + (index + 1) + '</span><select id="food-ingredient-' + index + '-product" name="ingredient_' + index + '_product_id" data-food-ingredient="' + index + '" data-food-part="product_id"' + (busy ? ' disabled' : '') + '><option value="">Choose a catalog product</option>' + products.map(product => '<option value="' + esc(product.id) + '"' + (product.id === ingredient.product_id ? ' selected' : '') + '>' + esc(product.name + (product.brand ? ' · ' + product.brand : '')) + '</option>').join('') + '</select></label><label class="food-field" for="food-ingredient-' + index + '-quantity"><span>Amount</span><input id="food-ingredient-' + index + '-quantity" name="ingredient_' + index + '_quantity" data-food-ingredient="' + index + '" data-food-part="quantity" type="number" min="0.000001" max="1000000000" step="any" value="' + esc(ingredient.quantity) + '"' + (busy ? ' disabled' : '') + '></label><label class="food-field" for="food-ingredient-' + index + '-unit"><span>Unit</span><select id="food-ingredient-' + index + '-unit" name="ingredient_' + index + '_unit" data-food-ingredient="' + index + '" data-food-part="unit"' + (busy ? ' disabled' : '') + '>' + M.UNITS.map(unit => '<option value="' + unit.value + '"' + (ingredient.unit === unit.value ? ' selected' : '') + '>' + unit.label + '</option>').join('') + '</select></label>' + button('remove-ingredient', 'Remove', ' data-index="' + index + '"') + '</div>').join('');
       html += '<div class="food-actions">' + button('add-ingredient', '+ Link an ingredient', '', false, value.ingredients.length >= 100) + button('grocery', 'Add a product to the catalog ↗', ' data-tab="catalog"') + '</div><p class="food-help">Use a definite quantity for each catalog link. Keep ranges, alternatives, and “to taste” amounts in Ingredients as written. A cup cannot be converted into grams without a food-specific measurement.</p></fieldset>';
+      html += shoppingIngredientEditor('recipe', current);
       html += '<label class="food-field" for="food-recipe-nutrition_mode"><span>Nutrition calculation</span><select id="food-recipe-nutrition_mode" name="nutrition_mode" data-food-field="recipe.nutrition_mode"' + (busy ? ' disabled' : '') + '><option value="ingredients"' + (value.nutrition_mode !== 'reference' ? ' selected' : '') + '>Calculate from ingredient labels</option><option value="reference"' + (value.nutrition_mode === 'reference' ? ' selected' : '') + '>Use recipe estimates</option></select></label>';
       const referenceMode = value.nutrition_mode === 'reference';
       const retainedIssue = referenceMode ? '' : retainedReferenceIssue(value);
@@ -263,8 +370,9 @@
       const recipes = (current.recipes || []).filter(recipe => !recipe.archived && String(recipe.name).toLowerCase().includes(search.toLowerCase()));
       let html = '<section class="panel"><div class="food-heading"><div><p class="page-kicker">Your recipe collection</p><h2>Recipes you come back to</h2></div>' + button('new-recipe', '+ Save a recipe', '', true) + '</div><label class="food-field food-search" for="food-recipe-search"><span>Find a saved recipe</span><input id="food-recipe-search" type="search" data-food-search value="' + esc(search) + '" placeholder="Search your recipes"></label>';
       if (dirty('recipe') && !editor) html += '<p class="food-help">You have a recipe draft.</p>' + button('resume-recipe', 'Resume recipe draft');
+      if (dirty('plan') || planAttempt) html += '<p class="food-help">You have a meal plan to finish.</p>' + button('resume-plan', 'Resume meal plan');
       if (!recipes.length) html += '<div class="food-empty"><span aria-hidden="true">📖</span><h3>' + (search ? 'No matching recipes' : 'Start with a recipe you know') + '</h3><p>Save its ingredients and the number of servings. Then you can log a different portion for each person and find it when an ingredient needs using.</p></div>';
-      else html += '<div class="food-recipe-grid">' + recipes.map(recipe => '<article class="food-recipe-card"><h3>' + esc(recipe.name) + '</h3><p>' + esc(fmt(recipe.servings)) + ' servings' + ((recipe.ingredients || []).length ? ' · ' + recipe.ingredients.length + ' linked food' + (recipe.ingredients.length === 1 ? '' : 's') : '') + '</p><div class="food-nutrition-brief">' + briefNutrition(M.recipeNutrition(recipe, current.products || [], 1)) + '</div>' + allergyNotice(recipe, current) + '<div class="food-actions">' + button('view-recipe', 'Open recipe', ' data-id="' + esc(recipe.id) + '"') + button('log-recipe', 'Log a portion', ' data-id="' + esc(recipe.id) + '" data-person="1"') + '</div></article>').join('') + '</div>';
+      else html += '<div class="food-recipe-grid">' + recipes.map(recipe => '<article class="food-recipe-card"><h3>' + esc(recipe.name) + '</h3><p>' + esc(fmt(recipe.servings)) + ' servings' + ((recipe.ingredients || []).length ? ' · ' + recipe.ingredients.length + ' linked food' + (recipe.ingredients.length === 1 ? '' : 's') : '') + '</p><div class="food-nutrition-brief">' + briefNutrition(M.recipeNutrition(recipe, current.products || [], 1)) + '</div>' + allergyNotice(recipe, current) + '<div class="food-actions">' + button('plan-recipe', 'Plan this meal', ' data-id="' + esc(recipe.id) + '"', true, Boolean(planAttempt)) + button('view-recipe', 'Open recipe', ' data-id="' + esc(recipe.id) + '"') + button('log-recipe', 'Log a portion', ' data-id="' + esc(recipe.id) + '" data-person="1"') + '</div></article>').join('') + '</div>';
       html += '</section>';
       if (editor) html += renderRecipeForm(current);
       else {
@@ -288,7 +396,7 @@
         let review = suggestion.written_ingredients_unverified ? '<p class="food-help">Check the written ingredient list for any foods not linked yet.</p>' : '';
         if (suggestion.complete_stock) review += '<p>Recorded quantities cover this recipe. Check the actual food before cooking.</p>';
         else if (suggestion.missing_ingredients.length) review += '<p><strong>Also needed or needing review:</strong></p><ul>' + suggestion.missing_ingredients.map(item => '<li>' + esc(item.name) + ' — ' + esc(fmt(item.quantity)) + ' ' + esc(item.unit) + (item.reason ? ' · ' + esc(item.reason) : '') + '</li>').join('') + '</ul>';
-        return '<article class="food-recipe-card"><h3>' + esc(suggestion.name) + '</h3><p><strong>Uses soon:</strong> ' + [...new Set(suggestion.matching_items.map(item => item.name))].map(esc).join(', ') + '</p>' + allergyNotice(suggestion.recipe, current) + review + '<div class="food-actions">' + button('view-recipe', 'Open recipe', ' data-id="' + esc(suggestion.recipe_id) + '"') + '</div></article>';
+        return '<article class="food-recipe-card"><h3>' + esc(suggestion.name) + '</h3><p><strong>Uses soon:</strong> ' + [...new Set(suggestion.matching_items.map(item => item.name))].map(esc).join(', ') + '</p>' + allergyNotice(suggestion.recipe, current) + review + '<div class="food-actions">' + button('plan-recipe', 'Plan this meal', ' data-id="' + esc(suggestion.recipe_id) + '"', true, Boolean(planAttempt)) + button('view-recipe', 'Open recipe', ' data-id="' + esc(suggestion.recipe_id) + '"') + '</div></article>';
       }).join('') + '</div>';
       return html + '</section>';
     }
@@ -342,8 +450,9 @@
       if (current.offline) html += '<p class="food-offline" role="status">Offline · showing the saved device copy. You can prepare a draft; reconnect to save changes online.</p>';
       if (currentPage === 'wellness') return html + renderWellness(current) + '</section>';
       const dueCount = M.dueItems(current.inventory || [], dayKey(getNow())).length;
-      html += '<div class="food-shortcuts"><button type="button" data-food-action="grocery" data-tab="list"><span class="food-shortcut-icon" aria-hidden="true">🛒</span><span><strong>Grocery list</strong><small>Open what you need to buy</small></span><span aria-hidden="true">›</span></button><button type="button" data-food-action="grocery" data-tab="inventory"><span class="food-shortcut-icon" aria-hidden="true">🧺</span><span><strong>Food at home</strong><small>Pantry · refrigerator · freezer</small></span><span aria-hidden="true">›</span></button></div><nav class="food-tabs" aria-label="Food sections">' + [['recipes', '📖', 'Saved recipes'], ['soon', '🌱', 'Use soon' + (dueCount ? ' · ' + dueCount : '')], ['log', '🍽️', 'Food log']].map(([value, icon, label]) => '<button type="button" data-food-action="tab" data-tab="' + value + '"' + (tab === value ? ' aria-current="page"' : '') + '><span aria-hidden="true">' + icon + '</span> ' + esc(label) + '</button>').join('') + '</nav>';
+      html += '<div class="food-shortcuts"><button type="button" data-food-action="grocery" data-tab="list"><span class="food-shortcut-icon" aria-hidden="true">🛒</span><span><strong>Grocery list</strong><small>Open what you need to buy</small></span><span aria-hidden="true">›</span></button><button type="button" data-food-action="grocery" data-tab="inventory"><span class="food-shortcut-icon" aria-hidden="true">🧺</span><span><strong>Food at home</strong><small>Pantry · refrigerator · freezer</small></span><span aria-hidden="true">›</span></button></div><nav class="food-tabs" aria-label="Food sections">' + [['recipes', '📖', 'Saved recipes'], ['plans', '🗓️', 'Meal plan'], ['soon', '🌱', 'Use soon' + (dueCount ? ' · ' + dueCount : '')], ['log', '🍽️', 'Food log']].map(([value, icon, label]) => '<button type="button" data-food-action="tab" data-tab="' + value + '"' + (tab === value ? ' aria-current="page"' : '') + '><span aria-hidden="true">' + icon + '</span> ' + esc(label) + '</button>').join('') + '</nav>';
       if (tab === 'recipes') html += renderRecipes(current);
+      else if (tab === 'plans') html += renderPlans(current);
       else if (tab === 'soon') html += renderSoon(current);
       else {
         html += '<section class="panel"><div class="food-heading"><h2>Your food log</h2>' + datePicker() + '</div><div class="food-actions">' + button('new-log', '+ Add a food entry', ' data-person="1" data-kind="eaten"', true) + button('wellness', 'See nutrition by person') + (dirty('log') ? button('resume-log', 'Resume food draft') : '') + '</div></section>';
@@ -354,7 +463,12 @@
     }
     function readForm(form, group) {
       const get = name => form.elements && typeof form.elements.namedItem === 'function' ? form.elements.namedItem(name) : null;
-      for (const key of group === 'recipe' ? RECIPE_FIELDS : LOG_FIELDS) { const element = get(key); if (element && typeof element.value === 'string') drafts[group][key] = element.value; }
+      if (group === 'plan' && planAttempt) return;
+      if (group === 'plan') {
+        const recipeElement = get('recipe_id');
+        if (recipeElement && recipeElement.value !== drafts.plan.recipe_id && !drafts.plan.id) setPlanRecipe(snapshot(), recipeElement.value);
+      }
+      for (const key of group === 'recipe' ? RECIPE_FIELDS : group === 'plan' ? PLAN_FIELDS : LOG_FIELDS) { const element = get(key); if (element && typeof element.value === 'string' && !(group === 'plan' && key === 'recipe_id')) drafts[group][key] = element.value; }
       if (group === 'recipe') {
         for (let index = 0; index < drafts.recipe.ingredients.length; index++) for (const part of ['product_id', 'quantity', 'unit']) { const element = get('ingredient_' + index + '_' + part); if (element && typeof element.value === 'string') drafts.recipe.ingredients[index][part] = element.value; }
         drafts.recipe.nutrition_reference = referenceDraft(drafts.recipe.nutrition_reference);
@@ -363,6 +477,31 @@
           if (element && typeof element.value === 'string') drafts.recipe.nutrition_reference[key] = element.value;
         }
       }
+      if (group === 'recipe' || group === 'plan') {
+        const rows = group === 'recipe' ? drafts.recipe.planning_ingredients : drafts.plan.ingredients;
+        for (let index = 0; index < rows.length; index++) for (const part of ['name', 'quantity', 'unit', 'product_id', 'notes', group === 'recipe' ? 'optional' : 'included']) {
+          const element = get('planning_' + index + '_' + part);
+          if (!element) continue;
+          if (part === 'optional' || part === 'included') { if (typeof element.checked === 'boolean') rows[index][part] = element.checked; }
+          else if (typeof element.value === 'string') rows[index][part] = element.value;
+        }
+      }
+    }
+    function validatedShoppingIngredients(current, rows, forPlan) {
+      if (!Array.isArray(rows) || rows.length > 100) throw new Error('Use up to 100 shopping ingredients.');
+      return rows.flatMap((item, index) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('Review shopping ingredient ' + (index + 1) + '.');
+        const untouched = ['name', 'quantity', 'unit', 'product_id', 'notes'].every(key => !String(item[key] == null ? '' : item[key]).trim());
+        if (untouched && !item.optional && item.included !== false) return [];
+        const name = text(item.name, 'Shopping ingredient ' + (index + 1), 160, true);
+        const amount = item.quantity == null || String(item.quantity).trim() === '' ? null : quantity(item.quantity, name + ' amount', 1000000000);
+        const unit = text(item.unit, name + ' unit', 30, amount != null);
+        const productId = String(item.product_id || '').trim() || null;
+        if (productId && !(current.products || []).some(product => product.id === productId && product.category !== 'household')) throw new Error('Choose an available Food product for ' + name + ', or leave its catalog link blank.');
+        const row = { name, quantity: amount, unit, product_id: productId, optional: item.optional === true, notes: text(item.notes, name + ' notes', 1000, false) };
+        if (forPlan) row.included = item.included !== false;
+        return [row];
+      });
     }
     function recipePayload(current) {
       const value = drafts.recipe;
@@ -377,14 +516,15 @@
         if (!M.UNITS.some(unit => unit.value === item.unit)) throw new Error('Choose a supported unit for ingredient ' + (index + 1) + '.');
         return [{ product_id: product.id, quantity: quantity(item.quantity, 'Ingredient amount', 1000000000), unit: item.unit }];
       });
-      if (!ingredientText && !ingredients.length) throw new Error('Write the ingredient list or link at least one catalog food.');
+      const planningIngredients = validatedShoppingIngredients(current, value.planning_ingredients, false);
+      if (!ingredientText && !ingredients.length && !planningIngredients.length) throw new Error('Write the ingredient list or link at least one catalog food, or add shopping ingredients.');
       const nutritionMode = value.nutrition_mode == null ? 'ingredients' : value.nutrition_mode;
       if (!['ingredients', 'reference'].includes(nutritionMode)) throw new Error('Choose how this recipe’s nutrition is calculated.');
       const nutritionSource = text(value.nutrition_source, 'Estimate source and assumptions', 2000, nutritionMode === 'reference');
       const nutritionReference = Object.fromEntries(M.NUTRIENTS.map(({ key, label }) => [key, referenceNumber(value.nutrition_reference && value.nutrition_reference[key], label + ' for the whole recipe')]));
       const link = text(value.source_url, 'Recipe link', 2048, false);
       if (link && !safeUrl(link)) throw new Error('Use a full http or https recipe link.');
-      return { id: value.id, request_id: value.request_id, revision: value.revision, name, servings, ingredient_text: ingredientText, ingredients, instructions: text(value.instructions, 'Instructions', 20000, false), source_url: link, notes: text(value.notes, 'Notes', 4000, false), nutrition_mode: nutritionMode, nutrition_reference: nutritionReference, nutrition_source: nutritionSource, archived: false };
+      return { id: value.id, request_id: value.request_id, revision: value.revision, name, servings, ingredient_text: ingredientText, ingredients, planning_ingredients: planningIngredients, instructions: text(value.instructions, 'Instructions', 20000, false), source_url: link, notes: text(value.notes, 'Notes', 4000, false), nutrition_mode: nutritionMode, nutrition_reference: nutritionReference, nutrition_source: nutritionSource, archived: false };
     }
     function logPayload(current) {
       const value = drafts.log;
@@ -402,15 +542,108 @@
       if (!nutrition) throw new Error('This portion could not be calculated. Check its serving amount.');
       return { id: value.id, request_id: value.request_id, revision: value.revision, occurred_on: value.occurred_on, person_slot: person, kind: value.kind, recipe_id: isRecipe ? source.id : null, product_id: isRecipe ? null : source.id, servings, label: sameSource && value.original_label ? value.original_label : source.name, nutrition_snapshot: nutrition, notes: text(value.notes, 'Notes', 4000, false) };
     }
+    function setPlanRecipe(current, recipeId) {
+      const recipe = (current.recipes || []).find(row => row.id === recipeId && !row.archived);
+      drafts.plan.recipe_id = recipe ? recipe.id : '';
+      drafts.plan.recipe_revision = recipe ? recipe.revision : null;
+      drafts.plan.recipe_name = recipe ? recipe.name : '';
+      drafts.plan.base_servings = recipe ? recipe.servings : null;
+      drafts.plan.ingredients = planningRows(recipe, current.products || []);
+      planIngredientsOpen = !drafts.plan.ingredients.length;
+      if (!String(drafts.plan.servings || '').trim()) drafts.plan.servings = recipe ? String(recipe.servings) : '';
+      return recipe;
+    }
+    function savedPlanDraft(row) {
+      const value = planDraft(dayKey(getNow()));
+      for (const key of Object.keys(value)) if (Object.hasOwn(row, key)) value[key] = copy(row[key]);
+      value.request_id = uuid();
+      value.person1_servings = row.person1_servings == null ? '' : row.person1_servings;
+      value.person2_servings = row.person2_servings == null ? '' : row.person2_servings;
+      value.ingredients = (row.ingredients || []).map(item => ({ ...shoppingIngredientDraft(), ...copy(item), quantity: item.quantity == null ? '' : item.quantity, product_id: item.product_id || '', included: Object.hasOwn(item, 'included') ? item.included !== false : item.optional !== true }));
+      return value;
+    }
+    function openPlan(current, recipe, row) {
+      if (planAttempt) { tab = 'plans'; planning = planAttempt.action === 'save'; notify('Finish confirming the pending meal request first. Its exact details are kept.', true); persist(); refresh(); return false; }
+      if (row && (row.status !== 'planned' || row.cook_on < dayKey(getNow()))) throw new Error('This saved meal is in history. Plan the recipe again for a new date.');
+      if (row && drafts.plan.id === row.id && dirty('plan')) { planning = true; tab = 'plans'; persist(); refresh('#food-plan-form'); return true; }
+      if (dirty('plan') && !confirm('Open this meal and discard your current meal-plan draft?')) return false;
+      resetGroup('plan', row ? savedPlanDraft(row) : planDraft(dayKey(getNow())));
+      if (!row && recipe) { setPlanRecipe(current, recipe.id); baselines.plan = copy(drafts.plan); }
+      planning = true; tab = 'plans'; planProblem = ''; persist(); refresh('#food-plan-form'); return true;
+    }
+    function planPayload(current) {
+      const value = drafts.plan;
+      const recipe = (current.recipes || []).find(row => row.id === value.recipe_id && !row.archived);
+      if (!recipe) throw new Error('Choose an available saved recipe.');
+      if (!Number.isInteger(Number(value.recipe_revision)) || Number(value.recipe_revision) < 1) throw new Error('Reload the saved recipe before planning it.');
+      if (M.dateNumber(value.cook_on) == null || value.cook_on < dayKey(getNow())) throw new Error('Choose today or a future cooking date.');
+      const servings = quantity(value.servings, 'Servings to make', 10000);
+      const person1 = portionDivision(value.person1_servings, 'Person 1 servings'), person2 = portionDivision(value.person2_servings, 'Person 2 servings');
+      if ((person1 || 0) + (person2 || 0) > servings + 1e-9) throw new Error('The servings divided between people cannot exceed the total servings to make.');
+      const ingredients = validatedShoppingIngredients(current, value.ingredients, true);
+      if (!ingredients.some(item => item.included)) throw new Error('Include at least one named shopping ingredient. You can leave an uncertain amount blank for review.');
+      const payload = { id: value.id || value.request_id, request_id: value.request_id, recipe_id: value.recipe_id, recipe_revision: Number(value.recipe_revision), cook_on: value.cook_on, servings, person1_servings: person1, person2_servings: person2, notes: text(value.notes, 'Meal notes', 4000, false), ingredients };
+      if (value.id) payload.revision = value.revision;
+      return payload;
+    }
+    function submitPlanAttempt() {
+      const current = snapshot(); ready(current);
+      if (!planAttempt) throw new Error('Open a meal plan before saving.');
+      const attempt = copy(planAttempt);
+      if (attempt.action === 'save' && typeof store.saveCookingPlan !== 'function' || attempt.action === 'cancel' && typeof store.cancelCookingPlan !== 'function') throw new Error('Refresh the app to load the meal-planning tools.');
+      run(attempt.action === 'save' ? 'Saving your meal and updating groceries…' : 'Cancelling the meal and updating groceries…', () => attempt.action === 'save' ? store.saveCookingPlan(copy(attempt.payload)) : store.cancelCookingPlan({ id: attempt.payload.id, revision: attempt.payload.revision }, attempt.payload.request_id), () => {
+        planAttempt = null; planProblem = ''; tab = 'plans';
+        if (attempt.action === 'save' || drafts.plan.id === attempt.payload.id) { resetGroup('plan', planDraft(dayKey(getNow()))); planning = false; }
+        notify(attempt.action === 'save' ? 'Your meal was planned and its grocery needs were updated. Review any ingredients marked as needing details.' : 'The meal was cancelled and its unpurchased grocery needs were updated. Your purchases remain saved.');
+      }, '#food-plans', error => {
+        if (PLAN_REJECTIONS.has(String(error && error.code || ''))) {
+          planAttempt = null;
+          planProblem = attempt.action === 'save' && ['40001', '23505', '23514'].includes(String(error.code)) ? String(error.code) : '';
+        }
+      });
+    }
+    function reloadPlan(current) {
+      ready(current);
+      if (typeof store.refresh !== 'function') throw new Error('Refresh the browser to reload saved meal plans.');
+      const attempt = planAttempt && copy(planAttempt);
+      const targetId = attempt ? attempt.payload.id : drafts.plan.id || drafts.plan.request_id;
+      if (!attempt && dirty('plan') && !confirm('Reload this saved meal? Your current meal draft will be replaced by its saved version.')) return false;
+      run('Checking the saved meal…', () => store.refresh(), () => {
+        const fresh = snapshot(); ready(fresh);
+        const row = (fresh.cookingPlans || []).find(plan => plan.id === targetId);
+        tab = 'plans';
+        if (attempt && row && row.last_request_id === attempt.payload.request_id) {
+          planAttempt = null; planProblem = '';
+          if (attempt.action === 'save' || drafts.plan.id === attempt.payload.id) { resetGroup('plan', planDraft(dayKey(getNow()))); planning = false; }
+          notify(row.status === 'cancelled' ? 'The cancellation was saved. Your grocery list is updated.' : 'Your meal was already saved. Its grocery list was updated once.');
+        } else if (attempt && (!row || row.status === 'planned')) {
+          notify('The pending result is not confirmed yet. Retry the same request; its details are still kept.', true);
+        } else if (row && row.status === 'cancelled') {
+          planAttempt = null; planProblem = '';
+          if (!attempt || attempt.action === 'save' || drafts.plan.id === attempt.payload.id) { resetGroup('plan', planDraft(dayKey(getNow()))); planning = false; }
+          notify('This meal was cancelled. Choose Plan this meal again to create a new plan.');
+        } else if (row) {
+          planProblem = ''; resetGroup('plan', savedPlanDraft(row)); planning = true;
+          notify('The latest saved meal is open. Review its date, servings, and ingredients.');
+        } else {
+          planProblem = ''; drafts.plan.request_id = uuid(); drafts.plan.id = ''; drafts.plan.revision = null;
+          notify('No saved meal was found. Your draft is kept for review before a new save.');
+        }
+      }, '#food-plans');
+      return true;
+    }
     function handleSubmit(event) {
       const form = event.target, kind = form && form.dataset && form.dataset.foodForm;
-      if (!['recipe', 'log'].includes(kind)) return false;
+      if (!['recipe', 'log', 'plan'].includes(kind)) return false;
       event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         readForm(form, kind); persist(); ready(current);
         if (kind === 'recipe') {
           const payload = recipePayload(current);
           run('Saving your recipe…', () => store.saveRecipe(payload), row => { resetGroup('recipe', recipeDraft()); editor = false; tab = 'recipes'; openedRecipeId = row && row.id || payload.id || payload.request_id; notify('Your recipe was saved for your household.'); });
+        } else if (kind === 'plan') {
+          if (!planAttempt) { planAttempt = { action: 'save', payload: planPayload(current) }; planProblem = ''; persist(); }
+          submitPlanAttempt();
         } else {
           const payload = logPayload(current);
           run('Saving this portion…', () => store.saveMealEntry(payload), () => { selectedDate = payload.occurred_on; resetGroup('log', logDraft(selectedDate)); logging = false; if (currentPage === 'food') tab = 'log'; notify(payload.kind === 'planned' ? 'The planned portion was saved separately from eaten food.' : 'This person’s eaten portion was logged.'); });
@@ -428,6 +661,33 @@
         if (!busy) { drafts.recipe.nutrition_reference[data.foodReference] = element.value; persist(); }
         return true;
       }
+      if (Object.hasOwn(data, 'foodPlanningGroup')) {
+        const group = data.foodPlanningGroup, index = Number(data.foodPlanningIndex), part = data.foodPlanningPart;
+        if (!['recipe', 'plan'].includes(group) || !Number.isInteger(index) || index < 0) return false;
+        const rows = group === 'recipe' ? drafts.recipe.planning_ingredients : drafts.plan.ingredients;
+        const allowed = ['name', 'quantity', 'unit', 'product_id', 'notes', group === 'recipe' ? 'optional' : 'included'];
+        if (!rows[index] || !allowed.includes(part)) return false;
+        if (!busy && !(group === 'plan' && planAttempt)) {
+          rows[index][part] = part === 'optional' || part === 'included' ? element.checked === true : String(element.value || '');
+          if (part === 'product_id' && !String(rows[index].name || '').trim()) {
+            const product = (current.products || []).find(row => row.id === element.value && row.category !== 'household');
+            if (product) {
+              rows[index].name = product.name;
+              const nameInput = root.document && typeof root.document.querySelector === 'function' && root.document.querySelector('#food-' + group + '-shopping-' + index + '-name');
+              if (nameInput) nameInput.value = product.name;
+            }
+          }
+          if (group === 'plan') {
+            if (part === 'included' && typeof element.closest === 'function') {
+              const rowElement = element.closest('.food-planning-row');
+              if (rowElement && rowElement.classList) rowElement.classList.toggle('is-excluded', !element.checked);
+            }
+            updatePlanPreview(current);
+          }
+          persist();
+        }
+        return true;
+      }
       if (Object.hasOwn(data, 'foodIngredient')) {
         const index = Number(data.foodIngredient), part = data.foodPart;
         if (!Number.isInteger(index) || index < 0 || !drafts.recipe.ingredients[index] || !['product_id', 'quantity', 'unit'].includes(part)) return false;
@@ -443,8 +703,12 @@
       }
       if (!data.foodField) return false;
       const [group, name, extra] = data.foodField.split('.');
-      if (extra || !['recipe', 'log'].includes(group) || !(group === 'recipe' ? RECIPE_FIELDS : LOG_FIELDS).includes(name)) return false;
-      if (!busy) {
+      if (extra || !['recipe', 'log', 'plan'].includes(group) || !(group === 'recipe' ? RECIPE_FIELDS : group === 'plan' ? PLAN_FIELDS : LOG_FIELDS).includes(name)) return false;
+      if (!busy && !(group === 'plan' && planAttempt)) {
+        if (group === 'plan' && name === 'recipe_id') {
+          if (!drafts.plan.id && drafts.plan.recipe_id !== element.value) { setPlanRecipe(current, element.value); persist(); refresh('#food-plan-recipe_id'); }
+          return true;
+        }
         const previous = drafts[group][name]; drafts[group][name] = element.value; persist();
         if (group === 'log' && name === 'servings' && root.document && typeof root.document.querySelector === 'function') {
           const preview = root.document.querySelector('#food-log-nutrition-values');
@@ -452,6 +716,7 @@
         }
         if (group === 'log' && previous !== element.value && ['source_kind', 'recipe_id', 'product_id', 'kind'].includes(name)) refresh('#food-log-' + name);
         if (group === 'recipe' && name === 'nutrition_mode' && previous !== element.value) refresh('#food-recipe-nutrition_mode');
+        if (group === 'plan' && name === 'servings') updatePlanPreview(current);
       }
       return true;
     }
@@ -492,13 +757,13 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-food-action]') : null;
       const data = element && element.dataset, action = data && data.foodAction;
-      const actions = ['grocery', 'food-home', 'wellness', 'tab', 'new-recipe', 'resume-recipe', 'view-recipe', 'edit-recipe', 'discard-recipe', 'archive-recipe', 'add-ingredient', 'remove-ingredient', 'new-log', 'resume-log', 'log-recipe', 'edit-log', 'eaten-from-plan', 'discard-log', 'choose-person', 'delete-log', 'calendar', 'upload-file', 'view-file', 'remove-file'];
+      const actions = ['grocery', 'food-home', 'wellness', 'tab', 'new-recipe', 'resume-recipe', 'view-recipe', 'edit-recipe', 'discard-recipe', 'archive-recipe', 'add-ingredient', 'remove-ingredient', 'add-shopping-ingredient', 'remove-shopping-ingredient', 'toggle-plan-ingredients', 'new-plan', 'plan-recipe', 'resume-plan', 'edit-plan', 'cancel-plan', 'close-plan', 'discard-plan', 'retry-plan', 'reload-plan', 'reload-plan-recipe', 'refresh-meal-shopping', 'new-log', 'resume-log', 'log-recipe', 'edit-log', 'eaten-from-plan', 'discard-log', 'choose-person', 'delete-log', 'calendar', 'upload-file', 'view-file', 'remove-file'];
       if (!actions.includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
-        if (action === 'grocery') { openGrocery(data.tab || 'list'); return true; }
+        if (action === 'grocery') { openGrocery(data.tab || 'list', data.month || undefined); return true; }
         if (action === 'food-home' || action === 'wellness') { navigate(action === 'food-home' ? 'food' : 'wellness'); return true; }
-        if (action === 'tab') { if (['recipes', 'soon', 'log'].includes(data.tab)) tab = data.tab; }
+        if (action === 'tab') { if (['recipes', 'plans', 'soon', 'log'].includes(data.tab)) tab = data.tab; }
         else if (action === 'new-recipe') { if (dirty('recipe') && !confirm('Start a new recipe and discard your current recipe draft?')) return true; resetGroup('recipe', recipeDraft()); editor = true; openedRecipeId = ''; tab = 'recipes'; }
         else if (action === 'resume-recipe') { editor = true; tab = 'recipes'; }
         else if (action === 'view-recipe') { openedRecipeId = data.id; editor = false; selectedFile = null; tab = 'recipes'; }
@@ -513,6 +778,64 @@
           run('Archiving the recipe…', () => store.saveRecipe({ ...recipe, archived: true }), () => { if (drafts.recipe.id === recipe.id) resetGroup('recipe', recipeDraft()); openedRecipeId = ''; editor = false; notify('The recipe was archived. Earlier food entries were kept.'); }); return true;
         } else if (action === 'add-ingredient') { if (drafts.recipe.ingredients.length < 100) drafts.recipe.ingredients.push({ product_id: '', quantity: '', unit: 'each' }); }
         else if (action === 'remove-ingredient') { const index = Number(data.index); if (Number.isInteger(index) && index >= 0 && index < drafts.recipe.ingredients.length) drafts.recipe.ingredients.splice(index, 1); }
+        else if (action === 'add-shopping-ingredient' || action === 'remove-shopping-ingredient') {
+          if (!['recipe', 'plan'].includes(data.group)) throw new Error('Open the recipe or meal ingredient editor first.');
+          if (data.group === 'plan' && planAttempt) throw new Error('Confirm the pending meal request before changing its ingredients.');
+          const rows = data.group === 'recipe' ? drafts.recipe.planning_ingredients : drafts.plan.ingredients;
+          if (action === 'add-shopping-ingredient') { if (rows.length < 100) rows.push(shoppingIngredientDraft()); }
+          else { const index = Number(data.index); if (Number.isInteger(index) && index >= 0 && index < rows.length) rows.splice(index, 1); }
+          if (data.group === 'plan') planIngredientsOpen = true;
+        }
+        else if (action === 'toggle-plan-ingredients') { planIngredientsOpen = !planIngredientsOpen; persist(); refresh('#food-plan-ingredients-toggle'); return true; }
+        else if (action === 'new-plan') { openPlan(current, null, null); return true; }
+        else if (action === 'plan-recipe') {
+          const recipe = (current.recipes || []).find(row => row.id === data.id && !row.archived);
+          if (!recipe) throw new Error('Refresh to find this saved recipe.');
+          openPlan(current, recipe, null); return true;
+        }
+        else if (action === 'resume-plan') { tab = 'plans'; planning = !planAttempt || planAttempt.action === 'save'; }
+        else if (action === 'edit-plan') {
+          const plan = (current.cookingPlans || []).find(row => row.id === data.id);
+          if (!plan) throw new Error('Refresh to find this saved meal.');
+          openPlan(current, null, plan); return true;
+        }
+        else if (action === 'close-plan') { planning = false; tab = 'plans'; }
+        else if (action === 'discard-plan') {
+          if (planAttempt) throw new Error('Confirm the pending meal request before discarding it. Its exact details are kept for a safe retry.');
+          if (dirty('plan') && !confirm('Discard this meal draft? Saved meals and groceries will remain.')) return true;
+          resetGroup('plan', planDraft(dayKey(getNow()))); planProblem = ''; planning = false;
+        }
+        else if (action === 'retry-plan') { submitPlanAttempt(); return true; }
+        else if (action === 'reload-plan') { reloadPlan(current); return true; }
+        else if (action === 'reload-plan-recipe') {
+          ready(current);
+          if (planAttempt) throw new Error('Confirm the pending meal save before replacing its recipe ingredients.');
+          if (!drafts.plan.recipe_id || typeof store.refresh !== 'function') throw new Error('Choose a saved recipe and refresh before loading its ingredients.');
+          if (!confirm('Replace this meal’s ingredient choices with the latest saved recipe ingredients? Its cooking date and serving count will stay.')) return true;
+          const recipeId = drafts.plan.recipe_id;
+          run('Loading the latest recipe ingredients…', () => store.refresh(), () => {
+            const fresh = snapshot(); ready(fresh);
+            if (!(fresh.recipes || []).some(row => row.id === recipeId && !row.archived)) throw new Error('This recipe is no longer available. Your meal draft and saved history have been kept.');
+            setPlanRecipe(fresh, recipeId);
+            drafts.plan.request_id = uuid(); planProblem = ''; planning = true; tab = 'plans';
+            notify('The latest recipe ingredients are loaded. Review the amounts before saving this meal.');
+          }, '#food-plan-form'); return true;
+        }
+        else if (action === 'cancel-plan') {
+          ready(current);
+          if (planAttempt) throw new Error('Confirm the pending meal request first.');
+          const plan = (current.cookingPlans || []).find(row => row.id === data.id && row.status === 'planned');
+          if (!plan || plan.cook_on < dayKey(getNow())) throw new Error('Choose a current or future planned meal. Past dates remain in history.');
+          if (drafts.plan.id === plan.id && dirty('plan')) throw new Error('Save or discard this meal’s draft before cancelling the saved meal.');
+          if (!confirm('Cancel ' + plan.recipe_name + ' on ' + dateLabel(plan.cook_on) + '? Its unpurchased grocery needs will update. Actual purchases remain saved.')) return true;
+          planAttempt = { action: 'cancel', payload: { id: plan.id, revision: plan.revision, request_id: uuid() } }; planProblem = ''; tab = 'plans'; persist(); submitPlanAttempt(); return true;
+        }
+        else if (action === 'refresh-meal-shopping') {
+          ready(current);
+          if (planAttempt) throw new Error('Confirm the pending meal request first.');
+          if (typeof store.reconcileMealShopping !== 'function') throw new Error('Refresh the app to load the meal-planning tools.');
+          run('Checking meal ingredients and food at home…', () => store.reconcileMealShopping(), () => { notify('Your planned meals were checked against food at home and the grocery list was updated.'); }, '#food-plans'); return true;
+        }
         else if (action === 'new-log') { openLog(current, null, { person_slot: String(data.person || 1), kind: data.kind === 'planned' ? 'planned' : 'eaten' }); return true; }
         else if (action === 'resume-log') { logging = true; if (currentPage === 'food') tab = 'log'; }
         else if (action === 'log-recipe') { const recipe = (current.recipes || []).find(row => row.id === data.id); if (!recipe) throw new Error('Refresh to find this recipe.'); openLog(current, null, { recipe_id: recipe.id, person_slot: String(data.person || 1), source_kind: 'recipe' }); return true; }
@@ -541,8 +864,8 @@
       } catch (error) { notify(error.message, true); }
       return true;
     }
-    function selectTab(value) { snapshot(); if (busy || !['recipes', 'soon', 'log'].includes(value)) return false; tab = value; persist(); refresh(); return true; }
-    function hasUnpersistedChanges() { snapshot(); return Boolean(selectedFile || ((dirty('recipe') || dirty('log')) && !draftSaved)); }
+    function selectTab(value) { snapshot(); if (busy || !['recipes', 'plans', 'soon', 'log'].includes(value)) return false; tab = value; persist(); refresh(); return true; }
+    function hasUnpersistedChanges() { snapshot(); return Boolean(selectedFile || ((dirty('recipe') || dirty('log') || dirty('plan') || planAttempt) && !draftSaved)); }
     return { render, handleClick, handleSubmit, handleInput, handleChange, hasUnsavedDraft, hasUnpersistedChanges, discardDraft, selectTab, isBusy: () => Boolean(busy), whenIdle: () => pending, getHomeSummary: () => { const current = snapshot(); return { due: M.dueItems(current.inventory || [], dayKey(getNow())).length, recipes: (current.recipes || []).filter(row => !row.archived).length }; } };
   }
   const api = { createController, buildExpiryCalendar, allergyMatches, scaledSnapshot };

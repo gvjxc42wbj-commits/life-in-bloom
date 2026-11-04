@@ -316,8 +316,10 @@
     count.textContent = result.summary;
     results.innerHTML = result.html;
   }});
-  if (F) food = F.createController({ ...sharedOptions, openGrocery:tab=>{
-    if(navigate('grocery')) { if(grocery && grocery.selectTab) grocery.selectTab(tab); renderKeepScroll(); }
+  if (F) food = F.createController({ ...sharedOptions, openGrocery:(tab, month)=>{
+    if (month && grocery && grocery.openShoppingMonth && !grocery.openShoppingMonth(month)) return false;
+    if(navigate('grocery')) { if(grocery && grocery.selectTab) grocery.selectTab(tab); renderKeepScroll(); return true; }
+    return false;
   }});
   grocery = G.createController({
     store: cloud,

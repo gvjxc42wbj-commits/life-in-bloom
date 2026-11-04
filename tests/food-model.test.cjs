@@ -21,6 +21,130 @@ test('quantity conversion distinguishes weight, volume, and counts and preserves
   assert.equal(M.convertQuantity([], 'each', 'each'), null);
 });
 
+test('planning ingredient templates preserve whole-recipe measures and optional choices without parsing prose', () => {
+  const recipe = {
+    servings: 4, ingredient_text: '3 garlic cloves, optional parsley to taste',
+    ingredients: [{ product_id: 'milk', quantity: 99, unit: 'cup' }],
+    planning_ingredients: [
+      { name: ' Garlic ', quantity: 3, unit: 'cloves', product_id: null, notes: 'Minced' },
+      { name: 'Parsley', quantity: null, unit: 'to taste', optional: true, notes: 'Optional garnish' },
+      { name: 'Milk', quantity: '2', unit: 'cup', product_id: 'milk', optional: true, included: true }
+    ]
+  };
+  const before = structuredClone(recipe);
+  const rows = M.recipePlanningIngredients(recipe, [product('milk', { name: 'Catalog milk' })]);
+  assert.equal(rows.length, 3, 'the saved template replaces the optional linked-ingredient fallback');
+  assert.equal(rows[0].name, 'Garlic');
+  assert.equal(rows[0].quantity, 3);
+  assert.equal(rows[0].unit, 'cloves');
+  assert.equal(rows[0].product_id, null);
+  assert.equal(rows[0].included, true);
+  assert.equal(rows[1].quantity, null);
+  assert.equal(rows[1].included, false);
+  assert.equal(rows[1].notes, 'Optional garnish');
+  assert.equal(rows[2].quantity, 2);
+  assert.equal(rows[2].included, true, 'an explicitly selected optional ingredient remains selected');
+  assert.deepEqual(recipe, before);
+  assert.deepEqual(M.recipePlanningIngredients({ ingredient_text: '2 eggs and 1 cup milk' }, []), []);
+});
+
+test('planning falls back to linked ingredients and exposes an unverified written list', () => {
+  const products = [product('eggs', { name: 'Large eggs' })];
+  const recipe = { servings: 2, ingredient_text: '2 eggs plus an unlinked ingredient', planning_ingredients: [], ingredients: [{ product_id: 'eggs', quantity: 2, unit: 'each' }] };
+  const rows = M.recipePlanningIngredients(recipe, products);
+  assert.deepEqual(rows, [{ name: 'Large eggs', quantity: 2, unit: 'each', product_id: 'eggs', optional: false, notes: '', included: true }]);
+  const preview = M.cookingPlanPreview(recipe, rows, 2, products);
+  assert.equal(preview.rows[0].required_quantity, 2);
+  assert.equal(preview.complete, false, 'some linked rows cannot establish that the whole written list is covered');
+  assert.match(preview.issues.join(' '), /written ingredient list/i);
+});
+
+test('cooking preview scales whole-recipe quantities by chosen yield without quoting a grocery shortage', () => {
+  const products = [product('milk', { package_quantity: 64, package_unit: 'fl_oz' }), product('rice', { package_quantity: 1, package_unit: 'kg' })];
+  const recipe = { servings: 4, planning_ingredients: [
+    { name: 'Milk', product_id: 'milk', quantity: 4, unit: 'cup' },
+    { name: 'Rice', product_id: 'rice', quantity: 0.8, unit: 'kg' }
+  ] };
+  const before = structuredClone({ recipe, products });
+  const rows = M.recipePlanningIngredients(recipe, products);
+  const preview = M.cookingPlanPreview(recipe, rows, 2, products);
+  assert.equal(preview.scale, 0.5);
+  assert.equal(preview.recipe_servings, 4);
+  assert.equal(preview.servings, 2);
+  assert.equal(preview.rows[0].quantity, 4, 'the original recipe quantity is retained for editing');
+  assert.equal(preview.rows[0].required_quantity, 2);
+  assert.equal(preview.rows[0].required_package_quantity, 16, 'two cups are sixteen fluid ounces, not sixteen packages');
+  assert.equal(preview.rows[0].package_quantity, 64);
+  assert.equal(preview.rows[1].required_quantity, 0.4);
+  assert.equal(preview.complete, true);
+  assert.deepEqual(preview.issues, []);
+  assert.equal(Object.hasOwn(preview.rows[0], 'packs'), false, 'stock subtraction and combined package rounding belong to the server');
+  assert.deepEqual({ recipe, products }, before);
+});
+
+test('cooking preview keeps custom measures and unresolved quantities explicit', () => {
+  const products = [product('garlic', { package_quantity: 1, package_unit: 'each' }), product('flour', { package_quantity: 500, package_unit: 'g' })];
+  const recipe = { servings: 4, planning_ingredients: [
+    { name: 'Garlic', product_id: 'garlic', quantity: 6, unit: 'cloves' },
+    { name: 'Flour', product_id: 'flour', quantity: 2, unit: 'cup' },
+    { name: 'Salt', quantity: null, unit: 'to taste', product_id: null },
+    { name: 'Celery', quantity: 2, unit: 'stalks', product_id: null }
+  ] };
+  const preview = M.cookingPlanPreview(recipe, null, 2, products);
+  assert.equal(preview.rows[0].unit, 'cloves');
+  assert.equal(preview.rows[0].required_quantity, 3);
+  assert.equal(preview.rows[0].required_package_quantity, null, 'cloves do not become whole bulbs or each');
+  assert.equal(preview.rows[1].required_quantity, 1);
+  assert.equal(preview.rows[1].required_package_quantity, null, 'volume is not converted to mass without a supplied conversion');
+  assert.equal(preview.rows[2].required_quantity, null, 'to taste is never assigned an invented number');
+  assert.equal(preview.rows[3].required_quantity, 1);
+  assert.equal(preview.rows[3].unit, 'stalks');
+  assert.equal(preview.complete, false);
+  assert.match(preview.rows[0].issues.join(' '), /cannot be converted/);
+  assert.match(preview.rows[2].issues.join(' '), /unknown/);
+  assert.match(preview.rows[3].issues.join(' '), /Matching named stock can be checked/);
+});
+
+test('unselected optional ingredients do not add quantities or review failures until included', () => {
+  const recipe = { servings: 2, planning_ingredients: [
+    { name: 'Eggs', product_id: 'eggs', quantity: 2, unit: 'each' },
+    { name: 'Optional herbs', quantity: null, unit: 'to taste', optional: true }
+  ] };
+  const products = [product('eggs')], rows = M.recipePlanningIngredients(recipe, products);
+  const without = M.cookingPlanPreview(recipe, rows, 4, products);
+  assert.equal(without.rows[0].required_quantity, 4);
+  assert.equal(without.rows[1].required_quantity, 0);
+  assert.deepEqual(without.rows[1].issues, []);
+  assert.equal(without.complete, true);
+  const withHerbs = M.cookingPlanPreview(recipe, rows.map(row => ({ ...row, included: true })), 4, products);
+  assert.equal(withHerbs.rows[1].required_quantity, null);
+  assert.equal(withHerbs.complete, false);
+  assert.equal(rows[1].included, false, 'preview never mutates the retained selection');
+});
+
+test('cooking preview cannot claim resolved quantities with missing yield, unusable links or invalid amounts', () => {
+  const rows = [
+    { name: 'Missing item', product_id: 'missing', quantity: 2, unit: 'each' },
+    { name: 'Archived food', product_id: 'archived', quantity: 1, unit: 'each' },
+    { name: 'Soap', product_id: 'soap', quantity: 1, unit: 'each' },
+    { name: 'Unknown amount', product_id: 'eggs', quantity: '', unit: 'each' }
+  ];
+  const products = [product('archived', { archived: true }), product('soap', { category: 'household' }), product('eggs')];
+  const preview = M.cookingPlanPreview({ servings: null }, rows, 2, products);
+  assert.equal(preview.scale, null);
+  assert.ok(preview.rows.every(row => row.required_quantity === null));
+  assert.equal(preview.complete, false);
+  assert.match(preview.issues.join(' '), /saved recipe makes/);
+  for (const row of preview.rows.slice(0, 3)) assert.match(row.issues.join(' '), /link an available Food product/);
+  for (const value of [0, -1, Infinity, '', null]) {
+    const invalid = M.cookingPlanPreview({ servings: 2 }, [{ name: 'Eggs', product_id: 'eggs', quantity: 2, unit: 'each' }], value, products);
+    assert.equal(invalid.rows[0].required_quantity, null);
+    assert.equal(invalid.complete, false);
+  }
+  assert.equal(M.cookingPlanPreview({ servings: 1e-308 }, [{ name: 'Eggs', product_id: 'eggs', quantity: 2, unit: 'each' }], 1e308, products).complete, false);
+  assert.equal(M.cookingPlanPreview({ servings: 2 }, [], 2, products).complete, false);
+});
+
 test('unknown label nutrients remain missing and a known zero is retained', () => {
   const p = product('drink', { nutrients: { calories_kcal: 0, protein_g: null, fluid_ml: 250 } });
   const result = M.productNutrition(p, 2);

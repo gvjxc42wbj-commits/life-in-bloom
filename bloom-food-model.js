@@ -90,6 +90,82 @@
     if (!Array.isArray(products)) return new Map(Object.entries(products || {}));
     return new Map(products.filter(Boolean).map(product => [product.id, product]));
   }
+  function planningRow(value, catalog) {
+    const row = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const productId = typeof row.product_id === 'string' && row.product_id.trim() ? row.product_id.trim() : null;
+    const product = productId && catalog.get(productId);
+    const suppliedName = typeof row.name === 'string' ? row.name.trim() : '';
+    const optional = row.optional === true;
+    return {
+      name: suppliedName || (product && typeof product.name === 'string' ? product.name : ''),
+      quantity: positive(row.quantity),
+      // Keep recipe measures such as cloves or stalks intact. Their numbers can
+      // scale with servings without inventing a conversion to catalog units.
+      unit: typeof row.unit === 'string' ? row.unit.trim() : '',
+      product_id: productId,
+      optional,
+      notes: typeof row.notes === 'string' ? row.notes : '',
+      included: typeof row.included === 'boolean' ? row.included : !optional
+    };
+  }
+  function recipePlanningIngredients(recipe, products) {
+    const catalog = indexProducts(products);
+    const template = recipe && Array.isArray(recipe.planning_ingredients) && recipe.planning_ingredients.length ? recipe.planning_ingredients : null;
+    const rows = template || (recipe && Array.isArray(recipe.ingredients) ? recipe.ingredients : []);
+    // A written ingredient list is never parsed or silently treated as covered.
+    return rows.map(row => planningRow(row, catalog));
+  }
+  function cookingPlanPreview(recipe, rows, servings, products) {
+    const catalog = indexProducts(products);
+    const selected = Array.isArray(rows) ? rows.map(row => planningRow(row, catalog)) : recipePlanningIngredients(recipe, catalog);
+    const yieldCount = positive(recipe && recipe.servings), count = positive(servings);
+    const scale = yieldCount != null && count != null ? positive(tidy(count / yieldCount)) : null;
+    const issues = [];
+    if (yieldCount == null) issues.push('Enter how many servings the saved recipe makes before scaling its ingredients.');
+    if (count == null) issues.push('Enter how many servings you want to cook.');
+    if (yieldCount != null && count != null && scale == null) issues.push('Review the recipe yield and selected servings; their scale is outside the supported range.');
+    if (!selected.some(row => row.included)) issues.push('Include at least one ingredient for this meal.');
+    const templateSaved = recipe && Array.isArray(recipe.planning_ingredients) && recipe.planning_ingredients.length > 0;
+    if (!templateSaved && recipe && typeof recipe.ingredient_text === 'string' && recipe.ingredient_text.trim()) {
+      issues.push('Review the written ingredient list against these rows so every ingredient you need is included.');
+    }
+    const result = selected.map(row => {
+      const product = row.product_id && catalog.get(row.product_id);
+      const required = row.included ? (row.quantity != null && scale != null ? positive(tidy(row.quantity * scale)) : null) : 0;
+      const rowIssues = [];
+      let inPackageUnit = null;
+      if (row.included) {
+        const label = row.name || 'This ingredient';
+        if (!row.name) rowIssues.push('Give this ingredient a name.');
+        if (row.quantity == null) rowIssues.push(label + ': review the amount for the whole recipe; its quantity is still unknown.');
+        if (!row.unit) rowIssues.push(label + ': enter the recipe unit.');
+        if (row.quantity != null && scale != null && required == null) rowIssues.push(label + ': the scaled quantity is outside the supported range.');
+        if (!row.product_id) {
+          rowIssues.push(label + ': no catalog product is linked. Matching named stock can be checked, but package size and price need review.');
+        } else if (!product || product.archived || product.category === 'household') {
+          rowIssues.push(label + ': link an available Food product to compare inventory and package quantities.');
+        } else if (positive(product.package_quantity) == null || typeof product.package_unit !== 'string' || !product.package_unit.trim()) {
+          rowIssues.push(label + ': review the linked product package quantity and unit.');
+        } else if (required != null && row.unit) {
+          inPackageUnit = convertQuantity(required, row.unit, product.package_unit);
+          if (inPackageUnit == null) rowIssues.push(label + ': ' + row.unit + ' cannot be converted automatically to ' + product.package_unit + '; review the measurement.');
+        }
+      }
+      issues.push(...rowIssues);
+      return {
+        ...row,
+        required_quantity: required,
+        product_name: product && typeof product.name === 'string' ? product.name : null,
+        package_quantity: product ? positive(product.package_quantity) : null,
+        package_unit: product && typeof product.package_unit === 'string' ? product.package_unit : null,
+        // This is the ingredient amount in the product's unit, not packages to
+        // buy. The server allocates stock and combines meals before rounding.
+        required_package_quantity: inPackageUnit,
+        issues: rowIssues
+      };
+    });
+    return { rows: result, issues, complete: issues.length === 0, servings: count, recipe_servings: yieldCount, scale };
+  }
   function unknownNutrition() {
     return { values: Object.fromEntries(KEYS.map(key => [key, null])), missing: Object.fromEntries(KEYS.map(key => [key, 1])), complete: false };
   }
@@ -377,7 +453,7 @@
     return [...months].sort().reverse().map(month => monthlyMoney(data, month));
   }
 
-  const api = { NUTRIENTS, UNITS, AISLES, convertQuantity, recipeNutrition, productNutrition, nutritionTotals, nutritionProvenance, dueItems, recipeSuggestions, recurringPlan, monthlyMoney, monthlyBillHistory, dateNumber, monthDetails, effectiveDate };
+  const api = { NUTRIENTS, UNITS, AISLES, convertQuantity, recipePlanningIngredients, cookingPlanPreview, recipeNutrition, productNutrition, nutritionTotals, nutritionProvenance, dueItems, recipeSuggestions, recurringPlan, monthlyMoney, monthlyBillHistory, dateNumber, monthDetails, effectiveDate };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.BloomFoodModel = api;
 })(typeof window !== 'undefined' ? window : globalThis);

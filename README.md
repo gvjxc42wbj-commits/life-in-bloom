@@ -13,7 +13,7 @@ This development version has Sleep & Mood tools, appointments, saved Ideas notes
 ### Grocery and Ideas
 
 - **Grocery:** sign in, create or join a two-person household, and maintain a monthly shopping list. Catalog products carry package quantities, reference prices, optional label nutrients, and private photo/PDF attachments. Review recurring monthly needs before adding them to the list. Checking an item opens a small purchase panel: confirm the actual amount paid and food quantity once to save its receipt, food stock, ledger expense, and monthly totals together. Older checkmarks without receipts offer a recovery review. Full shopping trips can still contain several items.
-- **Food in Bloom:** save written recipes with a recipe yield and optional measured catalog ingredients. Open **Use soon** for recorded food dates and recipes with matching linked foods. Log planned or eaten portions for pink Person 1 and purple Person 2. Choose nutrition calculated from product labels or supplied whole-recipe estimates with a source. Missing values remain unknown, and estimates stay labeled; these are not prescribed targets or a validated meal plan.
+- **Food in Bloom:** save written recipes with a recipe yield, shopping ingredients, and optional measured catalog ingredients. **Plan this meal** schedules a cooking date and servings, then prepares missing groceries using available stock and the household's other meal plans. Generated list items keep their recipe/date references. Open **Use soon** for recorded food dates and recipes with matching linked foods. Log planned or eaten nutrition portions separately for pink Person 1 and purple Person 2. Choose nutrition calculated from product labels or supplied whole-recipe estimates with a source. Missing values remain unknown, and estimates stay labeled; these are not prescribed targets or a validated meal plan.
 - **Money in Bloom:** review actual income and expenses, including Grocery receipt expenses. Set Food and Household allocations and monthly bill plans. Fixed bills can repeat each month; variable bills repeat with a blank amount. Edit one month or explicitly apply settings to future unedited, unpaid months. Recording a full bill payment creates its actual expense once and fills that month's bill amount if it was unknown. Saved earlier months remain available for comparison. Income less expenses is a ledger calculation, not a bank balance.
 - **Idea’s in Bloom:** type a title and/or a note, then choose **Save note**. Open saved notes to edit them. Unsaved form text is kept while editing; navigation asks before discarding it. Save notes before closing the app.
 
@@ -75,7 +75,7 @@ A day with only some awake activities recorded has no sleep total yet and is exc
 
 Personal journals save in this browser or installed app, on this device. Household Grocery records save separately to Supabase. Keep regular personal backups, particularly before changing devices or clearing browser data. Grocery cloud requests never contain Sleep & Mood, appointments, activities, or Ideas.
 
-Grocery **Household → Export household backup** saves the catalog, recurring settings, budgets, inventory, shopping lists, bills, recipes, meal entries, receipts, ledger entries, and attachment metadata. It excludes passwords, session tokens, private measurements, and personal journals. The owner can review **Restore missing records** for the same household. This is additive: existing conflicting records abort the whole restore; they are never overwritten. Receipt history is restored without replaying purchase effects. Image/PDF bytes are not included, and missing uploaded files need to be attached again. Save original photos/PDFs separately.
+Grocery **Household → Export household backup** saves the catalog, recurring settings, budgets, inventory, shopping lists, bills, recipes, cooking plans and their grocery references, meal entries, receipts, ledger entries, and attachment metadata. It excludes passwords, session tokens, private measurements, and personal journals. The owner can review **Restore missing records** for the same household. This is additive: existing conflicting records abort the whole restore; they are never overwritten. Receipt history is restored without replaying purchase effects. Image/PDF bytes are not included, and missing uploaded files need to be attached again. Save original photos/PDFs separately.
 
 After Grocery sign-in, personal journals use separate local storage for each account. If earlier entries exist, the user explicitly chooses **These are my earlier entries** or **Start a separate journal**. Earlier original storage remains untouched. Signing out hides the account’s journal. This is local account separation, not encryption, server access control, or online synchronization of personal journals. Someone with browser/device access can still inspect local storage.
 
@@ -128,7 +128,7 @@ On iPhone, open the published address in Safari and use **Add to Home Screen**. 
 - `bloom-drafts.js`: account/household-scoped device drafts, excluding credentials.
 - `bloom-food-model.js`: unit-aware nutrient estimates, stock-aware recurring plans, date reminders, and ledger calculations.
 - `bloom-commerce.js`, `commerce.css`: catalog, recurring review, receipts, and Money screens.
-- `bloom-food.js`, `food.css`: saved recipes, use-soon suggestions, nutrition logs, and calendar-file downloads.
+- `bloom-food.js`, `food.css`: saved recipes, dated meal plans, use-soon suggestions, nutrition logs, and calendar-file downloads.
 - `bloom-config.js`: public project connection settings.
 - `db/grocery-foundation.sql`: database schema, policies, and household operations.
 - `db/grocery-foundation-tests.sql`: rollback-only database access and behavior checks.
@@ -138,6 +138,8 @@ On iPhone, open the published address in Safari and use **Add to Home Screen**. 
 - `db/recipe-reference-nutrition-tests.sql`: rollback-only checks for reference values, history, backup restore, and household access.
 - `db/checkout-monthly-bills.sql`: confirmed shopping checkout, effective-month bill rules, saved monthly bill snapshots, and backup support; apply after recipe-reference-nutrition.sql.
 - `db/checkout-monthly-bills-tests.sql`: rollback-only checkout, retry, recurrence, payment, history, and access checks.
+- `db/meal-planning.sql`: recipe shopping ingredients, cooking-plan snapshots, and atomic grocery reconciliation; apply after checkout-monthly-bills.sql.
+- `db/meal-planning-tests.sql`: rollback-only meal scaling, shared stock, generated groceries, retries, changes, and household access checks.
 - `styles.css`: responsive layout, focus states, and dialogs.
 - `service-worker.js`: offline assets.
 - `tests/*.test.cjs`: regression checks for saved data, recurrence, monthly comparisons, grocery items, and Ideas notes.

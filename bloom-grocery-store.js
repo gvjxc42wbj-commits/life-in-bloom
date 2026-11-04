@@ -8,7 +8,8 @@
     budgets: 'bloom_budgets', inventory: 'bloom_inventory', shoppingItems: 'bloom_shopping_items',
     products: 'bloom_products', recurringProducts: 'bloom_recurring_products', receipts: 'bloom_receipts',
     moneyEntries: 'bloom_money_entries', bills: 'bloom_bills', billRules: 'bloom_bill_rules', recipes: 'bloom_recipes',
-    mealEntries: 'bloom_meal_entries', foodFiles: 'bloom_food_files'
+    mealEntries: 'bloom_meal_entries', foodFiles: 'bloom_food_files',
+    cookingPlans: 'bloom_cooking_plans', mealShoppingLinks: 'bloom_meal_shopping_links'
   };
   const PRIVATE_FIELDS = ['display_name', 'age_years', 'height_cm', 'weight_kg', 'activity_level', 'notes'];
   const DIET_FIELDS = ['display_name', 'color', 'calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'allergies', 'restrictions', 'preferences', 'notes'];
@@ -18,11 +19,12 @@
     products: ['name','brand','category','aisle','package_quantity','package_unit','item_label','price_cents','price_date','store','source_url','serving_quantity','serving_unit','nutrients','allergens','notes','archived'],
     recurringProducts: ['product_id','person_slot','quantity','basis','every_days','active'],
     bills: ['month','name','amount_cents','variable','due_on','notes'],
-    recipes: ['name','servings','ingredients','ingredient_text','instructions','source_url','notes','archived','nutrition_mode','nutrition_reference','nutrition_source'],
+    recipes: ['name','servings','ingredients','ingredient_text','instructions','source_url','notes','archived','nutrition_mode','nutrition_reference','nutrition_source','planning_ingredients'],
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks'];
+  const PLANNING_FIELDS = ['name','quantity','unit','product_id','optional','notes'];
   const SHARED_LISTS = ['members','dietProfiles','budgets','inventory','shoppingItems', ...EXTRA_LISTS];
   const PAGE_SIZE = 100;
 
@@ -160,7 +162,7 @@
       try {
         const cached = JSON.parse(cacheStorage.getItem(cachePrefix + user.id) || 'null');
         if (!cached || cached.version !== 1 || cached.user.id !== user.id || !cached.household || !cached.members.some(row=>row.user_id===user.id && row.household_id===cached.household.id)) return false;
-        if (!Object.hasOwn(cached, 'billRules')) cached.billRules = [];
+        for (const key of ['billRules','cookingPlans','mealShoppingLinks']) if (!Object.hasOwn(cached, key)) cached[key] = [];
         if (!SHARED_LISTS.every(key=>Array.isArray(cached[key]))) return false;
         state = { ...emptyState('ready'), user:userSummary(user), household:cached.household,
           ...Object.fromEntries(SHARED_LISTS.map(key=>[key,cached[key]])), offline:true, cachedAt:cached.savedAt,
@@ -324,7 +326,7 @@
           state = { ...emptyState('loading'), user: state.user, recovery: state.recovery };
           emit();
         }
-        const [households, members, dietProfiles, budgets, inventory, shoppingItems, extra] = await Promise.all([
+        let [households, members, dietProfiles, budgets, inventory, shoppingItems, extra] = await Promise.all([
           readAll(TABLES.households, { id: householdId }, ['id']),
           readAll(TABLES.members, { household_id: householdId }, ['user_id']),
           readAll(TABLES.dietProfiles, { household_id: householdId }, ['user_id']),
@@ -345,6 +347,17 @@
           if (!stillCurrent()) return snapshot();
           extra.bills = await readAll(TABLES.bills, { household_id: householdId }, ['id']);
           if (!stillCurrent()) return snapshot();
+        }
+        if (extra.cookingPlans.length || extra.mealShoppingLinks.length) {
+          assertResult(await client.rpc('bloom_reconcile_meal_shopping', {}));
+          if (!stillCurrent()) return snapshot();
+          const updated = await Promise.all([
+            readAll(TABLES.shoppingItems, { household_id: householdId }, ['id']),
+            readAll(TABLES.cookingPlans, { household_id: householdId }, ['id']),
+            readAll(TABLES.mealShoppingLinks, { household_id: householdId }, ['id'])
+          ]);
+          if (!stillCurrent()) return snapshot();
+          [shoppingItems, extra.cookingPlans, extra.mealShoppingLinks] = updated;
         }
         state = { status: 'ready', user: state.user, household: households[0], members,
           privateProfile: privateRows[0] || null, dietProfiles, budgets, inventory, shoppingItems, ...extra,
@@ -619,7 +632,24 @@
       const month = String(fromMonth || '');
       return rpc('bloom_stop_bill_series', { p_series_id: row.series_id, p_from_month: validMonth(month.length === 7 ? month + '-01' : month) }, true);
     }
-    function saveRecipe(row) { return saveExtra('recipes', row); }
+    function saveRecipe(row) {
+      const recipe = { ...row };
+      if (Array.isArray(row.planning_ingredients)) recipe.planning_ingredients = row.planning_ingredients.map(line => pick(line, PLANNING_FIELDS));
+      return saveExtra('recipes', recipe);
+    }
+    function saveCookingPlan(row) {
+      const plan = pick(row, ['recipe_id','recipe_revision','cook_on','servings','person1_servings','person2_servings','notes']);
+      plan.id = row.id || row.request_id || newUuid();
+      plan.request_id = row.request_id || newUuid();
+      if (row.id && row.revision != null) plan.revision = revisionOf(row);
+      plan.ingredients = Array.isArray(row.ingredients) ? row.ingredients.map(line => pick(line, [...PLANNING_FIELDS, 'included'])) : [];
+      return rpc('bloom_save_cooking_plan', { p_plan: clone(plan) }, true);
+    }
+    function cancelCookingPlan(row, requestId) {
+      if (!row || !row.id || !requestId) throw new Error('Open the saved meal plan before cancelling it.');
+      return rpc('bloom_cancel_cooking_plan', { p_id: row.id, p_revision: revisionOf(row), p_request_id: requestId }, true);
+    }
+    function reconcileMealShopping() { return rpc('bloom_reconcile_meal_shopping', {}, true); }
     function saveMealEntry(row) { return saveExtra('mealEntries', row); }
     function deleteMealEntry(row) { return deleteRow(TABLES.mealEntries, row); }
     function recordReceipt(payload) {
@@ -716,15 +746,16 @@
       if(!state.user || !state.household || state.status!=='ready') throw new Error('Open your household before exporting a backup.');
       return { app:'Life in Bloom Household',version:1,household_id:state.household.id,exported_at:new Date().toISOString(),
         cached_at:state.cachedAt,offline:state.offline,
-        data:Object.fromEntries(['products','recurringProducts','budgets','inventory','shoppingItems','bills','billRules','recipes','mealEntries','receipts','moneyEntries','foodFiles'].map(key=>[key,clone(state[key] || [])])) };
+        data:Object.fromEntries(['products','recurringProducts','budgets','inventory','shoppingItems','bills','billRules','recipes','mealEntries','receipts','moneyEntries','foodFiles','cookingPlans','mealShoppingLinks'].map(key=>[key,clone(state[key] || [])])) };
     }
     function importHouseholdBackup(value) {
       const current=context(true);
       if(!value || value.app!=='Life in Bloom Household' || value.version!==1 || value.household_id!==current.householdId || !value.data) throw new Error('Choose a Life in Bloom Household backup for this same household.');
       const allowed=['products','recurringProducts','budgets','inventory','shoppingItems','bills','recipes','mealEntries','receipts','moneyEntries','foodFiles'];
       if(!allowed.every(key=>Array.isArray(value.data[key]) && value.data[key].length<=10000)) throw new Error('This backup is incomplete or too large. No saved records were changed.');
-      if(value.data.billRules != null && (!Array.isArray(value.data.billRules) || value.data.billRules.length>10000)) throw new Error('This backup has invalid recurring bills. No saved records were changed.');
-      return rpc('bloom_restore_household_backup',{p_backup:{app:value.app,version:1,household_id:value.household_id,data:{...Object.fromEntries(allowed.map(key=>[key,clone(value.data[key])])),billRules:clone(value.data.billRules || [])}}},true);
+      const optional = ['billRules','cookingPlans','mealShoppingLinks'];
+      if(optional.some(key => value.data[key] != null && (!Array.isArray(value.data[key]) || value.data[key].length>10000))) throw new Error('This backup has invalid recurring bills or meal plans. No saved records were changed.');
+      return rpc('bloom_restore_household_backup',{p_backup:{app:value.app,version:1,household_id:value.household_id,data:{...Object.fromEntries([...allowed,...optional].map(key=>[key,clone(value.data[key] || [])]))}}},true);
     }
     function destroy() {
       destroyed = true;
@@ -740,7 +771,7 @@
       createHousehold, createInvite, joinHousehold, removeMember, savePrivateProfile, saveDietProfile,
       saveBudget, saveInventory, deleteInventory, saveShoppingItem, toggleShoppingItem,
       deleteShoppingItem, importLocalShopping, saveProduct, saveRecurringProduct, saveBill, ensureBillMonth, stopBillSeries, saveRecipe,
-      saveMealEntry, deleteMealEntry, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
+      saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
       uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };

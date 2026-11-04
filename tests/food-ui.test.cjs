@@ -6,7 +6,7 @@ const Food = require('../bloom-food.js');
 
 function product(id = 'rice', overrides = {}) { return { id, name: 'Rice', category: 'food', package_quantity: 1000, package_unit: 'g', serving_quantity: 100, serving_unit: 'g', nutrients: { calories_kcal: 200, protein_g: 5 }, ...overrides }; }
 function recipe(id = 'rice-dish', overrides = {}) { return { id, household_id: 'house-one', name: 'Rice dish', servings: 2, ingredients: [{ product_id: 'rice', quantity: 200, unit: 'g' }], instructions: 'Cook gently.\nThen serve.', source_url: '', notes: '', archived: false, revision: 1, ...overrides }; }
-function state(overrides = {}) { return { status: 'ready', user: { id: 'owner' }, household: { id: 'house-one', name: 'Our household' }, members: [{ user_id: 'owner', role: 'owner' }, { user_id: 'member', role: 'member' }], dietProfiles: [], products: [product()], recipes: [recipe()], inventory: [], mealEntries: [], foodFiles: [], ...overrides }; }
+function state(overrides = {}) { return { status: 'ready', user: { id: 'owner' }, household: { id: 'house-one', name: 'Our household' }, members: [{ user_id: 'owner', role: 'owner' }, { user_id: 'member', role: 'member' }], dietProfiles: [], products: [product()], recipes: [recipe()], inventory: [], mealEntries: [], foodFiles: [], cookingPlans: [], mealShoppingLinks: [], shoppingItems: [], ...overrides }; }
 function savedDraftStore() {
   const values = new Map(), writes = [];
   return { values, writes, read(user, home, area) { return values.get(user + ':' + home + ':' + area) || null; }, write(user, home, area, data) { writes.push({ user, home, area, data: JSON.parse(JSON.stringify(data)) }); values.set(user + ':' + home + ':' + area, { savedAt: '2026-11-04', data: JSON.parse(JSON.stringify(data)) }); return true; }, clear(user, home, area) { values.delete(user + ':' + home + ':' + area); return true; } };
@@ -15,15 +15,16 @@ function harness(initial = state(), persistence = savedDraftStore()) {
   let current = initial, consent = true;
   const calls = [], notices = [], refreshes = [], links = [], downloads = [], methods = {};
   const store = { snapshot: () => current };
-  for (const method of ['saveRecipe', 'saveMealEntry', 'deleteMealEntry', 'uploadFoodFile', 'getFoodFileUrl', 'deleteFoodFile']) store[method] = async (...args) => { calls.push({ method, args }); return methods[method] ? methods[method](...args) : {}; };
-  const controller = Food.createController({ store, draftStore: persistence, notify: (message, error) => notices.push({ message, error }), refresh: selector => refreshes.push(selector), navigate: page => links.push(page), openGrocery: tab => links.push('grocery:' + tab), confirm: () => consent, getNow: () => new Date(2026, 10, 4, 12), download: (name, content, type) => downloads.push({ name, content, type }) });
+  for (const method of ['saveRecipe', 'saveMealEntry', 'deleteMealEntry', 'uploadFoodFile', 'getFoodFileUrl', 'deleteFoodFile', 'saveCookingPlan', 'cancelCookingPlan', 'reconcileMealShopping', 'refresh']) store[method] = async (...args) => { calls.push({ method, args }); return methods[method] ? methods[method](...args) : {}; };
+  const controller = Food.createController({ store, draftStore: persistence, notify: (message, error) => notices.push({ message, error }), refresh: selector => refreshes.push(selector), navigate: page => links.push(page), openGrocery: (tab, month) => links.push('grocery:' + tab + (month ? ':' + month : '')), confirm: () => consent, getNow: () => new Date(2026, 10, 4, 12), download: (name, content, type) => downloads.push({ name, content, type }) });
   controller.render();
   const click = (action, extra = {}) => { let prevented = false; const element = { dataset: { foodAction: action, ...extra } }; assert.equal(controller.handleClick({ target: { closest: () => element }, preventDefault() { prevented = true; } }), true); assert.equal(prevented, true); };
   const input = (field, value) => assert.equal(controller.handleInput({ target: { dataset: { foodField: field }, value: String(value) } }), true);
   const reference = (key, value) => assert.equal(controller.handleInput({ target: { dataset: { foodReference: key }, value: String(value) } }), true);
   const ingredient = (index, part, value) => assert.equal(controller.handleInput({ target: { dataset: { foodIngredient: String(index), foodPart: part }, value: String(value) } }), true);
-  const submit = (kind, fields = {}) => { let prevented = false; assert.equal(controller.handleSubmit({ target: { dataset: { foodForm: kind }, elements: { namedItem: name => Object.hasOwn(fields, name) ? { value: String(fields[name]) } : null } }, preventDefault() { prevented = true; } }), true); assert.equal(prevented, true); };
-  return { controller, store, calls, notices, refreshes, links, downloads, methods, persistence, click, input, reference, ingredient, submit, get state() { return current; }, set state(value) { current = value; }, set consent(value) { consent = value; }, idle: () => controller.whenIdle() };
+  const shoppingIngredient = (group, index, part, value) => assert.equal(controller.handleInput({ target: { dataset: { foodPlanningGroup: group, foodPlanningIndex: String(index), foodPlanningPart: part }, value: String(value), checked: typeof value === 'boolean' ? value : undefined } }), true);
+  const submit = (kind, fields = {}) => { let prevented = false; assert.equal(controller.handleSubmit({ target: { dataset: { foodForm: kind }, elements: { namedItem: name => Object.hasOwn(fields, name) ? { value: String(fields[name]), checked: typeof fields[name] === 'boolean' ? fields[name] : undefined } : null } }, preventDefault() { prevented = true; } }), true); assert.equal(prevented, true); };
+  return { controller, store, calls, notices, refreshes, links, downloads, methods, persistence, click, input, reference, ingredient, shoppingIngredient, submit, get state() { return current; }, set state(value) { current = value; }, set consent(value) { consent = value; }, idle: () => controller.whenIdle() };
 }
 
 test('Food opens a real saved collection with prominent Grocery shortcuts and escaped content', () => {
@@ -598,4 +599,335 @@ test('unrelated events are not captured and signed-out records are not displayed
   assert.equal(h.controller.handleInput({ target: { dataset: { groceryField: 'auth.password' }, value: 'not-a-food-field' } }), false);
   assert.equal(h.controller.handleSubmit({ target: { dataset: { groceryForm: 'auth' } } }), false);
   assert.equal(h.controller.handleClick({ target: { closest: () => ({ dataset: { groceryAction: 'signout' } }) } }), false);
+});
+
+function planningRecipe(overrides = {}) {
+  return recipe('meal-dish', { name: 'Example meal', servings: 4, revision: 3, ingredient_text: '400 g rice\nSeasoning to taste\nOptional garnish', planning_ingredients: [
+    { name: 'Rice', quantity: 400, unit: 'g', product_id: 'rice', optional: false, notes: '' },
+    { name: 'Seasoning', quantity: null, unit: 'pinch', product_id: null, optional: false, notes: 'To taste; review the amount.' },
+    { name: 'Garnish', quantity: 2, unit: 'stalk', product_id: null, optional: true, notes: '' }
+  ], ...overrides });
+}
+function cookingPlan(overrides = {}) {
+  const dish = planningRecipe();
+  return { id: 'plan-one', household_id: 'house-one', recipe_id: dish.id, recipe_revision: dish.revision, recipe_name: dish.name, base_servings: dish.servings, cook_on: '2026-11-09', shopping_month: '2026-11-01', servings: 2, person1_servings: null, person2_servings: null, notes: '', status: 'planned', revision: 7, ingredients: dish.planning_ingredients.map(item => ({ ...item, included: !item.optional })), issues: ['Seasoning: review the amount.'], ...overrides };
+}
+
+test('shopping ingredient templates save whole-recipe amounts separately from nutrition ingredients', async () => {
+  const h = harness(state({ recipes: [] }));
+  h.click('new-recipe');
+  h.click('remove-ingredient', { index: '0' });
+  h.click('add-shopping-ingredient', { group: 'recipe' });
+  h.click('add-shopping-ingredient', { group: 'recipe' });
+  h.submit('recipe', { name: 'Shopping template dish', servings: '4', planning_0_name: 'Example <vegetable>', planning_0_quantity: '2', planning_0_unit: 'stalk', planning_1_name: 'Optional spice', planning_1_quantity: '', planning_1_unit: 'pinch', planning_1_optional: true, planning_1_notes: 'To taste' });
+  await h.idle();
+  assert.equal(h.calls.length, 1);
+  const payload = h.calls[0].args[0];
+  assert.deepEqual(payload.ingredients, []);
+  assert.deepEqual(payload.planning_ingredients, [
+    { name: 'Example <vegetable>', quantity: 2, unit: 'stalk', product_id: null, optional: false, notes: '' },
+    { name: 'Optional spice', quantity: null, unit: 'pinch', product_id: null, optional: true, notes: 'To taste' }
+  ]);
+  assert.equal(payload.nutrition_mode, 'ingredients');
+  assert.equal(Object.hasOwn(payload.planning_ingredients[0], 'included'), false);
+  assert.equal(h.state.inventory.length, 0);
+  assert.equal(h.state.mealEntries.length, 0);
+});
+
+test('planning a recipe scales the preview and posts one full-recipe snapshot with unknown and optional ingredients preserved', async () => {
+  const dish = planningRecipe(), h = harness(state({ recipes: [dish] }));
+  const before = structuredClone(dish);
+  assert.match(h.controller.render(), /Plan this meal/);
+  h.click('plan-recipe', { id: dish.id });
+  h.input('plan.servings', '2');
+  const html = h.controller.render();
+  assert.match(html, /Your meal plan/);
+  assert.match(html, /200 g/);
+  assert.match(html, /Amount needs review/);
+  assert.match(html, /Not included/);
+  assert.match(html, /for the original recipe that makes <strong>4 servings/);
+  h.submit('plan', { cook_on: '2026-11-09', servings: '2', person1_servings: '1', person2_servings: '.5', notes: 'Leave a portion for later.' });
+  await h.idle();
+  assert.equal(h.calls.length, 1);
+  const call = h.calls[0], payload = call.args[0];
+  assert.equal(call.method, 'saveCookingPlan');
+  assert.equal(payload.recipe_revision, 3);
+  assert.equal(payload.servings, 2);
+  assert.equal(payload.ingredients[0].quantity, 400, 'server receives the whole recipe quantity once');
+  assert.equal(payload.ingredients[1].quantity, null);
+  assert.equal(payload.ingredients[1].product_id, null);
+  assert.equal(payload.ingredients[1].included, true);
+  assert.equal(payload.ingredients[2].included, false);
+  assert.equal(payload.person1_servings, 1);
+  assert.equal(payload.person2_servings, .5);
+  assert.equal(payload.id, payload.request_id);
+  assert.match(payload.request_id, /^[0-9a-f-]{36}$/);
+  assert.equal(h.state.inventory.length, 0);
+  assert.equal(h.state.mealEntries.length, 0);
+  assert.deepEqual(dish, before);
+  assert.match(h.notices.at(-1).message, /grocery needs were updated/);
+});
+
+test('meal planning keeps preview and Save before a compact ingredient editor that stays open while editing', () => {
+  const persistence = savedDraftStore(), h = harness(state({ recipes: [planningRecipe()] }), persistence);
+  h.click('plan-recipe', { id: 'meal-dish' });
+  const form = h.controller.render().match(/<form id="food-plan-form"[\s\S]*?<\/form>/)[0];
+  const previewPosition = form.indexOf('id="food-plan-preview"');
+  const savePosition = form.indexOf('Save meal & update grocery list');
+  const ingredientsPosition = form.indexOf('<details class="food-plan-ingredient-details"');
+  assert.ok(form.indexOf('id="food-plan-servings"') < previewPosition);
+  assert.ok(previewPosition < savePosition && savePosition < ingredientsPosition);
+  assert.ok(savePosition < form.indexOf('Divide the servings between people'));
+  assert.ok(form.indexOf('Amount needs review') < ingredientsPosition);
+  assert.ok(form.indexOf('ingredient details to review') < ingredientsPosition);
+  assert.match(form, /<details class="food-plan-ingredient-details"><summary[^>]*>Adjust ingredients<\/summary>/);
+
+  h.click('toggle-plan-ingredients');
+  h.shoppingIngredient('plan', 0, 'quantity', 600);
+  h.click('add-shopping-ingredient', { group: 'plan' });
+  assert.match(h.controller.render(), /<details class="food-plan-ingredient-details" open>/);
+  h.click('remove-shopping-ingredient', { group: 'plan', index: '3' });
+  h.input('plan.servings', '2');
+  assert.match(h.controller.render(), /<details class="food-plan-ingredient-details" open>/);
+  assert.match(h.controller.render(), /300 g/);
+
+  const restored = harness(h.state, persistence);
+  assert.match(restored.controller.render(), /<details class="food-plan-ingredient-details" open>/);
+  restored.click('toggle-plan-ingredients');
+  const closed = harness(h.state, persistence);
+  assert.match(closed.controller.render(), /<details class="food-plan-ingredient-details">/);
+  assert.match(closed.controller.render(), /300 g/);
+
+  const empty = harness(state({ recipes: [planningRecipe({ planning_ingredients: [] })] }));
+  empty.click('plan-recipe', { id: 'meal-dish' });
+  assert.match(empty.controller.render(), /<details class="food-plan-ingredient-details" open>/);
+  empty.click('add-shopping-ingredient', { group: 'plan' });
+  assert.match(empty.controller.render(), /<details class="food-plan-ingredient-details" open>/);
+  empty.click('remove-shopping-ingredient', { group: 'plan', index: '0' });
+  assert.match(empty.controller.render(), /<details class="food-plan-ingredient-details" open>/);
+  assert.equal(h.calls.length + restored.calls.length + closed.calls.length + empty.calls.length, 0);
+});
+
+test('a written-only recipe asks for shopping rows and never silently plans only its partial nutrition links', async () => {
+  const dish = recipe('written', { ingredient_text: 'Rice and vegetables, with seasoning to taste', planning_ingredients: [] });
+  const h = harness(state({ recipes: [dish] }));
+  h.click('plan-recipe', { id: dish.id });
+  assert.match(h.controller.render(), /written list is kept as a reference/);
+  h.submit('plan', { cook_on: '2026-11-09' }); await h.idle();
+  assert.equal(h.calls.length, 0);
+  assert.match(h.notices.at(-1).message, /Include at least one named shopping ingredient/);
+  h.click('add-shopping-ingredient', { group: 'plan' });
+  h.shoppingIngredient('plan', 0, 'name', 'Vegetables to review');
+  h.submit('plan'); await h.idle();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].args[0].ingredients[0].name, 'Vegetables to review');
+  assert.equal(h.calls[0].args[0].ingredients[0].quantity, null);
+});
+
+test('meal validation permits unknown amounts but refuses impossible serving divisions, dates and incomplete known measurements', async () => {
+  const h = harness(state({ recipes: [planningRecipe()] }));
+  h.click('plan-recipe', { id: 'meal-dish' });
+  h.submit('plan', { servings: '2', person1_servings: '2', person2_servings: '1', cook_on: '2026-11-09' }); await h.idle();
+  assert.equal(h.calls.length, 0);
+  assert.match(h.notices.at(-1).message, /cannot exceed/);
+  h.submit('plan', { person2_servings: '0', cook_on: '2026-11-03' }); await h.idle();
+  assert.equal(h.calls.length, 0);
+  assert.match(h.notices.at(-1).message, /today or a future/);
+  h.submit('plan', { cook_on: '2026-11-09', planning_0_unit: '' }); await h.idle();
+  assert.equal(h.calls.length, 0);
+  h.submit('plan', { planning_0_unit: 'g', planning_0_quantity: '-1' }); await h.idle();
+  assert.equal(h.calls.length, 0);
+  h.submit('plan', { planning_0_quantity: '400', person1_servings: '' }); await h.idle();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].args[0].person1_servings, null);
+  assert.equal(h.calls[0].args[0].person2_servings, 0);
+});
+
+test('uncertain meal saves keep the exact request through input attempts, navigation and device reload', async () => {
+  const persistence = savedDraftStore(), h = harness(state({ recipes: [planningRecipe()] }), persistence);
+  h.methods.saveCookingPlan = () => { throw new Error('Connection interrupted after saving'); };
+  h.click('plan-recipe', { id: 'meal-dish' });
+  h.submit('plan', { cook_on: '2026-11-09', servings: 2 }); await h.idle();
+  const original = structuredClone(h.calls[0].args[0]);
+  h.input('plan.servings', '999');
+  h.shoppingIngredient('plan', 0, 'quantity', 99999);
+  h.click('close-plan'); h.click('tab', { tab: 'recipes' });
+  assert.match(h.controller.render(), /Resume meal plan/);
+  assert.equal(h.controller.discardDraft(), false);
+  const reopened = harness(h.state, persistence);
+  reopened.click('resume-plan');
+  assert.match(reopened.controller.render(), /exact same request/);
+  assert.match(reopened.controller.render(), /200 g/);
+  reopened.submit('plan', { servings: '2000', planning_0_quantity: '7000' }); await reopened.idle();
+  assert.deepEqual(reopened.calls[0].args[0], original);
+  assert.equal(reopened.controller.hasUnsavedDraft(), false);
+  assert.match(reopened.notices.at(-1).message, /meal was planned/);
+});
+
+test('definite meal rejection leaves the form correctable and stale edits reload only on explicit review', async () => {
+  const saved = cookingPlan(), h = harness(state({ recipes: [planningRecipe()], cookingPlans: [saved] }));
+  h.click('edit-plan', { id: saved.id });
+  h.methods.saveCookingPlan = () => { throw Object.assign(new Error('The meal changed; reload the saved meal.'), { code: '40001' }); };
+  h.submit('plan', { cook_on: '2026-11-10', notes: 'Keep my attempted change' }); await h.idle();
+  assert.match(h.controller.render(), /Keep my attempted change/);
+  assert.doesNotMatch(h.controller.render(), /exact same request/);
+  assert.equal(h.calls[0].args[0].revision, 7);
+  h.consent = false; h.click('reload-plan'); await h.idle();
+  assert.equal(h.calls.length, 1);
+  h.consent = true;
+  h.methods.refresh = () => { h.state = { ...h.state, cookingPlans: [{ ...saved, revision: 8, notes: 'Other household edit' }] }; };
+  h.click('reload-plan'); await h.idle();
+  assert.match(h.controller.render(), /Other household edit/);
+  h.methods.saveCookingPlan = () => ({});
+  h.submit('plan', { cook_on: '2026-11-11' }); await h.idle();
+  const final = h.calls.filter(call => call.method === 'saveCookingPlan').at(-1).args[0];
+  assert.equal(final.id, saved.id);
+  assert.equal(final.revision, 8);
+  assert.equal(final.cook_on, '2026-11-11');
+  assert.notEqual(final.request_id, h.calls[0].args[0].request_id);
+});
+
+test('an edited recipe yield is adopted only when its latest ingredients are explicitly loaded', async () => {
+  const oldRecipe = planningRecipe(), saved = cookingPlan(), h = harness(state({ recipes: [oldRecipe], cookingPlans: [saved] }));
+  h.click('edit-plan', { id: saved.id });
+  h.state = { ...h.state, recipes: [planningRecipe({ servings: 8, revision: 4, planning_ingredients: [{ name: 'Rice', quantity: 1600, unit: 'g', product_id: 'rice', optional: false, notes: '' }] })] };
+  assert.match(h.controller.render(), /saved recipe has changed/);
+  assert.match(h.controller.render(), /200 g/, 'captured full recipe basis is retained');
+  h.input('plan.cook_on', '2026-11-12');
+  h.click('reload-plan-recipe'); await h.idle();
+  const html = h.controller.render();
+  assert.match(html, /400 g/);
+  assert.match(html, /2026-11-12/);
+  h.submit('plan'); await h.idle();
+  const payload = h.calls.find(call => call.method === 'saveCookingPlan').args[0];
+  assert.equal(payload.recipe_revision, 4);
+  assert.equal(payload.ingredients[0].quantity, 1600);
+  assert.equal(payload.servings, 2);
+  assert.equal(payload.revision, 7);
+});
+
+test('cancelling a meal retries one request while leaving purchases and personal nutrition untouched', async () => {
+  const saved = cookingPlan(), persistence = savedDraftStore();
+  const h = harness(state({ recipes: [planningRecipe()], cookingPlans: [saved], inventory: [{ id: 'stock', quantity: 7 }], mealEntries: [{ id: 'eaten', kind: 'eaten' }] }), persistence);
+  h.click('tab', { tab: 'plans' });
+  h.consent = false; h.click('cancel-plan', { id: saved.id }); await h.idle();
+  assert.equal(h.calls.length, 0);
+  h.consent = true;
+  h.methods.cancelCookingPlan = () => { throw new Error('Connection lost'); };
+  h.click('cancel-plan', { id: saved.id }); await h.idle();
+  const attempt = structuredClone(h.calls[0]);
+  assert.equal(attempt.method, 'cancelCookingPlan');
+  assert.deepEqual(attempt.args[0], { id: saved.id, revision: 7 });
+  const reopened = harness(h.state, persistence);
+  reopened.methods.cancelCookingPlan = () => { reopened.state = { ...reopened.state, cookingPlans: [{ ...saved, status: 'cancelled' }] }; };
+  reopened.click('retry-plan'); await reopened.idle();
+  assert.deepEqual(reopened.calls[0].args, attempt.args);
+  assert.deepEqual(reopened.state.inventory, [{ id: 'stock', quantity: 7 }]);
+  assert.deepEqual(reopened.state.mealEntries, [{ id: 'eaten', kind: 'eaten' }]);
+  const html = reopened.controller.render();
+  assert.match(html, /Saved meal history/);
+  assert.match(html, /Cancelled/);
+  assert.match(html, /Actual purchases stay recorded/);
+});
+
+test('meal cards keep the original shopping month, escape notes, and expose past dates only as history', async () => {
+  const future = cookingPlan({ recipe_name: '<b>Example meal</b>', notes: '<script>Note</script>', cook_on: '2026-12-01', shopping_month: '2026-11-01' });
+  const past = cookingPlan({ id: 'old', cook_on: '2026-11-02' });
+  const h = harness(state({ recipes: [planningRecipe()], cookingPlans: [future, past], mealShoppingLinks: [{ shopping_id: 'list-one', plan_refs: [{ plan_id: future.id, cook_on: future.cook_on }] }] }));
+  h.click('tab', { tab: 'plans' });
+  const html = h.controller.render();
+  assert.match(html, /data-food-action="grocery" data-tab="list" data-month="2026-11"/);
+  assert.match(html, /&lt;b&gt;Example meal&lt;\/b&gt;/);
+  assert.doesNotMatch(html, /<script>|<b>Example meal/);
+  assert.match(html, /past cooking date does not mark food cooked or eaten/);
+  h.click('grocery', { tab: 'list', month: '2026-11' });
+  assert.equal(h.links.at(-1), 'grocery:list:2026-11');
+  h.click('edit-plan', { id: past.id }); h.click('cancel-plan', { id: past.id }); await h.idle();
+  assert.equal(h.calls.length, 0);
+});
+
+test('meal preview typing preserves active fields and offline meal drafts remain available for reconnecting', async () => {
+  const h = harness(state({ recipes: [planningRecipe()], offline: true }));
+  h.click('plan-recipe', { id: 'meal-dish' });
+  const preview = { innerHTML: '' }, indicator = { hidden: true, textContent: '' };
+  const previous = global.document;
+  global.document = { querySelector: selector => selector === '#food-plan-preview' ? preview : selector === '[data-food-draft-status="plan"]' ? indicator : null };
+  try {
+    const count = h.refreshes.length;
+    h.input('plan.servings', '2');
+    h.shoppingIngredient('plan', 0, 'name', 'Rice for later');
+    assert.equal(h.refreshes.length, count);
+    assert.match(preview.innerHTML, /Rice for later/);
+    assert.match(preview.innerHTML, /200 g/);
+    assert.equal(indicator.hidden, false);
+    h.submit('plan', { cook_on: '2026-11-09' }); await h.idle();
+    assert.equal(h.calls.length, 0);
+    assert.match(h.notices.at(-1).message, /offline/);
+    assert.match(h.controller.render(), /Rice for later/);
+    assert.doesNotMatch(h.controller.render(), /exact same request/);
+  } finally { global.document = previous; }
+});
+
+test('a late meal save cannot clear a different household draft or reuse its identity', async () => {
+  const h = harness(state({ recipes: [planningRecipe()] }));
+  let resolve;
+  h.methods.saveCookingPlan = () => new Promise(done => { resolve = done; });
+  h.click('plan-recipe', { id: 'meal-dish' });
+  h.submit('plan', { cook_on: '2026-11-09', notes: 'Old household plan' });
+  await Promise.resolve();
+  h.state = state({ user: { id: 'another' }, household: { id: 'another-house' }, recipes: [planningRecipe({ name: 'Another household dish' })] });
+  h.controller.render(); h.click('plan-recipe', { id: 'meal-dish' });
+  h.input('plan.notes', 'New household draft');
+  resolve('old-plan'); await h.idle();
+  const html = h.controller.render();
+  assert.match(html, /New household draft/);
+  assert.doesNotMatch(html, /Old household plan|Confirming your saved meal/);
+  assert.equal(h.controller.hasUnsavedDraft(), true);
+});
+
+test('checking the saved result clears only an exact accepted meal request and never replays it', async () => {
+  const h = harness(state({ recipes: [planningRecipe()] }));
+  let payload;
+  h.methods.saveCookingPlan = value => { payload = structuredClone(value); throw new Error('Saved response could not load'); };
+  h.click('plan-recipe', { id: 'meal-dish' });
+  h.submit('plan', { cook_on: '2026-11-09', servings: 2 }); await h.idle();
+  h.methods.refresh = () => { h.state = { ...h.state, cookingPlans: [cookingPlan({ ...payload, last_request_id: payload.request_id })] }; };
+  h.click('reload-plan'); await h.idle();
+  assert.equal(h.calls.filter(call => call.method === 'saveCookingPlan').length, 1);
+  assert.equal(h.controller.hasUnsavedDraft(), false);
+  assert.match(h.notices.at(-1).message, /already saved/);
+  assert.doesNotMatch(h.controller.render(), /exact same request/);
+});
+
+test('loading a recipe that became unavailable preserves the meal ingredient draft', async () => {
+  const saved = cookingPlan(), h = harness(state({ recipes: [planningRecipe()], cookingPlans: [saved] }));
+  h.click('edit-plan', { id: saved.id });
+  h.shoppingIngredient('plan', 0, 'name', 'Keep this chosen ingredient');
+  h.input('plan.notes', 'Keep this meal note');
+  h.methods.refresh = () => { h.state = { ...h.state, recipes: [planningRecipe({ archived: true })] }; };
+  h.click('reload-plan-recipe'); await h.idle();
+  const html = h.controller.render();
+  assert.match(html, /Keep this chosen ingredient/);
+  assert.match(html, /Keep this meal note/);
+  assert.match(h.notices.at(-1).message, /draft and saved history have been kept/);
+  assert.equal(h.calls.filter(call => call.method === 'saveCookingPlan').length, 0);
+});
+
+test('confirming a lost cancellation preserves an unrelated meal draft', async () => {
+  const first = cookingPlan(), second = cookingPlan({ id: 'plan-two', cook_on: '2026-11-10', notes: 'Saved second meal' });
+  const h = harness(state({ recipes: [planningRecipe()], cookingPlans: [first, second] }));
+  h.click('edit-plan', { id: second.id });
+  h.input('plan.notes', 'Keep my second meal draft');
+  h.methods.cancelCookingPlan = () => { throw new Error('Cancellation response lost'); };
+  h.click('cancel-plan', { id: first.id }); await h.idle();
+  const cancellationRequest = h.calls.find(call => call.method === 'cancelCookingPlan').args[1];
+  h.methods.refresh = () => { h.state = { ...h.state, cookingPlans: [{ ...first, status: 'cancelled', last_request_id: cancellationRequest }, second] }; };
+  h.click('reload-plan'); await h.idle();
+  assert.match(h.controller.render(), /Keep my second meal draft/);
+  assert.doesNotMatch(h.controller.render(), /exact same request/);
+  assert.equal(h.controller.hasUnsavedDraft(), true);
+  h.submit('plan'); await h.idle();
+  const payload = h.calls.find(call => call.method === 'saveCookingPlan').args[0];
+  assert.equal(payload.id, second.id);
+  assert.equal(payload.notes, 'Keep my second meal draft');
 });

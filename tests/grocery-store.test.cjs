@@ -680,3 +680,62 @@ test('private attachment links are limited to current saved household files', as
   await assert.rejects(h.store.getFoodFileUrl({ id: 'file-one' }), /no longer available/);
   h.store.destroy();
 });
+
+test('cooking plans send one reviewed scoped request and never post food, stock or money directly', async () => {
+  const h = harness(); await h.store.init();
+  const payload = { id: 'plan-one', request_id: 'request-one', revision: 2, recipe_id: 'recipe-one', recipe_revision: 3,
+    cook_on: '2026-11-09', servings: 2, person1_servings: 1, person2_servings: 1, notes: 'Monday dinner',
+    household_id: 'other-house', status: 'eaten', private_note: 'not shared',
+    ingredients: [{ name: 'Rice', quantity: 2, unit: 'cup', product_id: 'rice-product', optional: false, notes: '', included: true, private_note: 'not shared' }] };
+  await h.store.saveCookingPlan(payload);
+  await h.store.saveCookingPlan(payload);
+  const calls = h.calls.filter(call => call.rpc === 'bloom_save_cooking_plan');
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].args, calls[1].args);
+  assert.equal(calls[0].args.p_plan.revision, 2);
+  assert.equal(calls[0].args.p_plan.recipe_revision, 3);
+  assert.doesNotMatch(JSON.stringify(calls[0].args), /other-house|private_note|eaten/);
+  assert.equal(h.calls.filter(call => call.table && call.operation !== 'select').length, 0);
+  await h.store.cancelCookingPlan({ id: 'plan-one', revision: 4, household_id: 'other-house' }, 'cancel-one');
+  assert.deepEqual(h.calls.find(call => call.rpc === 'bloom_cancel_cooking_plan').args, { p_id: 'plan-one', p_revision: 4, p_request_id: 'cancel-one' });
+  h.store.destroy();
+});
+
+test('refresh reconciles meal needs before presenting the grocery snapshot and includes plan backup data', async () => {
+  const plan = { id: 'plan-one', household_id: 'house-one', recipe_name: 'Soup', cook_on: '2026-12-01', shopping_month: '2026-11-01', servings: 2, revision: 1, status: 'planned' };
+  const link = { id: 'meal-rice', shopping_id: 'meal-rice', household_id: 'house-one', managed: true, plan_refs: [{ plan_id: 'plan-one', recipe_name: 'Soup', cook_on: '2026-12-01' }] };
+  const h = harness({ rows: { bloom_cooking_plans: [plan], bloom_meal_shopping_links: [] } });
+  h.client.rpc = async (name, args) => {
+    h.calls.push({ rpc: name, args });
+    if (name === 'bloom_reconcile_meal_shopping') {
+      h.rows.bloom_shopping_items = [{ id: 'meal-rice', household_id: 'house-one', name: 'Rice', quantity: '2 cups', month: '2026-11-01', revision: 1 }];
+      h.rows.bloom_meal_shopping_links = [link];
+    }
+    return { data: {}, error: null };
+  };
+  const state = await h.store.init();
+  assert.equal(h.calls.filter(call => call.rpc === 'bloom_reconcile_meal_shopping').length, 1);
+  assert.equal(state.shoppingItems[0].id, 'meal-rice');
+  assert.equal(state.mealShoppingLinks[0].shopping_id, 'meal-rice');
+  const backup = h.store.exportHousehold();
+  assert.deepEqual(backup.data.cookingPlans, [plan]);
+  assert.deepEqual(backup.data.mealShoppingLinks, [link]);
+  const older = copy(backup); delete older.data.cookingPlans; delete older.data.mealShoppingLinks;
+  await h.store.importHouseholdBackup(older);
+  const imported = h.calls.find(call => call.rpc === 'bloom_restore_household_backup');
+  assert.deepEqual(imported.args.p_backup.data.cookingPlans, []);
+  assert.deepEqual(imported.args.p_backup.data.mealShoppingLinks, []);
+  h.store.destroy();
+});
+
+test('recipe shopping ingredients preserve unknown amounts and stay separate from nutrition links', async () => {
+  const h = harness({ rows: { bloom_recipes: [{ id: 'recipe-one', household_id: 'house-one', revision: 1, ingredients: [{ product_id: 'salt', quantity: 1, unit: 'tsp' }] }] } });
+  await h.store.init();
+  await h.store.saveRecipe({ id: 'recipe-one', revision: 1, planning_ingredients: [{ name: 'Garlic', quantity: null, unit: 'clove', product_id: null, optional: false, notes: '2–3 cloves, choose an amount', included: true, secret: 'ignore' }] });
+  const write = h.calls.find(call => call.table === 'bloom_recipes' && call.operation === 'update');
+  assert.equal(write.payload.planning_ingredients[0].quantity, null);
+  assert.equal(write.payload.planning_ingredients[0].unit, 'clove');
+  assert.doesNotMatch(JSON.stringify(write.payload), /secret|included/);
+  assert.equal(h.rows.bloom_recipes[0].ingredients[0].product_id, 'salt');
+  h.store.destroy();
+});

@@ -16,6 +16,7 @@ The Windows preview address works on that computer. A permanent HTTPS host and d
 | Grocery → Receipts | Review every purchased line, actual paid amounts, and food to add to inventory. |
 | Grocery → Food at home | Enter Pantry/Refrigerator/Freezer stock, printed dates, opened/frozen dates, and reminder settings. |
 | Food in Bloom → Saved recipes | Save written ingredients, optional catalog links, instructions, yield, recipe nutrition estimates, and attachments. |
+| Food in Bloom → Meal plan | Choose a recipe, cooking date and servings; prepare missing groceries and keep the saved plan. |
 | Food in Bloom → Use soon | Review food dates and saved recipes that use matching ingredients. |
 | Wellness / Food → Nutrition | Log planned or eaten portions separately for Person 1 and Person 2. |
 | Money | View actual ledger entries, Food/Household allocations, monthly bills, and bill payments. |
@@ -59,6 +60,20 @@ Choose **Record payment** when a bill has actually been paid. Enter the full amo
 
 Planned bills are not automatically marked paid. Food and Household spending comes from saved grocery receipts, so those purchases do not need a second money entry. Use the monthly history to reopen saved bills, spending, and allocations.
 
+## Plan a recipe and prepare its groceries
+
+Open **Food in Bloom → Saved recipes**, then choose **Plan this meal**. Pick the cooking date and the total servings you want to make. Person 1 and Person 2 portions are optional; any remaining servings can be left unassigned. This is a cooking plan, separate from the nutrition log.
+
+Review the scaled ingredient preview. Open **Adjust ingredients** when you want to change an amount, choose a product, or include an optional ingredient. Editable quantities are for the recipe's full yield; the app scales them to your chosen servings. For example, a four-serving recipe planned for two servings needs half the listed quantities. Optional ingredients start excluded and can be included individually. A range, a choice of ingredients, or an amount such as “to taste” needs your review. Unknown amounts remain visible reminders.
+
+Save the plan once. The server compares the household's active meal plans with Food at home and existing grocery requests. It allocates each compatible stock quantity once, in cooking-date order, then adds the remaining needs to the shopping list. Known product packages can be rounded to whole packages after the quantities are combined. Estimated costs use saved reference prices; missing prices stay unknown. Planning does not create a purchase or expense.
+
+The plan's groceries appear in the shopping month in which you created the plan, even if you will cook in a later month. **Open grocery list** goes to that saved shopping month. Each generated item shows the recipes and cooking dates it supports. Edit, reschedule, or cancel under **Meal plan** to update untouched generated requests. Manually added items and receipt-backed purchases remain saved. A partially purchased request can retain a remainder that needs review after a plan changes.
+
+Catalog links make matching more precise and provide package sizes and prices. Unlinked ingredients can compare with unlinked inventory only when their names and units match exactly or have a supported conversion. A purchase recorded from a meal-generated item also retains that ingredient connection if you choose a catalog product or change its purchase name. Measured remaining stock can then cover a changed or later meal once. Purchases with unmeasurable recipe amounts remain marked for review, with their attributable stock reserved conservatively for the exact plans you reviewed. The app does not guess that differently named foods are interchangeable, or convert cups to weight without a supplied measurement. A recorded food date before the cooking date is excluded from automatic stock coverage and should be reviewed.
+
+Past cooking plans remain in the meal-plan history and stop generating future shopping needs. The app does not assume that passing the cooking date means a meal was cooked or eaten. Keep food quantities current after cooking; actual ingredient consumption and leftovers are separate from this planning feature.
+
 ## Printed dates, freezing, and use-soon recipes
 
 Inventory is stored in batches so two purchases of the same food can retain different dates. Save the printed date and its type: Best before, Use by, Sell by, Expiration, or unspecified. Save the date opened, date frozen, and your optional freezer reminder date separately. Choose how many days in advance to show a reminder.
@@ -99,7 +114,7 @@ After a successful online load, the last household copy can be viewed offline. T
 
 Shopping lists, allocations, bills, purchases, and money entries are filtered by calendar month. New months do not delete the prior ones. Recurring product settings can be used to review another month's plan; adding that plan remains an explicit action.
 
-Export household backups from Grocery's Household tab. They contain shared food/money records, monthly bill rules and snapshots, and attachment metadata, not passwords, tokens, private profile measurements, personal journals, or image/PDF bytes. Older backups without recurring bill rules remain accepted. Keep original files separately.
+Export household backups from Grocery's Household tab. They contain shared food/money records, monthly bill rules and snapshots, cooking plans and their grocery references, and attachment metadata, not passwords, tokens, private profile measurements, personal journals, or image/PDF bytes. Older backups without recurring bill rules or cooking plans remain accepted. Keep original files separately.
 
 The household owner can preview **Restore missing records** from a backup of the same household. It adds missing records in one transaction and preserves existing matching records. A conflict aborts the entire restore. It does not replay receipt stock or spending effects. Editable records begin a fresh technical revision while keeping business dates; historical receipt/ledger timestamps remain. Missing storage objects are reported as skipped attachments and need re-uploading.
 

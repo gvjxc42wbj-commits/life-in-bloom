@@ -717,3 +717,32 @@ test('signout protects an unsaved attachment in another section without promptin
   otherUnpersisted = false; h.input('shopping.name', 'Persisted item draft');
   h.click('signout'); await h.idle(); assert.equal(h.calls[0].name, 'signOut');
 });
+
+test('meal-generated groceries show recipe dates and route edits to the plan while manual items remain editable', () => {
+  const opened = [];
+  const h = harness(readyState({ shoppingItems: [
+    { id: 'recipe-rice', name: 'Rice', quantity: '2 cups', month: '2026-11-01', checked: false, revision: 1 },
+    { id: 'manual-milk', name: 'Milk', quantity: '1 carton', month: '2026-11-01', checked: false, revision: 1 }
+  ], mealShoppingLinks: [{ id: 'recipe-rice', shopping_id: 'recipe-rice', managed: true, plan_refs: [{ recipe_name: 'Soup <special>', cook_on: '2026-11-09' }] }] }), [], { openFood: tab => opened.push(tab) });
+  const html = h.controller.render();
+  assert.match(html, /For: Soup &lt;special&gt; · Nov 9, 2026/);
+  assert.match(html, /Change meal plan/);
+  assert.doesNotMatch(html, /data-grocery-action="delete-shopping" data-id="recipe-rice"/);
+  assert.match(html, /data-grocery-action="delete-shopping" data-id="manual-milk"/);
+  h.click('meal-plans');
+  h.click('delete-shopping', { id: 'recipe-rice' });
+  assert.deepEqual(opened, ['plans', 'plans']);
+  assert.equal(h.calls.length, 0);
+});
+
+test('meal grocery links open their saved shopping month and preserve a declined budget draft change', () => {
+  const h = harness();
+  h.controller.selectTab('budget'); h.input('budget.amount', '125.25');
+  h.confirmation = false;
+  assert.equal(h.controller.openShoppingMonth('2026-12-01'), false);
+  assert.match(h.controller.render(), /value="125.25"/);
+  h.confirmation = true;
+  assert.equal(h.controller.openShoppingMonth('2026-12'), true);
+  assert.match(h.controller.render(), /December 2026/);
+  assert.match(h.controller.render(), /data-tab="list" aria-current="page"/);
+});
