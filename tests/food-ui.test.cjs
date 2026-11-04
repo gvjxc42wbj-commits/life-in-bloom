@@ -931,3 +931,35 @@ test('confirming a lost cancellation preserves an unrelated meal draft', async (
   assert.equal(payload.id, second.id);
   assert.equal(payload.notes, 'Keep my second meal draft');
 });
+
+test('actual nutrition includes only matching logged water once and keeps all other unknown nutrients unknown', () => {
+  const current=state({mealEntries:[
+    {person_slot:1,occurred_on:'2026-11-04',kind:'eaten',nutrition_snapshot:{values:{fluid_ml:100,calories_kcal:50}}},
+    {person_slot:1,occurred_on:'2026-11-04',kind:'planned',nutrition_snapshot:{values:{fluid_ml:9000,calories_kcal:9000}}}
+  ],hydrationEntries:[
+    {person_slot:1,occurred_on:'2026-11-04',amount_ml:250},
+    {person_slot:2,occurred_on:'2026-11-04',amount_ml:600},
+    {person_slot:1,occurred_on:'2026-11-03',amount_ml:800},
+    {person_slot:1,occurred_on:'2026-11-04',amount_ml:300,archived:true}
+  ]});
+  const result=Food.actualNutrition(current,'2026-11-04',1);
+  assert.equal(result.nutrition.values.fluid_ml,350);assert.equal(result.nutrition.values.calories_kcal,50);
+  assert.equal(result.nutrition.values.fiber_g,null);assert.equal(result.waterMl,250);
+  const two=Food.actualNutrition(current,'2026-11-04',2);
+  assert.equal(two.nutrition.values.fluid_ml,600);assert.equal(two.nutrition.values.calories_kcal,null);
+  assert.equal(Food.actualNutrition(current,'2026-11-04',1).nutrition.values.fluid_ml,350,'rendering never writes or accumulates another water entry');
+  const h=harness(current),html=h.controller.render('wellness');
+  assert.match(html,/Includes 250 mL/);assert.match(html,/Includes 600 mL/);
+});
+
+test('Home Boost shortcut opens a reviewable actual-food draft without logging a drink automatically', async () => {
+  const h=harness(state({products:[product('boost',{name:'BOOST Plus Chocolate',package_quantity:12,package_unit:'each',serving_quantity:1,serving_unit:'each',nutrients:{calories_kcal:360,protein_g:14}})]}));
+  assert.equal(h.controller.startProductLog('boost',2,'2026-11-03'),true);
+  const html=h.controller.render('food');
+  assert.match(html,/BOOST Plus Chocolate/);assert.match(html,/2026-11-03/);
+  assert.equal(h.calls.length,0);
+  h.submit('log');await h.idle();
+  const payload=h.calls.find(call=>call.method==='saveMealEntry').args[0];
+  assert.equal(payload.product_id,'boost');assert.equal(payload.person_slot,2);assert.equal(payload.kind,'eaten');assert.equal(payload.occurred_on,'2026-11-03');
+  assert.equal(payload.nutrition_snapshot.values.calories_kcal,360);
+});

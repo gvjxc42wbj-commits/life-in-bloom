@@ -31,7 +31,7 @@ function createRuntime(seed = {}, failWrites = false, options = {}) {
     remove() {}, click() { if (this.download) downloads.push(this); },
     async fire(type, target) { for (const fn of this.listeners[type] || []) await fn({ target: target || this, preventDefault() {} }); }
   });
-  for (const id of ['content', 'notice', 'import-file', 'help-btn', 'help-dialog', 'close-help', 'got-it-btn', 'export-btn', 'menu-btn', 'app-menu', 'close-menu-btn', 'open-sleep-mood', 'menu-help-btn', 'menu-export-btn', 'page-heading', 'page-subtitle', 'sleep-mood-tabs', 'home-brand', 'bottom-nav']) {
+  for (const id of ['content', 'notice', 'import-file', 'help-btn', 'help-dialog', 'close-help', 'got-it-btn', 'export-btn', 'menu-btn', 'app-menu', 'close-menu-btn', 'open-sleep-mood', 'menu-help-btn', 'menu-export-btn', 'page-heading', 'page-banner', 'page-subtitle', 'sleep-mood-tabs', 'home-brand', 'bottom-nav']) {
     assert.ok(html.includes(`id="${id}"`), `Required shell element ${id}`);
     elements.set('#' + id, make(id));
   }
@@ -131,6 +131,7 @@ function createRuntime(seed = {}, failWrites = false, options = {}) {
   vm.runInContext(personalSource, context, { filename: 'bloom-personal.js' });
   for(const item of foodSources) vm.runInContext(item.source, context, { filename:item.name });
   vm.runInContext(grocerySource, context, { filename: 'bloom-grocery.js' });
+  if (options.lifeModules) for (const name of ['bloom-habits-model.js','bloom-habits.js','bloom-dog-model.js','bloom-dog.js','bloom-wellness.js']) vm.runInContext(fs.readFileSync(root + '/' + name, 'utf8'), context, {filename:name});
   let onChange;
   let cloudSnapshot = {status:'signed-out',user:null,household:null,members:[],privateProfile:null,dietProfiles:[],budgets:[],inventory:[],shoppingItems:[]};
   const cloud = {
@@ -362,4 +363,30 @@ test('background refresh preserves the active search selection instead of droppi
   assert.equal(rt.get('commerce-search').selectionDirection,'backward');
   await rt.insertText('oo');
   assert.equal(rt.get('commerce-search').value,'Moot');
+});
+
+test('connected Home, Water, Skills, Smoking and Dog routes load while retaining the established navigation', async () => {
+  const rt=createRuntime({},false,{lifeModules:true});
+  rt.cloud.set({status:'ready',user:userA,household:{id:'h1',name:'Bloom'},members:[{user_id:userA.id,role:'owner'}],
+    hydrationEntries:[{id:'water',household_id:'h1',user_id:null,person_slot:1,occurred_on:'2026-11-04',amount_ml:250,container_ml:250}],
+    hydrationSettings:[],skills:[],skillSessions:[],smokingSettings:[],smokingDays:[],dogProfiles:[],dogWeights:[],routineTasks:[],routineLogs:[],dogNotes:[],dogSupplies:[],dogStockEffects:[],lifeRecords:[],moneyEntries:[],products:[],mealEntries:[]});
+  assert.match(rt.get('content').innerHTML,/Good afternoon/);
+  assert.match(rt.get('content').innerHTML,/250 <small>mL/);
+  assert.match(rt.get('content').innerHTML,/None logged yet/);
+  assert.equal(rt.get('page-banner').hidden,true);
+  await rt.navigate('wellness');
+  assert.match(rt.get('content').innerHTML,/Water for both people/);assert.match(rt.get('content').innerHTML,/Each person’s day/);
+  assert.equal(rt.get('page-banner').hidden,false);
+  await rt.get('content').fire('change',{dataset:{foodDate:''},value:'2026-11-03'});
+  assert.match(rt.get('content').innerHTML,/data-wellness-field="selectedDate" value="2026-11-03"/);
+  assert.match(rt.get('content').innerHTML,/data-food-date value="2026-11-03"/);
+  await rt.get('content').fire('change',{dataset:{wellnessField:'selectedDate'},value:'2026-11-04'});
+  assert.match(rt.get('content').innerHTML,/data-wellness-field="selectedDate" value="2026-11-04"/);
+  assert.match(rt.get('content').innerHTML,/data-food-date value="2026-11-04"/);
+  for (const [page,pattern] of [['skills',/Review readiness|Piano/],['smoking',/Smoking|Joints/],['dog',/Dog|companion/],['housework',/Housework|housework/]]) {
+    await rt.navigate(page);assert.match(rt.get('content').innerHTML,pattern);
+  }
+  rt.cloud.set({status:'signed-out',user:null,household:null});
+  await rt.navigate('home');assert.doesNotMatch(rt.get('content').innerHTML,/250 <small>mL/);
+  assert.match(rt.get('content').innerHTML,/Open sign-in/);
 });

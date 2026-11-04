@@ -739,3 +739,99 @@ test('recipe shopping ingredients preserve unknown amounts and stay separate fro
   assert.equal(h.rows.bloom_recipes[0].ingredients[0].product_id, 'salt');
   h.store.destroy();
 });
+
+test('life records expose scoped typed views and keep private practice out of household backups', async () => {
+  const record = (id, kind, user, data, extra = {}) => ({id, household_id:'house-one', user_id:user, kind, data, revision:2, last_request_id:'last-'+id, archived:false, ...extra});
+  const h = harness({rows:{bloom_life_records:[
+    record('water','hydration_entry',null,{person_slot:1,occurred_on:'2026-11-04',amount_ml:250,container_ml:250}),
+    record('skill-own','skill',USER.id,{name:'C major',category:'Piano',observed_level:4,user_id:'spoof'}),
+    record('skill-other','skill',OTHER.id,{name:'Private to the other person'}),
+    record('smoke-own','smoking_day',USER.id,{occurred_on:'2026-11-04',joints:0,cigars:0}),
+    record('note','dog_note',null,{kind:'training',occurred_on:'2026-11-04',notes:'Sit'}),
+    record('broken','dog_note',null,null),
+    record('other-house','hydration_entry',null,{amount_ml:999},{household_id:'house-two'})
+  ],bloom_dog_stock_effects:[{id:'effect',household_id:'house-one',receipt_id:'receipt',quantity:2}]}});
+  await h.store.init();
+  const s=h.store.snapshot();
+  assert.deepEqual(s.skills.map(row=>row.id),['skill-own']);
+  assert.equal(s.skills[0].user_id,USER.id);
+  assert.equal(s.skills[0].revision,2);
+  assert.equal(s.skills[0].last_request_id,'last-skill-own');
+  assert.equal(s.dogNotes[0].kind,'training');
+  assert.equal(s.dogNotes[0].record_kind,'dog_note');
+  assert.equal(s.hydrationEntries.length,1);
+  s.hydrationEntries[0].amount_ml=999;
+  assert.equal(h.store.snapshot().hydrationEntries[0].amount_ml,250);
+  const household=h.store.exportHousehold(), personal=h.store.exportPersonalLifeRecords();
+  assert.equal(household.data.lifeRecords.some(row=>['skill','smoking_day'].includes(row.kind)),false);
+  assert.equal(household.data.dogStockEffects[0].id,'effect');
+  assert.deepEqual(personal.records.map(row=>row.id).sort(),['skill-own','smoke-own']);
+  assert.equal(personal.user_id,USER.id);
+  assert.equal(personal.household_id,'house-one');
+  h.store.destroy();
+});
+
+test('life saves and archive requests strip caller ownership and immutable server snapshots', async () => {
+  const h=harness();await h.store.init();
+  const request='33333333-3333-4333-8333-333333333333';
+  await h.store.saveSmokingDay({id:'day-id',request_id:request,revision:3,occurred_on:'2026-11-04',joints:0,cigars:0,grams_per_joint:0.5,trigger_tags:[],notes:'',user_id:OTHER.id,household_id:'house-two',expected_household_id:'forged-house',expected_user_id:'forged-user',reference_snapshot:{price_per_gram_cents:0}});
+  const payload=h.calls.filter(call=>call.rpc==='bloom_save_life_record').at(-1).args.p_record;
+  assert.deepEqual(payload,{id:'day-id',request_id:request,revision:3,kind:'smoking_day',expected_household_id:'house-one',expected_user_id:USER.id,data:{occurred_on:'2026-11-04',joints:0,cigars:0,grams_per_joint:0.5,trigger_tags:[],notes:''}});
+  await h.store.saveRoutineLog({id:'care-id',request_id:request,revision:4,task_id:'task',occurred_on:'2026-11-04',slot:'07:00',person_slot:2,done:true,notes:'',task_snapshot:{name:'Forged'}});
+  assert.equal(Object.hasOwn(h.calls.filter(call=>call.rpc==='bloom_save_life_record').at(-1).args.p_record.data,'task_snapshot'),false);
+  await h.store.archiveLifeRecord({id:'care-id',revision:4},request);
+  assert.deepEqual(h.calls.filter(call=>call.rpc==='bloom_archive_life_record').at(-1).args,{p_id:'care-id',p_revision:4,p_request_id:request});
+  assert.throws(()=>h.store.saveLifeRecord('dog_shopping_request',{}),/supported/);
+  assert.throws(()=>h.store.archiveLifeRecord({id:'care-id'},request),/Refresh/);
+  assert.equal(h.calls.some(call=>call.table==='bloom_life_records'&&call.operation!=='select'),false);
+  h.store.destroy();
+});
+
+test('dog supply list requests use one stable scoped server operation without posting stock or spending', async () => {
+  const h=harness();await h.store.init();
+  const opts={request_id:'44444444-4444-4444-8444-444444444444',month:'2026-11-01',packs:2};
+  await h.store.addDogSupplyToShopping({id:'supply',household_id:'wrong'},opts);
+  await h.store.addDogSupplyToShopping({id:'supply'},opts);
+  const calls=h.calls.filter(call=>call.rpc==='bloom_add_dog_supply_to_shopping');
+  assert.equal(calls.length,2);assert.deepEqual(calls[0].args,calls[1].args);
+  assert.deepEqual(calls[0].args,{p_id:'supply',p_request_id:opts.request_id,p_month:'2026-11-01',p_packs:2});
+  assert.equal(h.calls.some(call=>['bloom_record_receipt','bloom_record_money_entry'].includes(call.rpc)),false);
+  assert.throws(()=>h.store.addDogSupplyToShopping({id:'supply'},{...opts,month:'2026-11'}),/valid month/);
+  h.store.destroy();
+});
+
+test('private life restore requires this account and household and cannot import shared or foreign records', async () => {
+  const h=harness();await h.store.init();
+  const value={app:'Life in Bloom Personal Practice',version:1,user_id:USER.id,household_id:'house-one',records:[{id:'own',kind:'skill',user_id:USER.id,household_id:'house-one',data:{name:'Scale'}}]};
+  await h.store.importPersonalLifeRecords(value);
+  assert.deepEqual(h.calls.filter(call=>call.rpc==='bloom_restore_personal_life_backup').at(-1).args.p_backup,value);
+  for(const bad of [{...value,user_id:OTHER.id},{...value,household_id:'house-two'},{...value,records:[{...value.records[0],kind:'dog_profile',user_id:null}]},{...value,records:[{...value.records[0],user_id:OTHER.id}]}])assert.throws(()=>h.store.importPersonalLifeRecords(bad),/own signed-in account/);
+  const hh=h.store.exportHousehold();delete hh.data.lifeRecords;delete hh.data.dogStockEffects;
+  await h.store.importHouseholdBackup(hh);
+  const restored=h.calls.filter(call=>call.rpc==='bloom_restore_household_backup').at(-1).args.p_backup;
+  assert.deepEqual(restored.data.lifeRecords,[]);assert.deepEqual(restored.data.dogStockEffects,[]);
+  h.store.destroy();
+});
+
+test('a verified household change cannot restore the former household after a later network failure', async () => {
+  const cacheStorage=memory();
+  const h=harness({storeOptions:{cacheStorage},rows:{bloom_life_records:[{id:'old-water',household_id:'house-one',user_id:null,kind:'hydration_entry',data:{person_slot:1,amount_ml:250},revision:1}]}});
+  await h.store.init();assert.equal(h.store.snapshot().hydrationEntries.length,1);
+  h.rows.bloom_household_members=[{user_id:USER.id,household_id:'house-two',role:'owner'}];
+  h.rows.bloom_households=[{id:'house-two',owner_user_id:USER.id}];
+  h.controls.beforeQuery=query=>{if(query.table==='bloom_households')h.controls.nextReadError='Failed to fetch';};
+  await assert.rejects(h.store.refresh(),/Failed to fetch/);
+  assert.equal(h.store.snapshot().household,null);assert.deepEqual(h.store.snapshot().hydrationEntries,[]);
+  assert.equal(cacheStorage.getItem('life-in-bloom.household-cache.v1.'+USER.id),null);
+  h.store.destroy();
+});
+
+test('verified membership removal invalidates cached records before an unrelated profile read fails', async () => {
+  const cacheStorage=memory();const h=harness({storeOptions:{cacheStorage}});await h.store.init();
+  h.rows.bloom_household_members=[];
+  h.controls.beforeQuery=query=>{if(query.table==='bloom_private_profiles')h.controls.nextReadError='Failed to fetch';};
+  await assert.rejects(h.store.refresh(),/Failed to fetch/);
+  assert.equal(h.store.snapshot().household,null);
+  assert.equal(cacheStorage.getItem('life-in-bloom.household-cache.v1.'+USER.id),null);
+  h.store.destroy();
+});

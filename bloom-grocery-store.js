@@ -1,4 +1,4 @@
-/* Shared Grocery records. Personal device logs never enter this module. */
+/* Household records and account-private practice/smoking records. Device journals stay separate. */
 (function (root) {
   'use strict';
 
@@ -9,7 +9,8 @@
     products: 'bloom_products', recurringProducts: 'bloom_recurring_products', receipts: 'bloom_receipts',
     moneyEntries: 'bloom_money_entries', bills: 'bloom_bills', billRules: 'bloom_bill_rules', recipes: 'bloom_recipes',
     mealEntries: 'bloom_meal_entries', foodFiles: 'bloom_food_files',
-    cookingPlans: 'bloom_cooking_plans', mealShoppingLinks: 'bloom_meal_shopping_links'
+    cookingPlans: 'bloom_cooking_plans', mealShoppingLinks: 'bloom_meal_shopping_links',
+    lifeRecords: 'bloom_life_records', dogStockEffects: 'bloom_dog_stock_effects'
   };
   const PRIVATE_FIELDS = ['display_name', 'age_years', 'height_cm', 'weight_kg', 'activity_level', 'notes'];
   const DIET_FIELDS = ['display_name', 'color', 'calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'allergies', 'restrictions', 'preferences', 'notes'];
@@ -23,7 +24,27 @@
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects'];
+  const LIFE_COLLECTIONS = {
+    hydrationSettings:'hydration_settings', hydrationEntries:'hydration_entry',
+    skills:'skill', skillSessions:'skill_session', smokingSettings:'smoking_settings', smokingDays:'smoking_day',
+    dogProfiles:'dog_profile', dogWeights:'dog_weight', routineTasks:'routine_task', routineLogs:'routine_log',
+    dogNotes:'dog_note', dogSupplies:'dog_supply'
+  };
+  const PRIVATE_LIFE_KINDS = ['skill','skill_session','smoking_settings','smoking_day'];
+  const LIFE_FIELDS = {
+    hydration_settings:['person_slot','container_ml','goal_ml'],
+    hydration_entry:['occurred_on','person_slot','amount_ml','container_ml','notes'],
+    skill:['name','category','memory_type','observed_level','notes'],
+    skill_session:['skill_id','occurred_on','minutes','result','notes'],
+    smoking_settings:['baseline_joints','baseline_cigars','baseline_grams_per_joint','price_per_gram_cents','cigar_price_cents','notes'],
+    smoking_day:['occurred_on','joints','cigars','grams_per_joint','trigger_tags','notes'],
+    dog_profile:['name','breed','birth_on','notes'], dog_weight:['occurred_on','weight_kg','notes'],
+    routine_task:['domain','name','category','frequency','interval_days','interval_months','anchor_on','end_on','times','rolling','active','dose_text','notes'],
+    routine_log:['task_id','occurred_on','slot','person_slot','done','notes'],
+    dog_note:['occurred_on','kind','minutes','notes'],
+    dog_supply:['product_id','name','unit_label','stock_quantity','refill_threshold','needs_refill','reference_price_cents','notes']
+  };
   const PLANNING_FIELDS = ['name','quantity','unit','product_id','optional','notes'];
   const SHARED_LISTS = ['members','dietProfiles','budgets','inventory','shoppingItems', ...EXTRA_LISTS];
   const PAGE_SIZE = 100;
@@ -131,7 +152,17 @@
     let destroyed = false;
     let lastScheduled = null;
 
-    function snapshot() { return clone(state); }
+    function snapshot() {
+      const result=clone(state);
+      result.lifeRecords=(result.lifeRecords || []).filter(row=>row && row.data && typeof row.data==='object' && !Array.isArray(row.data) && result.user && result.household && row.household_id===result.household.id &&
+        (PRIVATE_LIFE_KINDS.includes(row.kind) ? row.user_id===result.user.id : row.user_id==null));
+      result.dogStockEffects=(result.dogStockEffects || []).filter(row=>row && result.household && row.household_id===result.household.id);
+      for(const [collection,kind] of Object.entries(LIFE_COLLECTIONS)) result[collection]=result.lifeRecords.filter(row=>row.kind===kind).map(row=>({
+        ...row.data,id:row.id,kind:row.data.kind || row.kind,record_kind:row.kind,revision:row.revision,archived:row.archived===true,user_id:row.user_id,
+        household_id:row.household_id,created_at:row.created_at,updated_at:row.updated_at,last_request_id:row.last_request_id
+      }));
+      return result;
+    }
     function emit() { if (!destroyed) onChange(snapshot()); }
     function saveCache() {
       if (!cacheStorage || state.status !== 'ready' || state.offline || !state.user || !state.household) return;
@@ -157,12 +188,20 @@
     function lastCachedAccount() {
       try { return cacheStorage && cacheStorage.getItem(cachePrefix + 'last-account'); } catch (_) { return null; }
     }
-    function restoreCache(user, message) {
+    function retainCacheForHousehold(userId, householdId) {
+      if (!cacheStorage) return;
+      try {
+        const cached = JSON.parse(cacheStorage.getItem(cachePrefix + userId) || 'null');
+        if (!householdId || (cached && cached.household && cached.household.id !== householdId)) clearCache(userId);
+      } catch (_) { clearCache(userId); }
+    }
+    function restoreCache(user, message, verifiedHouseholdId) {
       if (!cacheStorage || !user || !user.id) return false;
       try {
         const cached = JSON.parse(cacheStorage.getItem(cachePrefix + user.id) || 'null');
         if (!cached || cached.version !== 1 || cached.user.id !== user.id || !cached.household || !cached.members.some(row=>row.user_id===user.id && row.household_id===cached.household.id)) return false;
-        for (const key of ['billRules','cookingPlans','mealShoppingLinks']) if (!Object.hasOwn(cached, key)) cached[key] = [];
+        if (verifiedHouseholdId !== undefined && cached.household.id !== verifiedHouseholdId) { clearCache(user.id); return false; }
+        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects']) if (!Object.hasOwn(cached, key)) cached[key] = [];
         if (!SHARED_LISTS.every(key=>Array.isArray(cached[key]))) return false;
         state = { ...emptyState('ready'), user:userSummary(user), household:cached.household,
           ...Object.fromEntries(SHARED_LISTS.map(key=>[key,cached[key]])), offline:true, cachedAt:cached.savedAt,
@@ -306,12 +345,21 @@
       if (!online() && restoreCache(state.user)) return snapshot();
       const current = context(false);
       const request = ++requestNumber;
+      let verifiedHouseholdId;
       const stillCurrent = () => !destroyed && current.generation === generation && request === requestNumber &&
         current.userId === (state.user && state.user.id) && !suppressAuth;
       try {
         if (state.status !== 'ready') { state.status = 'loading'; state.error = ''; emit(); }
         const memberships = await readAll(TABLES.members, { user_id: current.userId }, ['household_id', 'user_id']);
         if (!stillCurrent()) return snapshot();
+        verifiedHouseholdId = memberships.length === 1 ? memberships[0].household_id : null;
+        // Once membership is verified, a later network failure must never
+        // resurrect an offline copy from a household the account has left.
+        retainCacheForHousehold(current.userId, verifiedHouseholdId);
+        if (state.household && state.household.id !== verifiedHouseholdId) {
+          state = { ...emptyState('loading'), user: state.user, recovery: state.recovery };
+          emit();
+        }
         if (memberships.length > 1) throw new Error('More than one household was found. Please ask for help before editing.');
         const privateRows = await readAll(TABLES.privateProfile, { user_id: current.userId }, ['user_id']);
         if (!stillCurrent()) return snapshot();
@@ -367,7 +415,7 @@
         return snapshot();
       } catch (error) {
         if (!stillCurrent()) return snapshot();
-        if (isNetworkFailure(error) && restoreCache(state.user)) return snapshot();
+        if (isNetworkFailure(error) && restoreCache(state.user, undefined, verifiedHouseholdId)) return snapshot();
         throw fail(error, { clear: true });
       }
     }
@@ -637,6 +685,31 @@
       if (Array.isArray(row.planning_ingredients)) recipe.planning_ingredients = row.planning_ingredients.map(line => pick(line, PLANNING_FIELDS));
       return saveExtra('recipes', recipe);
     }
+    function saveLifeRecord(kind,row) {
+      if(!Object.hasOwn(LIFE_FIELDS,kind)) throw new Error('Choose a supported Life in Bloom record.');
+      row=row || {};
+      const current=context(true);
+      const record={id:row.id || row.request_id || newUuid(),request_id:row.request_id || newUuid(),kind,data:pick(row,LIFE_FIELDS[kind]),
+        expected_household_id:current.householdId,expected_user_id:current.userId};
+      if(row.id && row.revision!=null) record.revision=revisionOf(row);
+      if(Object.hasOwn(row,'archived')) record.archived=row.archived===true;
+      return rpc('bloom_save_life_record',{p_record:clone(record)},true);
+    }
+    function archiveLifeRecord(row,requestId) {
+      if(!row || !row.id || !requestId) throw new Error('Open the saved entry before removing it.');
+      return rpc('bloom_archive_life_record',{p_id:row.id,p_revision:revisionOf(row),p_request_id:requestId},true);
+    }
+    function addDogSupplyToShopping(row,options) {
+      options=options || {};
+      if(!row || !row.id || !options.request_id) throw new Error('Save the dog supply before adding it to Grocery.');
+      return rpc('bloom_add_dog_supply_to_shopping',{p_id:row.id,p_request_id:options.request_id,
+        p_month:validMonth(options.month),p_packs:Number(options.packs)},true);
+    }
+    const lifeSavers=Object.fromEntries(Object.entries({
+      saveHydrationSettings:'hydration_settings',saveHydrationEntry:'hydration_entry',saveSkill:'skill',saveSkillSession:'skill_session',
+      saveSmokingSettings:'smoking_settings',saveSmokingDay:'smoking_day',saveDogProfile:'dog_profile',saveDogWeight:'dog_weight',
+      saveRoutineTask:'routine_task',saveRoutineLog:'routine_log',saveDogNote:'dog_note',saveDogSupply:'dog_supply'
+    }).map(([name,kind])=>[name,row=>saveLifeRecord(kind,row)]));
     function saveCookingPlan(row) {
       const plan = pick(row, ['recipe_id','recipe_revision','cook_on','servings','person1_servings','person2_servings','notes']);
       plan.id = row.id || row.request_id || newUuid();
@@ -746,16 +819,32 @@
       if(!state.user || !state.household || state.status!=='ready') throw new Error('Open your household before exporting a backup.');
       return { app:'Life in Bloom Household',version:1,household_id:state.household.id,exported_at:new Date().toISOString(),
         cached_at:state.cachedAt,offline:state.offline,
-        data:Object.fromEntries(['products','recurringProducts','budgets','inventory','shoppingItems','bills','billRules','recipes','mealEntries','receipts','moneyEntries','foodFiles','cookingPlans','mealShoppingLinks'].map(key=>[key,clone(state[key] || [])])) };
+        data:{...Object.fromEntries(['products','recurringProducts','budgets','inventory','shoppingItems','bills','billRules','recipes','mealEntries','receipts','moneyEntries','foodFiles','cookingPlans','mealShoppingLinks','dogStockEffects'].map(key=>[key,clone(state[key] || [])])),
+          lifeRecords:clone((state.lifeRecords || []).filter(row=>row.household_id===state.household.id && row.user_id==null && !PRIVATE_LIFE_KINDS.includes(row.kind)))} };
     }
     function importHouseholdBackup(value) {
       const current=context(true);
       if(!value || value.app!=='Life in Bloom Household' || value.version!==1 || value.household_id!==current.householdId || !value.data) throw new Error('Choose a Life in Bloom Household backup for this same household.');
       const allowed=['products','recurringProducts','budgets','inventory','shoppingItems','bills','recipes','mealEntries','receipts','moneyEntries','foodFiles'];
       if(!allowed.every(key=>Array.isArray(value.data[key]) && value.data[key].length<=10000)) throw new Error('This backup is incomplete or too large. No saved records were changed.');
-      const optional = ['billRules','cookingPlans','mealShoppingLinks'];
-      if(optional.some(key => value.data[key] != null && (!Array.isArray(value.data[key]) || value.data[key].length>10000))) throw new Error('This backup has invalid recurring bills or meal plans. No saved records were changed.');
+      const optional = ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects'];
+      if(optional.some(key => value.data[key] != null && (!Array.isArray(value.data[key]) || value.data[key].length>10000))) throw new Error('This backup has invalid optional records. No saved records were changed.');
       return rpc('bloom_restore_household_backup',{p_backup:{app:value.app,version:1,household_id:value.household_id,data:{...Object.fromEntries([...allowed,...optional].map(key=>[key,clone(value.data[key] || [])]))}}},true);
+    }
+    function exportPersonalLifeRecords() {
+      if(!state.user || !state.household || state.status!=='ready') throw new Error('Sign in before exporting your practice and smoking records.');
+      return {app:'Life in Bloom Personal Practice',version:1,user_id:state.user.id,household_id:state.household.id,
+        exported_at:new Date().toISOString(),records:clone((state.lifeRecords || []).filter(row=>
+          row.household_id===state.household.id && row.user_id===state.user.id && PRIVATE_LIFE_KINDS.includes(row.kind)))};
+    }
+    function importPersonalLifeRecords(value) {
+      const current=context(true);
+      if(!value || value.app!=='Life in Bloom Personal Practice' || value.version!==1 || value.user_id!==current.userId ||
+        value.household_id!==current.householdId || !Array.isArray(value.records) || value.records.length>10000 ||
+        value.records.some(row=>!row || row.user_id!==current.userId || row.household_id!==current.householdId || !PRIVATE_LIFE_KINDS.includes(row.kind))) {
+        throw new Error('Choose a practice and smoking backup for your own signed-in account and household.');
+      }
+      return rpc('bloom_restore_personal_life_backup',{p_backup:{app:value.app,version:1,user_id:value.user_id,household_id:value.household_id,records:clone(value.records)}},true);
     }
     function destroy() {
       destroyed = true;
@@ -772,6 +861,7 @@
       saveBudget, saveInventory, deleteInventory, saveShoppingItem, toggleShoppingItem,
       deleteShoppingItem, importLocalShopping, saveProduct, saveRecurringProduct, saveBill, ensureBillMonth, stopBillSeries, saveRecipe,
       saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
+      ...lifeSavers,saveLifeRecord,archiveLifeRecord,addDogSupplyToShopping,exportPersonalLifeRecords,importPersonalLifeRecords,
       uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };

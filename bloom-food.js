@@ -123,6 +123,16 @@
     return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Life in Bloom//Food date reminder//EN', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT', 'UID:' + calendarEscape((item.id || uuid()) + '-' + due.date + '@life-in-bloom.local'), 'DTSTAMP:' + (now || new Date()).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z'), 'DTSTART;VALUE=DATE:' + due.date.replace(/-/g, ''), 'DTEND;VALUE=DATE:' + next.replace(/-/g, ''), 'SUMMARY:' + calendarEscape('Check ' + name), 'DESCRIPTION:' + calendarEscape(description), 'TRANSP:TRANSPARENT', 'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + calendarEscape('Check ' + name + ': ' + due.label.toLowerCase() + ' ' + due.date), 'TRIGGER:' + (days ? '-P' + days + 'D' : 'PT0M'), 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].map(foldCalendar).join('\r\n') + '\r\n';
   }
 
+  // Water is recorded once in shared hydration history, then included in the
+  // same person/date's actual fluid total. Planning never enters this total.
+  function actualNutrition(current, date, person) {
+    const actual = (current.mealEntries || []).filter(entry => !entry.archived && Number(entry.person_slot) === Number(person) && entry.occurred_on === date && entry.kind === 'eaten');
+    const water = (current.hydrationEntries || []).filter(entry => !entry.archived && Number(entry.person_slot) === Number(person) && entry.occurred_on === date && Number(entry.amount_ml) > 0);
+    const nutrition = M.nutritionTotals(actual);
+    const waterMl = water.reduce((sum, entry) => sum + Number(entry.amount_ml), 0);
+    if (water.length) nutrition.values.fluid_ml = Number(nutrition.values.fluid_ml || 0) + waterMl;
+    return { actual, water, waterMl, nutrition };
+  }
   function createController(options) {
     if (!M) throw new Error('Food calculations could not load. Please refresh.');
     const store = options.store;
@@ -229,10 +239,10 @@
     }
     function nutritionTable(value, headline) {
       const data = value || M.nutritionTotals([]);
-      return '<div class="food-nutrition"><h4>' + esc(headline || 'Nutrition') + '</h4>' + estimateNotice(data) + '<dl>' + M.NUTRIENTS.map(nutrient => '<div><dt>' + nutrient.label + '</dt><dd>' + (data.values[nutrient.key] == null ? '<span class="food-unknown">Not recorded</span>' : esc(fmt(data.values[nutrient.key])) + ' ' + nutrient.unit + (data.missing[nutrient.key] ? ' <small>known · incomplete</small>' : '')) + '</dd></div>').join('') + '</dl>' + (!data.complete ? '<p class="food-help">Missing nutrition values remain unknown. A shown subtotal may be incomplete.</p>' : '') + '</div>';
+      return '<div class="food-nutrition"><h4>' + esc(headline || 'Nutrition') + '</h4>' + estimateNotice(data) + '<dl>' + M.NUTRIENTS.map(nutrient => '<div><dt>' + nutrient.label + '</dt><dd>' + (data.values[nutrient.key] == null ? '<span class="food-unknown">Not recorded</span>' : esc(fmt(data.values[nutrient.key])) + ' ' + nutrient.unit + ((data.missing || {})[nutrient.key] ? ' <small>known · incomplete</small>' : '')) + '</dd></div>').join('') + '</dl>' + (!data.complete ? '<p class="food-help">Missing nutrition values remain unknown. A shown subtotal may be incomplete.</p>' : '') + '</div>';
     }
     function briefNutrition(value) {
-      return (value.estimated === true ? '<span>' + (value.basis === 'recipe_reference' ? 'Recipe estimate' : 'Includes estimates') + '</span>' : '') + [['calories_kcal', 'kcal'], ['protein_g', 'g protein']].map(([key, unit]) => value.values[key] == null ? '<span>' + (key === 'calories_kcal' ? 'Calories' : 'Protein') + ': not recorded</span>' : '<span>' + esc(fmt(value.values[key])) + ' ' + unit + (value.missing[key] ? ' known · incomplete' : '') + '</span>').join('');
+      return (value.estimated === true ? '<span>' + (value.basis === 'recipe_reference' ? 'Recipe estimate' : 'Includes estimates') + '</span>' : '') + [['calories_kcal', 'kcal'], ['protein_g', 'g protein']].map(([key, unit]) => value.values[key] == null ? '<span>' + (key === 'calories_kcal' ? 'Calories' : 'Protein') + ': not recorded</span>' : '<span>' + esc(fmt(value.values[key])) + ' ' + unit + ((value.missing || {})[key] ? ' known · incomplete' : '') + '</span>').join('');
     }
     function allergyNotice(recipe, current, slot) {
       const matches = allergyMatches(recipe, current.products || [], current, slot);
@@ -432,9 +442,9 @@
       let html = '<section class="panel"><div class="food-heading"><div><p class="page-kicker">Household nutrition</p><h2>Each person’s day</h2></div>' + datePicker() + '</div><p class="food-help">Person 1 is pink. Person 2 is purple. Planned portions and actually eaten portions have separate totals. Your chosen goals remain editable in Grocery Profiles.</p><div class="food-actions">' + button('grocery', 'Nutrition profiles', ' data-tab="profiles"') + button('food-home', 'Saved recipes & food dates') + '</div></section><div class="food-person-grid">';
       for (const person of [1, 2]) {
         const profile = personProfile(current, person);
-        const actual = (current.mealEntries || []).filter(entry => entry.person_slot === person && entry.occurred_on === selectedDate && entry.kind === 'eaten');
+        const observed = actualNutrition(current, selectedDate, person), actual = observed.actual;
         const planned = (current.mealEntries || []).filter(entry => entry.person_slot === person && entry.occurred_on === selectedDate && entry.kind === 'planned');
-        html += '<section class="panel food-person-' + (person === 1 ? 'pink' : 'purple') + '"><p class="page-kicker">Person ' + person + '</p><h2>' + esc(profile && profile.display_name || 'Your nutrition') + '</h2><dl class="food-goals">' + M.NUTRIENTS.slice(0, 5).map(nutrient => '<div><dt>' + nutrient.label + ' goal</dt><dd>' + (profile && profile[nutrient.key] != null ? esc(fmt(profile[nutrient.key])) + ' ' + nutrient.unit : 'Not set') + '</dd></div>').join('') + '</dl><h3>Actually eaten</h3>' + (actual.length ? '<div class="food-nutrition-brief">' + briefNutrition(M.nutritionTotals(actual)) + '</div><details><summary>All recorded nutrients</summary>' + nutritionTable(M.nutritionTotals(actual), 'Eaten portions') + '</details>' : '<p class="food-help">No eaten portions logged for this date.</p>') + '<h3>Planned</h3>' + (planned.length ? '<div class="food-nutrition-brief">' + briefNutrition(M.nutritionTotals(planned)) + '</div><details><summary>All planned nutrients</summary>' + nutritionTable(M.nutritionTotals(planned), 'Planned portions') + '</details>' : '<p class="food-help">No planned portions for this date.</p>') + personalNotes(current, person) + '<div class="food-actions">' + button('new-log', 'Log for Person ' + person, ' data-person="' + person + '" data-kind="eaten"', true) + button('new-log', 'Plan a portion', ' data-person="' + person + '" data-kind="planned"') + '</div></section>';
+        html += '<section class="panel food-person-' + (person === 1 ? 'pink' : 'purple') + '"><p class="page-kicker">Person ' + person + '</p><h2>' + esc(profile && profile.display_name || 'Your nutrition') + '</h2><dl class="food-goals">' + M.NUTRIENTS.slice(0, 5).map(nutrient => '<div><dt>' + nutrient.label + ' goal</dt><dd>' + (profile && profile[nutrient.key] != null ? esc(fmt(profile[nutrient.key])) + ' ' + nutrient.unit : 'Not set') + '</dd></div>').join('') + '</dl><h3>Actually eaten &amp; drunk</h3>' + (actual.length || observed.water.length ? '<div class="food-nutrition-brief">' + briefNutrition(observed.nutrition) + '</div><details><summary>All recorded nutrients</summary>' + nutritionTable(observed.nutrition, 'Eaten portions and logged water') + '</details>' : '<p class="food-help">No eaten portions logged for this date.</p>') + (observed.water.length ? '<p class="food-help">Includes ' + fmt(observed.waterMl) + ' mL from this person’s saved water entries.</p>' : '') + '<h3>Planned</h3>' + (planned.length ? '<div class="food-nutrition-brief">' + briefNutrition(M.nutritionTotals(planned)) + '</div><details><summary>All planned nutrients</summary>' + nutritionTable(M.nutritionTotals(planned), 'Planned portions') + '</details>' : '<p class="food-help">No planned portions for this date.</p>') + personalNotes(current, person) + '<div class="food-actions">' + button('new-log', 'Log for Person ' + person, ' data-person="' + person + '" data-kind="eaten"', true) + button('new-log', 'Plan a portion', ' data-person="' + person + '" data-kind="planned"') + '</div></section>';
       }
       html += '</div>';
       if (dirty('log') && !logging) html += '<section class="panel"><p>You have a food entry draft.</p>' + button('resume-log', 'Resume food draft') + '</section>';
@@ -646,7 +656,7 @@
           submitPlanAttempt();
         } else {
           const payload = logPayload(current);
-          run('Saving this portion…', () => store.saveMealEntry(payload), () => { selectedDate = payload.occurred_on; resetGroup('log', logDraft(selectedDate)); logging = false; if (currentPage === 'food') tab = 'log'; notify(payload.kind === 'planned' ? 'The planned portion was saved separately from eaten food.' : 'This person’s eaten portion was logged.'); });
+          run('Saving this portion…', () => store.saveMealEntry(payload), () => { selectedDate = payload.occurred_on; if (options.onDateChange) options.onDateChange(selectedDate); resetGroup('log', logDraft(selectedDate)); logging = false; if (currentPage === 'food') tab = 'log'; notify(payload.kind === 'planned' ? 'The planned portion was saved separately from eaten food.' : 'This person’s eaten portion was logged.'); });
         }
       } catch (error) { persist(); notify(error.message, true); refresh(); }
       return true;
@@ -727,6 +737,7 @@
       if (Object.hasOwn(data, 'foodDate')) {
         if (M.dateNumber(element.value) == null) { element.value = selectedDate; notify('Choose a valid date.', true); return true; }
         selectedDate = element.value;
+        if (options.onDateChange) options.onDateChange(selectedDate);
         if (!dirty('log')) resetGroup('log', logDraft(selectedDate));
         persist(); refresh(); return true;
       }
@@ -747,6 +758,17 @@
         value.request_id = '';
       }
       Object.assign(value, overrides || {}); resetGroup('log', value); logging = true; if (currentPage === 'food') tab = 'log'; persist(); refresh('#food-log-form'); return true;
+    }
+    function setSelectedDate(date) {
+      snapshot(); if (busy || M.dateNumber(date) == null) return false;
+      if (selectedDate !== date) { selectedDate = date; persist(); } return true;
+    }
+    function startProductLog(productId, person, occurredOn) {
+      const current = snapshot();
+      if (current.status !== 'ready' || !current.user || !current.household || busy) return false;
+      const product = (current.products || []).find(row => row.id === productId && !row.archived && row.category === 'food');
+      if (!product) { notify('Choose a saved food or drink for this entry.'); }
+      return openLog(current, null, { source_kind: 'product', product_id: product ? product.id : '', person_slot: Number(person) === 2 ? '2' : '1', kind: 'eaten', occurred_on: M.dateNumber(occurredOn) == null ? dayKey(getNow()) : occurredOn });
     }
     function download(name, content, mime) {
       if (options.download) return options.download(name, content, mime);
@@ -866,9 +888,9 @@
     }
     function selectTab(value) { snapshot(); if (busy || !['recipes', 'plans', 'soon', 'log'].includes(value)) return false; tab = value; persist(); refresh(); return true; }
     function hasUnpersistedChanges() { snapshot(); return Boolean(selectedFile || ((dirty('recipe') || dirty('log') || dirty('plan') || planAttempt) && !draftSaved)); }
-    return { render, handleClick, handleSubmit, handleInput, handleChange, hasUnsavedDraft, hasUnpersistedChanges, discardDraft, selectTab, isBusy: () => Boolean(busy), whenIdle: () => pending, getHomeSummary: () => { const current = snapshot(); return { due: M.dueItems(current.inventory || [], dayKey(getNow())).length, recipes: (current.recipes || []).filter(row => !row.archived).length }; } };
+    return { render, handleClick, handleSubmit, handleInput, handleChange, hasUnsavedDraft, hasUnpersistedChanges, discardDraft, selectTab, startProductLog, setSelectedDate, getSelectedDate: () => { snapshot(); return selectedDate; }, isBusy: () => Boolean(busy), whenIdle: () => pending, getHomeSummary: () => { const current = snapshot(); return { due: M.dueItems(current.inventory || [], dayKey(getNow())).length, recipes: (current.recipes || []).filter(row => !row.archived).length }; } };
   }
-  const api = { createController, buildExpiryCalendar, allergyMatches, scaledSnapshot };
+  const api = { createController, buildExpiryCalendar, allergyMatches, scaledSnapshot, actualNutrition };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.BloomFood = api;
 })(typeof window !== 'undefined' ? window : globalThis);

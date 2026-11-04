@@ -9,6 +9,9 @@
   const GS = window.BloomGroceryStore;
   const C = window.BloomCommerce;
   const F = window.BloomFood;
+  const H = window.BloomHabits;
+  const Dog = window.BloomDog;
+  const W = window.BloomWellness;
   const Personal = window.BloomPersonal;
   const $ = selector => document.querySelector(selector);
   const content = $('#content');
@@ -74,6 +77,11 @@
   let grocery = null;
   let commerce = null;
   let food = null;
+  let habits = null;
+  let dog = null;
+  let wellness = null;
+  const connectedControllers = () => [grocery, commerce, food, habits, dog, wellness].filter(Boolean);
+  const anySaving = () => connectedControllers().some(controller => controller.isBusy());
   const draftStore = window.BloomDrafts ? window.BloomDrafts.create() : null;
   let activeAccountIdentity;
   const unsavedJournals = new Map();
@@ -194,8 +202,8 @@
     return true;
   }
   function leaveDraft() {
-    if ((grocery && grocery.isBusy()) || (commerce && commerce.isBusy()) || (food && food.isBusy())) {
-      showNotice('Please wait for the Grocery change to finish saving.', true);
+    if (anySaving()) {
+      showNotice('Please wait for this change to finish saving.', true);
       return false;
     }
     // Household forms remain in their own account-scoped saved drafts when the
@@ -213,7 +221,7 @@
     if (page === 'sleep-mood') state.view = 'circle';
     render();
     window.scrollTo({ top: 0, behavior: 'auto' });
-    requestAnimationFrame(() => $('#page-heading')?.focus({ preventScroll: true }));
+    requestAnimationFrame(() => $(state.page === 'home' && wellness ? '#home-dashboard-heading' : '#page-heading')?.focus({ preventScroll: true }));
     return true;
   }
   function renderKeepScroll(focusSelector) {
@@ -293,6 +301,7 @@
     getToday: trackingToday,
     getPersonalAvailable: () => personalAvailable(),
     getGrocerySummary: () => grocery ? grocery.getHomeSummary() : null,
+    renderDashboard: context => wellness ? wellness.renderHome(context) : null,
     canEdit,
     isReadOnly: () => state.readOnly,
     notify: showNotice,
@@ -316,11 +325,27 @@
     count.textContent = result.summary;
     results.innerHTML = result.html;
   }});
-  if (F) food = F.createController({ ...sharedOptions, openGrocery:(tab, month)=>{
+  const openGrocery = (tab, month) => {
     if (month && grocery && grocery.openShoppingMonth && !grocery.openShoppingMonth(month)) return false;
-    if(navigate('grocery')) { if(grocery && grocery.selectTab) grocery.selectTab(tab); renderKeepScroll(); return true; }
+    if (navigate('grocery')) { if (grocery && grocery.selectTab) grocery.selectTab(tab); renderKeepScroll(); return true; }
     return false;
-  }});
+  };
+  if (F) food = F.createController({ ...sharedOptions, openGrocery, onDateChange: date => { if (wellness && wellness.setSelectedDate) wellness.setSelectedDate(date); } });
+  if (H) habits = H.createController(sharedOptions);
+  if (Dog) dog = Dog.createController({ ...sharedOptions, openGrocery,
+    openReceipt: receiptId => commerce ? commerce.openReceipt(receiptId) : false });
+  if (W) wellness = W.createController({ ...sharedOptions,
+    onDateChange: date => { if (food && food.setSelectedDate) food.setSelectedDate(date); },
+    getHabitsSummary: date => habits ? habits.getHomeSummary(date) : {},
+    getDogSummary: date => dog ? dog.getHomeSummary(date) : {},
+    openFoodLog: (productId, person) => {
+      if (!navigate('food') || !food) return false;
+      food.selectTab('log');
+      if (food.startProductLog) food.startProductLog(productId, person, W ? W.dayKey() : undefined);
+      renderKeepScroll('#food-log-form');
+      return true;
+    }
+  });
   grocery = G.createController({
     store: cloud,
     getLocalShopping: () => personalAvailable() ? (state.data.shoppingList || []) : [],
@@ -329,7 +354,7 @@
     navigate,
     confirm: message => window.confirm(message),
     commerce, draftStore,
-    hasOtherUnpersistedChanges: () => Boolean(food && food.hasUnpersistedChanges && food.hasUnpersistedChanges()),
+    hasOtherUnpersistedChanges: () => [food, habits, dog, wellness].some(controller => controller && controller.hasUnpersistedChanges && controller.hasUnpersistedChanges()),
     openFood: tab => {
       if(navigate('food')) { if(food && food.selectTab) food.selectTab(tab); renderKeepScroll(); }
     }
@@ -372,10 +397,11 @@
       grocery.hasUnsavedDraft(); // Also discard previous-account UI state when viewing another section.
       if(commerce) commerce.hasUnsavedDraft();
       if(food) food.hasUnsavedDraft();
+      for (const controller of [habits, dog, wellness]) if (controller) controller.hasUnsavedDraft();
     }
     if (snapshot.recovery) state.page = 'grocery';
-    const editing = grocery.hasUnsavedDraft() || grocery.isBusy() || (commerce && (commerce.hasUnsavedDraft() || commerce.isBusy())) || (food && (food.hasUnsavedDraft() || food.isBusy()));
-    if (changed || snapshot.recovery || !['grocery','food','wellness','money'].includes(state.page) || !editing) renderKeepScroll();
+    const editing = connectedControllers().some(controller => controller.hasUnsavedDraft() || controller.isBusy());
+    if (changed || snapshot.recovery || !['home','grocery','food','wellness','money','dog','housework','skills','smoking'].includes(state.page) || !editing) renderKeepScroll();
   }
   function renderPersonalGate() {
     const signedIn = cloud && cloud.snapshot().user;
@@ -567,6 +593,7 @@ function renderCircle(){
     const [heading, subtitle] = PAGE_DETAILS[state.page];
     $('#page-heading').textContent = heading;
     $('#page-subtitle').textContent = subtitle;
+    $('#page-banner').hidden = state.page === 'home' && Boolean(wellness);
     $('#sleep-mood-tabs').hidden = !isSleepMood || !personalAvailable();
     content.setAttribute('aria-label', isSleepMood ? 'Sleep and mood view' : state.page === 'home' ? 'Life in Bloom home' : heading);
     document.title = state.page === 'home' ? 'Life in Bloom' : `${heading} · Life in Bloom`;
@@ -584,7 +611,12 @@ function renderCircle(){
     }
     if (state.page === 'grocery') content.innerHTML = (personalState.mode === 'choose' ? renderPersonalGate() : '') + grocery.render();
     else if (state.page === 'money' && commerce) content.innerHTML = commerce.render('money');
-    else if (['food','wellness'].includes(state.page) && food) content.innerHTML = food.render(state.page);
+    else if (['food','wellness'].includes(state.page) && food) {
+      if (state.page === 'wellness' && wellness && food.setSelectedDate) food.setSelectedDate(wellness.getSelectedDate());
+      content.innerHTML = (state.page === 'wellness' && wellness ? wellness.renderWater() : '') + food.render(state.page);
+    }
+    else if (['dog','housework'].includes(state.page) && dog) content.innerHTML = dog.render(state.page);
+    else if (['skills','smoking'].includes(state.page) && habits) content.innerHTML = habits.render(state.page);
     else if (!personalAvailable() && ['sleep-mood', 'ideas'].includes(state.page)) content.innerHTML = renderPersonalGate();
     else if (!isSleepMood) content.innerHTML = (state.page === 'home' && !personalAvailable() ? renderPersonalGate() : '') + pages.render(state.page);
     else if (state.view === 'day') content.innerHTML = renderDay();
@@ -592,10 +624,10 @@ function renderCircle(){
     else if (state.view === 'month') content.innerHTML = renderMonth() + `<div class='panel'><button type='button' class='button' data-action='back-wheel'>Back to moon wheel</button></div>`;
     else content.innerHTML = renderWeek();
     const shared=cloud && cloud.snapshot();
-    if(shared && ['home','grocery','food','wellness','money'].includes(state.page) && (shared.offline || shared.cacheWarning)) {
+    if(shared && ['home','grocery','food','wellness','money','dog','housework','skills','smoking'].includes(state.page) && (shared.offline || shared.cacheWarning)) {
       content.insertAdjacentHTML('afterbegin','<aside class="panel cloud-status" role="status">'+escapeText(shared.offline ? 'Offline — showing your saved device copy. Keep working on drafts; reconnect and save to update the household. Last copy: '+new Date(shared.cachedAt).toLocaleString() : shared.cacheWarning)+'</aside>');
     }
-    if (state.readOnly && state.page !== 'grocery') {
+    if (state.readOnly && state.page === 'sleep-mood') {
       for (const element of content.querySelectorAll('[data-mode], [data-slot], [data-quality], [data-action=\'fill-range\'], [data-action=\'clear-day\'], [data-action=\'choose-activity\'], #notes')) element.disabled = true;
     }
     $('#import-file').disabled = state.readOnly;
@@ -788,6 +820,9 @@ function renderCircle(){
       } catch (error) { showNotice(error.message, true); }
       return;
     }
+    if (wellness && wellness.handleClick(event)) return;
+    if (habits && habits.handleClick(event)) return;
+    if (dog && dog.handleClick(event)) return;
     if (food && food.handleClick(event)) return;
     if (commerce && commerce.handleClick(event)) return;
     if (grocery.handleClick(event)) return;
@@ -863,6 +898,9 @@ function renderCircle(){
     }
   });
   content.addEventListener('input', event => {
+    if (wellness && wellness.handleInput(event)) return;
+    if (habits && habits.handleInput(event)) return;
+    if (dog && dog.handleInput(event)) return;
     if (food && food.handleInput(event)) return;
     if (commerce && commerce.handleInput(event)) return;
     if (grocery.handleInput(event)) return;
@@ -873,6 +911,9 @@ function renderCircle(){
     }
   });
   content.addEventListener('change', event => {
+    if (wellness && wellness.handleChange(event)) return;
+    if (habits && habits.handleChange(event)) return;
+    if (dog && dog.handleChange(event)) return;
     if (food && food.handleChange(event)) return;
     if (commerce && commerce.handleChange(event)) return;
     if (grocery.handleChange(event)) return;
@@ -886,6 +927,9 @@ function renderCircle(){
     if (event.target.id === 'range-end') state.rangeEnd = Number(event.target.value);
   });
   content.addEventListener('submit', event => {
+    if (wellness && wellness.handleSubmit(event)) return;
+    if (habits && habits.handleSubmit(event)) return;
+    if (dog && dog.handleSubmit(event)) return;
     if(food && food.handleSubmit(event)) return;
     if(commerce && commerce.handleSubmit(event)) return;
     if (!grocery.handleSubmit(event)) pages.handleSubmit(event);
@@ -980,10 +1024,7 @@ function renderCircle(){
 
   window.addEventListener('beforeunload', event => {
     if (!state.unsaved && !unsavedJournals.size && !pages.hasUnsavedDraft() && !(draftStore && draftStore.hasFailedWrites()) &&
-        !(grocery.hasUnpersistedChanges && grocery.hasUnpersistedChanges()) &&
-        !(commerce && commerce.hasUnpersistedChanges && commerce.hasUnpersistedChanges()) &&
-        !(food && food.hasUnpersistedChanges && food.hasUnpersistedChanges()) &&
-        !grocery.isBusy() && !(commerce && commerce.isBusy()) && !(food && food.isBusy())) return;
+        !connectedControllers().some(controller => controller.hasUnpersistedChanges && controller.hasUnpersistedChanges()) && !anySaving()) return;
     event.preventDefault();
     event.returnValue = '';
   });
@@ -992,8 +1033,18 @@ function renderCircle(){
   if (loaded.warning) showNotice(loaded.warning, true);
   cloud.init().catch(error => showNotice(error.message || 'Grocery could not connect. Please try again.', true));
   window.addEventListener('focus', () => {
-    if (cloud.snapshot().user && !grocery.isBusy() && !(commerce && commerce.isBusy()) && !(food && food.isBusy())) cloud.init().catch(() => {});
+    if (cloud.snapshot().user && !anySaving()) cloud.init().catch(() => {});
   });
+  // Refresh a daily view after midnight without replacing a form being edited.
+  let calendarDay = W ? W.dayKey() : '';
+  const checkCalendarDay = () => {
+    if (!W) return;
+    const next = W.dayKey();
+    const editingField = document.activeElement && content.contains(document.activeElement) && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+    if (next !== calendarDay && !anySaving() && !editingField) { calendarDay = next; renderKeepScroll(); }
+  };
+  window.addEventListener('focus', checkCalendarDay);
+  if (W && typeof window.setInterval === 'function') window.setInterval(checkCalendarDay, 60000);
   window.addEventListener('online', () => cloud.init().catch(() => {}));
   window.addEventListener('offline', () => cloud.refresh().catch(() => {}));
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

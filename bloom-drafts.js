@@ -8,7 +8,7 @@
     const failures = new Set();
     if (!storage) { try { storage = root.localStorage; } catch (_) {} }
     function key(userId, householdId, area) {
-      if (!/^[A-Za-z0-9_-]{1,100}$/.test(userId || '') || !/^[A-Za-z0-9_-]{1,100}$/.test(householdId || '') || !['grocery','commerce','food'].includes(area)) return null;
+      if (!/^[A-Za-z0-9_-]{1,100}$/.test(userId || '') || !/^[A-Za-z0-9_-]{1,100}$/.test(householdId || '') || !['grocery','commerce','food','habits','dog','wellness'].includes(area)) return null;
       return PREFIX + userId + '.' + householdId + '.' + area;
     }
     function safe(value, depth) {

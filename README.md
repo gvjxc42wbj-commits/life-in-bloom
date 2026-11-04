@@ -4,11 +4,11 @@ A personal web app with a light pink theme and no local build step. It opens on 
 
 ## Finding your way around
 
-The bottom bar has five destinations: **Home · Wellness · Grocery · Dog · Money**. Grocery opens the saved shopping list directly. Wellness is the entry point for nutrition. Dog and Money open the same pages as their hamburger-menu shortcuts.
+The bottom bar has five destinations: **Home · Wellness · Grocery · Dog · Money**. Grocery opens the saved shopping list directly. Wellness opens water and nutrition for Person 1 and Person 2. Dog and Money open the same pages as their hamburger-menu shortcuts.
 
 The hamburger menu contains **Sleep & Mood, Money in Bloom, Food in Bloom, Skills in Bloom, Idea’s in Bloom, Housework, Dog, and Smoking Log**. The title in the app header also returns Home.
 
-This development version has Sleep & Mood tools, appointments, saved Ideas notes, shared Grocery, Food in Bloom recipes and nutrition, and a Money ledger. Dog, Skills, Housework, and Smoking Log remain introductory pages for their future tools.
+This development version includes Sleep & Mood, appointments, saved Ideas, shared Grocery, recipe meal planning and nutrition, Money, shared water counts, Dog care and Housework, and private Skills and Smoking logs. Home brings their saved totals and next actions together with botanical accents and the supplied dog illustration.
 
 ### Grocery and Ideas
 
@@ -17,7 +17,9 @@ This development version has Sleep & Mood tools, appointments, saved Ideas notes
 - **Money in Bloom:** review actual income and expenses, including Grocery receipt expenses. Set Food and Household allocations and monthly bill plans. Fixed bills can repeat each month; variable bills repeat with a blank amount. Edit one month or explicitly apply settings to future unedited, unpaid months. Recording a full bill payment creates its actual expense once and fills that month's bill amount if it was unknown. Saved earlier months remain available for comparison. Income less expenses is a ledger calculation, not a bank balance.
 - **Idea’s in Bloom:** type a title and/or a note, then choose **Save note**. Open saved notes to edit them. Unsaved form text is kept while editing; navigation asks before discarding it. Save notes before closing the app.
 
-Shared household records save online and are retrieved on sign-in or refresh. Sign-in persists in this browser/app until sign-out or session loss. Grocery, Food, and Money forms automatically retain account-scoped drafts on this device. A draft is not a posted receipt or household update: choose the form's Save/Record action to commit it. Failed operations keep drafts and report an error. The earlier device checklist is retained; copying it into a household requires reviewing and confirming the items. Only checklist fields are copied. Ideas and other personal journal entries stay local.
+Shared household records save online and are retrieved on sign-in or refresh. Sign-in persists in this browser/app until sign-out or session loss. Grocery, Food, Money, water, Dog, Skills, and Smoking forms automatically retain account-scoped drafts on this device. A draft is not a posted receipt or household update: choose the form's Save/Record action to commit it. Failed operations keep drafts and report an error. The earlier device checklist is retained; copying it into a household requires reviewing and confirming the items. Only checklist fields are copied. Ideas and other personal journal entries stay local.
+
+See [Daily life guide](docs/daily-life-guide.md) for Skills, Smoking, Dog, Housework, water, reminders, and the three backup types.
 
 See [Food and Grocery guide](docs/food-and-grocery-guide.md) for the shopping, receipt, nutrition, date, and backup workflows.
 
@@ -73,9 +75,9 @@ A day with only some awake activities recorded has no sleep total yet and is exc
 
 ## Saving and backups
 
-Personal journals save in this browser or installed app, on this device. Household Grocery records save separately to Supabase. Keep regular personal backups, particularly before changing devices or clearing browser data. Grocery cloud requests never contain Sleep & Mood, appointments, activities, or Ideas.
+Sleep & Mood, appointments, and Ideas save in this browser or installed app, on this device. Skills and Smoking save online privately for the signed-in user. Household Grocery, Food, Money, water, Dog, and Housework save separately to shared Supabase records. Keep regular personal backups, particularly before changing devices or clearing browser data. Grocery cloud requests never contain Sleep & Mood, appointments, activities, or Ideas.
 
-Grocery **Household → Export household backup** saves the catalog, recurring settings, budgets, inventory, shopping lists, bills, recipes, cooking plans and their grocery references, meal entries, receipts, ledger entries, and attachment metadata. It excludes passwords, session tokens, private measurements, and personal journals. The owner can review **Restore missing records** for the same household. This is additive: existing conflicting records abort the whole restore; they are never overwritten. Receipt history is restored without replaying purchase effects. Image/PDF bytes are not included, and missing uploaded files need to be attached again. Save original photos/PDFs separately.
+Grocery **Household → Export household backup** saves the catalog, recurring settings, budgets, inventory, shopping lists, bills, recipes, cooking plans and their grocery references, meal entries, receipts, ledger entries, shared water and care records, Dog purchase effects, and attachment metadata. It excludes passwords, session tokens, private measurements, personal journals, and private Skills/Smoking records. Skills and Smoking have their own same-account export and additive restore inside those sections. The owner can review **Restore missing records** for the same household. This is additive: existing conflicting records abort the whole restore; they are never overwritten. Receipt history is restored without replaying purchase effects. Image/PDF bytes are not included, and missing uploaded files need to be attached again. Save original photos/PDFs separately.
 
 After Grocery sign-in, personal journals use separate local storage for each account. If earlier entries exist, the user explicitly chooses **These are my earlier entries** or **Start a separate journal**. Earlier original storage remains untouched. Signing out hides the account’s journal. This is local account separation, not encryption, server access control, or online synchronization of personal journals. Someone with browser/device access can still inspect local storage.
 
@@ -121,7 +123,7 @@ On iPhone, open the published address in Safari and use **Add to Home Screen**. 
 - `bloom-data.js`: dates, validation, migration, backups, and editing rules.
 - `bloom-insights.js`: dated monthly history and descriptive sleep/mood comparisons.
 - `bloom-appointments.js`: appointment dialogs, agenda, and planned grid entries.
-- `bloom-pages.js`: Home, the retained device checklist, Ideas, and introductory section pages.
+- `bloom-pages.js`: Home composition, the retained device checklist, Ideas, and fallback section pages.
 - `bloom-personal.js`: explicit local journal ownership and account separation.
 - `bloom-grocery.js`, `grocery.css`: shared Grocery forms, navigation, and status.
 - `bloom-grocery-store.js`: Supabase authentication and scoped, version-checked Grocery requests.
@@ -129,6 +131,9 @@ On iPhone, open the published address in Safari and use **Add to Home Screen**. 
 - `bloom-food-model.js`: unit-aware nutrient estimates, stock-aware recurring plans, date reminders, and ledger calculations.
 - `bloom-commerce.js`, `commerce.css`: catalog, recurring review, receipts, and Money screens.
 - `bloom-food.js`, `food.css`: saved recipes, dated meal plans, use-soon suggestions, nutrition logs, and calendar-file downloads.
+- `bloom-habits-model.js`, `bloom-habits.js`, `habits.css`: private practice and smoking history, review estimates, actual smoking purchases, and personal backup restore.
+- `bloom-dog-model.js`, `bloom-dog.js`, `dog.css`: shared care scheduling, Housework, dog stock, actual purchases, and calendar reminders.
+- `bloom-wellness.js`, `wellness.css`: shared hydration and the connected botanical Home dashboard.
 - `bloom-config.js`: public project connection settings.
 - `db/grocery-foundation.sql`: database schema, policies, and household operations.
 - `db/grocery-foundation-tests.sql`: rollback-only database access and behavior checks.
@@ -140,6 +145,9 @@ On iPhone, open the published address in Safari and use **Add to Home Screen**. 
 - `db/checkout-monthly-bills-tests.sql`: rollback-only checkout, retry, recurrence, payment, history, and access checks.
 - `db/meal-planning.sql`: recipe shopping ingredients, cooking-plan snapshots, and atomic grocery reconciliation; apply after checkout-monthly-bills.sql.
 - `db/meal-planning-tests.sql`: rollback-only meal scaling, shared stock, generated groceries, retries, changes, and household access checks.
+- `db/life-modules.sql`: typed shared/private life records, checked saves, dog receipt stock effects, and scoped backups; apply after meal-planning.sql.
+- `db/life-modules-tests.sql`: rollback-only life-record security, retry, history, dog checkout, reversal, and backup checks.
+- `db/life-context-guard.sql`: follow-up guard for databases that applied the initial life migration; binds writes to the expected signed-in account and household before any mutation. The base life migration includes the same guard for fresh installs.
 - `styles.css`: responsive layout, focus states, and dialogs.
 - `service-worker.js`: offline assets.
 - `tests/*.test.cjs`: regression checks for saved data, recurrence, monthly comparisons, grocery items, and Ideas notes.

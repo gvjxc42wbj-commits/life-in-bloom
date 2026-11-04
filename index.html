@@ -15,6 +15,9 @@
   <link rel="stylesheet" href="./grocery.css" />
   <link rel="stylesheet" href="./commerce.css" />
   <link rel="stylesheet" href="./food.css" />
+  <link rel="stylesheet" href="./habits.css" />
+  <link rel="stylesheet" href="./dog.css" />
+  <link rel="stylesheet" href="./wellness.css" />
   <title>Life in Bloom</title>
 </head>
 <body>
@@ -47,13 +50,13 @@
     </main>
 
     <footer class="app-footer">
-      <div><span class="footer-moon">✦</span> Personal journal on this device · Household Grocery saved online.</div>
+      <div><span class="footer-moon">✦</span> Your daily life, saved with care.</div>
       <div class="backup-actions">
-        <button id="export-btn" class="footer-button" type="button">↓ Export personal backup</button>
+        <button id="export-btn" class="footer-button" type="button">↓ Export Sleep &amp; Ideas backup</button>
         <label for="import-file" class="footer-button import-label">↑ Import personal backup</label>
         <input id="import-file" type="file" accept="application/json,.json" hidden />
       </div>
-      <p>Sleep &amp; Mood, appointments, and Ideas stay in this browser. Household Food, Grocery, and Money save online. This device remembers your sign-in and keeps household drafts and an offline copy. Use Sign out to switch accounts on a shared device. Device copies are not encrypted.</p>
+      <p>Sleep &amp; Mood, appointments, and Ideas stay in this browser. Food, Grocery, Money, water, Dog, and Housework are shared with your household online. Skills and Smoking are private to your signed-in account. This device remembers your sign-in and keeps drafts and an offline copy. Use Sign out to switch accounts on a shared device. Device copies are not encrypted.</p>
     </footer>
   </div>
   <nav class="bottom-nav" id="bottom-nav" aria-label="Main navigation">
@@ -129,7 +132,7 @@
       </nav>
       <div class="menu-tools" aria-label="App tools">
         <button class="menu-tool" id="menu-help-btn" type="button"><span aria-hidden="true">?</span> How to use Life in Bloom</button>
-        <button class="menu-tool" id="menu-export-btn" type="button"><span aria-hidden="true">↓</span> Export personal backup</button>
+        <button class="menu-tool" id="menu-export-btn" type="button"><span aria-hidden="true">↓</span> Export Sleep &amp; Ideas backup</button>
       </div>
       <p class="menu-note">Personal journal backups stay separate from shared household Grocery records.</p>
     </div>
@@ -147,10 +150,11 @@
       <p><strong>Hourly feelings:</strong> Each awake hour can have a feeling and an optional note. Suggested words are shortcuts; you can write your own. Activity labels show what you recorded doing in that hour. Changing a time block keeps any existing mood observation so you can review it.</p>
       <p><strong>Dates:</strong> Each tracking day runs from 8 AM to 8 AM the next morning. The after-midnight hours are labeled with their actual date. Weeks begin on Monday.</p>
       <p><strong>Sleep totals:</strong> Hours come from the time blocks you mark yourself. Partial records can be incomplete. A day with some activities recorded has an unknown sleep total until sleep is added or every block is explicitly marked Awake.</p>
-      <p><strong>Grocery and Money:</strong> Keep a product catalog, monthly shopping lists, Food and Household allocations, and food dates. Record a reviewed receipt once to update inventory and the Money ledger together. Checking an item on a list is a planning action; use Record shopping trip for actual spending. Bills are planned until you record payment.</p>
+      <p><strong>Grocery and Money:</strong> Keep a product catalog, monthly shopping lists, Food and Household allocations, and food dates. Record a reviewed receipt once to update inventory and the Money ledger together. Checking an item opens its purchase details. Confirm the amount paid to update the shopping trip, inventory, budget history, and ledger together. Bills are planned until you record payment.</p>
       <p><strong>Food and Nutrition:</strong> Save recipes using catalog ingredients and their label nutrients. Log planned or eaten portions separately for pink Person 1 and purple Person 2. Unknown nutrients remain incomplete. Use soon highlights your recorded food dates and matching saved recipes; a date or suggestion does not establish food safety. Food logging does not automatically change stock.</p>
       <p><strong>Staying signed in and offline drafts:</strong> The app remembers this device until you sign out, clear its storage, or the account session ends. Household forms save drafts locally. Reconnect and save to post changes; offline drafts do not create spending. Household backups are separate from the personal-journal backup below.</p>
       <p><strong>Idea’s in Bloom:</strong> Type a note and choose Save note. Open a saved note to edit it, or remove it when you no longer need it.</p>
+      <p><strong>Dog, Skills, and Smoking:</strong> Dog care and Housework use the same completion records, including who helped. Calendar downloads can add your chosen reminders to your calendar. Skills review scores are adjustable planning estimates; your observed ability stays separate. Smoking costs and savings are estimates until you record an actual purchase. Skills and Smoking have a separate private backup in those sections.</p>
       <p><strong>Personal backups:</strong> Export includes this device’s personal sleep, activities, moods, appointments, earlier device grocery list, and Ideas. Import replaces these personal entries only. Shared household Grocery records stay online and are not replaced by a personal backup. Earlier Sleep in Bloom backups are supported.</p>
       <button type="button" class="button primary" id="got-it-btn">Got it</button>
     </div>
@@ -168,6 +172,11 @@
   <script src="./bloom-commerce.js" defer></script>
   <script src="./bloom-food.js" defer></script>
   <script src="./bloom-grocery.js" defer></script>
+  <script src="./bloom-habits-model.js" defer></script>
+  <script src="./bloom-habits.js" defer></script>
+  <script src="./bloom-dog-model.js" defer></script>
+  <script src="./bloom-dog.js" defer></script>
+  <script src="./bloom-wellness.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 </html>

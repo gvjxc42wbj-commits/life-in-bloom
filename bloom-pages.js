@@ -158,6 +158,10 @@
       html += '<button type="button" class="home-card" data-page-action="navigate" data-page-target="grocery"><span class="page-kicker">Grocery</span><strong class="home-card-value">' + escapeText(groceryTitle) + '</strong><span>' + escapeText(groceryDescription) + '</span><small>Open Grocery ›</small></button>';
       if (personalAvailable) html += '<button type="button" class="home-card" data-page-action="navigate" data-page-target="ideas"><span class="page-kicker">Idea’s in Bloom</span><strong class="home-card-value">' + noteCount + ' saved note' + (noteCount === 1 ? '' : 's') + '</strong><span>A place to keep your ideas</span><small>Open your notes ›</small></button>';
       html += '</div>';
+      if (options.renderDashboard) {
+        const dashboard = options.renderDashboard({ personalAvailable, grocerySummary, today, sleepText, moodCount, noteCount, now });
+        if (dashboard) html = '<section class="bloom-page">' + dashboard;
+      }
       if (personalAvailable) {
       html += '<section class="panel"><div class="panel-title-row"><h2>Coming up</h2>' + linkButton('sleep-mood', 'Sleep & Mood') + '</div><p class="caption">Up to three appointments in the next seven days. Tap one to open its Daily Log.</p>';
       if (!upcoming.length) {
