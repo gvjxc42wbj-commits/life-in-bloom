@@ -1,7 +1,7 @@
 {
-  "name": "Sleep in Bloom — Sleep Tracker",
-  "short_name": "Sleep Bloom",
-  "description": "A gentle monthly and daily sleep tracker.",
+  "name": "Life in Bloom — Sleep & Mood",
+  "short_name": "Life in Bloom",
+  "description": "Daily sleep and activities, hourly moods, and your monthly moon wheel.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

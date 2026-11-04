@@ -1,88 +1,292 @@
-/* Sleep in Bloom — no accounts, cloud services or analytics. */
+/* Sleep & Mood in Bloom — device-only records, no accounts or analytics. */
 'use strict';
-const STORAGE_KEY = 'sleep-in-bloom.records.v1';
-const STATUS = ['sleep', 'rest', 'awake'];
-const COLORS = [
-  {label:'<4 hrs', color:'#d8e8f5'},
-  {label:'4–5 hrs', color:'#c0d4ed'},
-  {label:'5–6 hrs', color:'#cbb9e8'},
-  {label:'6–7 hrs', color:'#e4bfe9'},
-  {label:'7–8 hrs', color:'#dda1d3'},
-  {label:'8–9 hrs', color:'#a98ad1'},
-  {label:'9+ hrs', color:'#745796'},
-];
-const $ = selector => document.querySelector(selector);
-const content = $('#content');
-const noticeEl = $('#notice');
-const today = new Date();
-const state = {
-  year: today.getFullYear(),
-  month: today.getMonth(),
-  date: `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`,
-  view: 'month',
-  mode: 'sleep',
-  records: loadRecords()
-};
-
-function escapeText(str){return String(str).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function dateKey(year,month,day){return `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;}
-function parseDate(key){const [y,m,d]=key.split('-').map(Number);return new Date(y,m-1,d);}
-function dayCount(year,month){return new Date(year,month+1,0).getDate();}
-function dateLong(key){return parseDate(key).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});}
-function dateMedium(key){return parseDate(key).toLocaleDateString('en-US',{month:'short',day:'numeric'});}
-function shiftDate(key,n){const date=parseDate(key);date.setDate(date.getDate()+n);return dateKey(date.getFullYear(),date.getMonth(),date.getDate());}
-function monthLabel(){return new Date(state.year,state.month,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});}
-function recordFor(key){return state.records[key]||{slots:{},quality:'',notes:''};}
-function slotValues(key){return Object.values(recordFor(key).slots||{});}
-function hasSlots(key){return Object.keys(recordFor(key).slots||{}).length>0;}
-function sleepHours(key){return slotValues(key).filter(s=>s==='sleep').length/2;}
-function restHours(key){return slotValues(key).filter(s=>s==='rest').length/2;}
-function awakeHours(key){return slotValues(key).filter(s=>s==='awake').length/2;}
-function sleepEpisodes(key){let episodes=0, longest=0, run=0;const slots=recordFor(key).slots||{};for(let i=0;i<48;i++){if(slots[i]==='sleep'){if(!run)episodes++;run++;longest=Math.max(longest,run);}else run=0;}return {episodes,longest:longest/2};}
-function colorFor(hours){if(hours<4)return COLORS[0].color;if(hours<5)return COLORS[1].color;if(hours<6)return COLORS[2].color;if(hours<7)return COLORS[3].color;if(hours<8)return COLORS[4].color;if(hours<9)return COLORS[5].color;return COLORS[6].color;}
-function monthKeys(){return Array.from({length:dayCount(state.year,state.month)},(_,i)=>dateKey(state.year,state.month,i+1));}
-function formatHour(value){return Number.isInteger(value)?String(value):value.toFixed(1);}
-function validateRecords(candidate){
-  const cleaned={};
-  if(!candidate||typeof candidate!=='object'||Array.isArray(candidate))return cleaned;
-  let days=0;
-  for(const [key,r] of Object.entries(candidate)){
-    if(days>=4000)break;
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(key)||!r||typeof r!=='object')continue;
-    const dt=parseDate(key);if(Number.isNaN(dt.getTime())||dateKey(dt.getFullYear(),dt.getMonth(),dt.getDate())!==key)continue;
-    const slots={};
-    for(const [raw,val] of Object.entries(r.slots||{})){
-      const n=Number(raw);
-      if(Number.isInteger(n)&&n>=0&&n<48&&STATUS.includes(val))slots[n]=val;
-    }
-    cleaned[key]={slots,quality:['Poor','Okay','Restful'].includes(r.quality)?r.quality:'',notes:typeof r.notes==='string'?r.notes.slice(0,3000):''};
-    days++;
+(() => {
+  const D = window.BloomData;
+  const $ = selector => document.querySelector(selector);
+  const content = $('#content');
+  const noticeEl = $('#notice');
+  if (!D) {
+    noticeEl.hidden = false;
+    noticeEl.textContent = 'The app could not finish loading. Please refresh this page.';
+    return;
   }
-  return cleaned;
-}
-function loadRecords(){try{return validateRecords(JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}'));}catch(e){return {};}}
-function saveRecords(){
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state.records));noticeEl.hidden=true;}
-  catch(e){showNotice('Your device could not save the entry. Please export a backup before closing the app.',true);}
-}
-function showNotice(text,error=false){noticeEl.textContent=text;noticeEl.hidden=false;noticeEl.classList.toggle('error',error);}
-function changeView(view){state.view=view;render();window.scrollTo({top:0,behavior:'smooth'});}
-function openDate(key){state.date=key;const dt=parseDate(key);state.year=dt.getFullYear();state.month=dt.getMonth();changeView('day');}
-function renderKeepScroll(){const y=window.scrollY;render();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'instant'}));}
-function statsForMonth(){const keys=monthKeys().filter(hasSlots);const hours=keys.reduce((sum,key)=>sum+sleepHours(key),0);return {keys, total:hours,average:keys.length?hours/keys.length:null};}
-function headerForMonth(){return `<div class="month-nav"><div class="nav-group"><button class="nav-btn" data-action="prev-month" aria-label="Previous month">‹</button><button class="nav-btn" data-action="next-month" aria-label="Next month">›</button></div><h2>${monthLabel()}</h2><button type="button" class="today-btn" data-action="this-month">This month</button></div>`;}
+
+  const COLORS = [
+    { label: '<4 hrs', color: '#d8e8f5' },
+    { label: '4–5 hrs', color: '#c0d4ed' },
+    { label: '5–6 hrs', color: '#cbb9e8' },
+    { label: '6–7 hrs', color: '#e4bfe9' },
+    { label: '7–8 hrs', color: '#dda1d3' },
+    { label: '8–9 hrs', color: '#a98ad1' },
+    { label: '9+ hrs', color: '#745796' }
+  ];
+  const STATUS_LABELS = { sleep: 'Asleep', rest: 'Unsure', awake: 'Awake', empty: 'Not recorded', erase: 'Erase' };
+  const dateKey = D.dateKey;
+  const parseDate = D.parseDate;
+  const shiftDate = D.shiftDate;
+  const clockLabel = D.clockLabel;
+  let storage;
+  let loaded;
+  try {
+    storage = window.localStorage;
+    loaded = D.loadData(storage);
+  } catch (_) {
+    loaded = {
+      data: D.normalizeData({ records: {} }),
+      readOnly: true,
+      warning: 'This browser could not open your saved entries. Your stored copy has not been changed. Please ask for help before adding new entries.'
+    };
+  }
+  const initialDate = trackingToday();
+  const initialParsed = parseDate(initialDate);
+  const state = {
+    data: loaded.data,
+    readOnly: loaded.readOnly,
+    unsaved: Boolean(loaded.warning) && !loaded.readOnly,
+    year: initialParsed.getFullYear(),
+    month: initialParsed.getMonth(),
+    date: initialDate,
+    week: D.weekStart(initialDate),
+    view: 'week',
+    mode: 'sleep',
+    activityId: '',
+    rangeStart: 0,
+    rangeEnd: 1,
+    moodTarget: null
+  };
+
+  function escapeText(value) {
+    return String(value).replace(/[&<>\"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' })[character]);
+  }
+  function trackingToday() {
+    const now = new Date();
+    if (now.getHours() < 8) now.setDate(now.getDate() - 1);
+    return dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+  function dayCount(year, month) { return new Date(year, month + 1, 0).getDate(); }
+  function dateLong(key) { return parseDate(key).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }); }
+  function dateMedium(key) { return parseDate(key).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+  function monthLabel() { return new Date(state.year, state.month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }); }
+  function recordFor(key) { return state.data.records[key] || D.blankRecord(); }
+  function activityFor(id) { return state.data.activities.find(activity => activity.id === id); }
+  function slotValues(key) { return Object.values(recordFor(key).slots); }
+  function hasSleepTotal(key) { return D.hasSleepTotal(recordFor(key)); }
+  function sleepHours(key) { return slotValues(key).filter(status => status === 'sleep').length / 2; }
+  function restHours(key) { return slotValues(key).filter(status => status === 'rest').length / 2; }
+  function awakeHours(key) { return slotValues(key).filter(status => status === 'awake').length / 2; }
+  function sleepEpisodes(key) {
+    let episodes = 0;
+    let longest = 0;
+    let run = 0;
+    const slots = recordFor(key).slots;
+    for (let index = 0; index < 48; index++) {
+      if (slots[index] === 'sleep') {
+        if (!run) episodes++;
+        run++;
+        longest = Math.max(longest, run);
+      } else run = 0;
+    }
+    return { episodes, longest: longest / 2 };
+  }
+  function colorFor(hours) {
+    if (hours < 4) return COLORS[0].color;
+    if (hours < 5) return COLORS[1].color;
+    if (hours < 6) return COLORS[2].color;
+    if (hours < 7) return COLORS[3].color;
+    if (hours < 8) return COLORS[4].color;
+    if (hours < 9) return COLORS[5].color;
+    return COLORS[6].color;
+  }
+  function moodColor(feeling) {
+    return D.MOOD_OPTIONS.find(option => option.label.toLocaleLowerCase() === feeling.toLocaleLowerCase())?.color || '#e9e2f5';
+  }
+  function monthKeys() { return Array.from({ length: dayCount(state.year, state.month) }, (_, index) => dateKey(state.year, state.month, index + 1)); }
+  function formatHour(value) { return Number.isInteger(value) ? String(value) : value.toFixed(1); }
+  function statsForMonth() {
+    const keys = monthKeys().filter(hasSleepTotal);
+    const total = keys.reduce((sum, key) => sum + sleepHours(key), 0);
+    return { keys, total, average: keys.length ? total / keys.length : null };
+  }
+  function showNotice(message, error = false) {
+    noticeEl.textContent = message;
+    noticeEl.hidden = false;
+    noticeEl.classList.toggle('error', error);
+  }
+  function updateSaveState() {
+    for (const element of document.querySelectorAll('.save-state')) {
+      element.textContent = state.readOnly ? 'Saved records are protected from changes' : state.unsaved ? 'Not saved — export a backup before closing' : 'Saved on this device';
+    }
+  }
+  function canEdit() {
+    if (!state.readOnly) return true;
+    showNotice(loaded.warning || 'Your stored copy has not been changed. Please ask for help before adding entries.', true);
+    return false;
+  }
+  function saveRecords() {
+    if (!canEdit()) return false;
+    try {
+      D.saveData(storage, state.data);
+      state.unsaved = false;
+      noticeEl.hidden = true;
+      updateSaveState();
+      return true;
+    } catch (_) {
+      state.unsaved = true;
+      updateSaveState();
+      showNotice('This device could not save your latest changes. Export a backup before closing this page.', true);
+      return false;
+    }
+  }
+  function changeView(view) {
+    state.view = view;
+    render();
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
+  function openDate(key) {
+    state.date = key;
+    const date = parseDate(key);
+    state.year = date.getFullYear();
+    state.month = date.getMonth();
+    state.week = D.weekStart(key);
+    changeView('day');
+  }
+  function renderKeepScroll(focusSelector) {
+    const top = window.scrollY;
+    const weekLeft = $('.week-scroll')?.scrollLeft || 0;
+    render();
+    if ($('.week-scroll')) $('.week-scroll').scrollLeft = weekLeft;
+    requestAnimationFrame(() => {
+      window.scrollTo({ top, behavior: 'auto' });
+      if (focusSelector) content.querySelector(focusSelector)?.focus({ preventScroll: true });
+    });
+  }
+  function headerForMonth() {
+    return `<div class='month-nav'><div class='nav-group'><button type='button' class='nav-btn' data-action='prev-month' aria-label='Previous month'>‹</button><button type='button' class='nav-btn' data-action='next-month' aria-label='Next month'>›</button></div><h2>${monthLabel()}</h2><button type='button' class='today-btn' data-action='this-month'>This month</button></div>`;
+  }
+  function switchMonth(delta) {
+    const date = new Date(state.year, state.month + delta, 1);
+    state.year = date.getFullYear();
+    state.month = date.getMonth();
+    render();
+  }
+  function activityChip(activity) {
+    return `<span class='activity-chip' style='--activity-color:${activity.color}'><span class='activity-icon' aria-hidden='true'>${escapeText(activity.icon)}</span>${escapeText(activity.name)}</span>`;
+  }
+  function hourLabel(hour) {
+    return `${clockLabel(hour * 2).replace(':00', '')}–${clockLabel(hour * 2 + 2).replace(':00', '')}${hour >= 16 ? ' (next day)' : hour === 15 ? ' (ends next day)' : ''}`;
+  }
+  function fullHourLabel(key, hour) {
+    const actualKey = hour >= 16 ? shiftDate(key, 1) : key;
+    const endKey = hour >= 15 ? shiftDate(key, 1) : key;
+    return `${dateLong(actualKey)} · ${clockLabel(hour * 2)}–${actualKey !== endKey ? dateMedium(endKey) + ' ' : ''}${clockLabel(hour * 2 + 2)}`;
+  }
+  function hourStatus(record, hour) {
+    const a = record.slots[hour * 2] || 'empty';
+    const b = record.slots[hour * 2 + 1] || 'empty';
+    if (a === b) return STATUS_LABELS[a];
+    return `30m ${STATUS_LABELS[a].toLowerCase()} · 30m ${STATUS_LABELS[b].toLowerCase()}`;
+  }
+  function hourActivities(record, hour) { return D.awakeActivities(record, hour, state.data.activities); }
+
+  function renderWeek() {
+    const keys = Array.from({ length: 7 }, (_, index) => shiftDate(state.week, index));
+    const end = keys[6];
+    const firstYear = parseDate(state.week).getFullYear();
+    const lastYear = parseDate(end).getFullYear();
+    const label = `${dateMedium(state.week)}${firstYear !== lastYear ? ', ' + firstYear : ''} – ${dateMedium(end)}, ${lastYear}`;
+    let html = `<div class='month-nav week-nav'><div class='nav-group'><button type='button' class='nav-btn' data-action='prev-week' aria-label='Previous week'>‹</button><button type='button' class='nav-btn' data-action='next-week' aria-label='Next week'>›</button></div><div class='week-heading'><h2>Your week in Bloom</h2><p class='week-dates'>${label}</p></div><button type='button' class='today-btn' data-action='this-week'>This week</button></div>`;
+    html += `<section class='panel'><div class='panel-title-row'><h2>Open a daily log</h2><span class='pill'>8 AM → 8 AM</span></div><div class='week-day-links'>`;
+    for (const key of keys) {
+      const date = parseDate(key);
+      html += `<button type='button' class='week-day-link ${key === trackingToday() ? 'today' : ''}' data-open-date='${key}' aria-label='Open daily log for ${dateLong(key)}'><span>${date.toLocaleDateString('en-US', { weekday: 'short' })}</span><strong>${date.getDate()}</strong></button>`;
+    }
+    html += `</div><p class='caption'>Record your sleep and activities in the daily log. Add a mood to each hour you mark awake.</p></section>`;
+    html += `<section class='panel'><div class='panel-title-row'><h2>Your weekly mood grid</h2><span class='pill'>One hour per row</span></div><p class='week-grid-caption' id='week-grid-help'>Tap an awake hour to add or edit how you felt. Scroll sideways to see all seven days. After midnight, times belong to the following calendar day.</p><div class='week-scroll' tabindex='0' role='region' aria-label='Scrollable weekly mood grid' aria-describedby='week-grid-help'><table class='week-grid'><caption class='sr-only'>Mood and activities for ${label}. Each column is an 8 AM to 8 AM tracking day.</caption><thead><tr><th scope='col' class='week-time-col'>Time</th>`;
+    for (const key of keys) {
+      const date = parseDate(key);
+      html += `<th scope='col'><span>${date.toLocaleDateString('en-US', { weekday: 'short' })}</span><small>${dateMedium(key)}</small></th>`;
+    }
+    html += '</tr></thead><tbody>';
+    for (let hour = 0; hour < 24; hour++) {
+      html += `<tr><th scope='row' class='week-time-col'><span>${clockLabel(hour * 2).replace(':00', '')}</span>${hour >= 16 ? '<small>next day</small>' : ''}</th>`;
+      for (const key of keys) {
+        const record = recordFor(key);
+        const mood = record.moods[hour];
+        const awake = D.hasAwake(record, hour);
+        const activities = hourActivities(record, hour);
+        const status = hourStatus(record, hour);
+        const context = activities.map(activity => activity.name).join(', ');
+        const labelText = `${fullHourLabel(key, hour)}. ${status}.${context ? ' Activities: ' + context + '.' : ''}${mood ? ' Mood: ' + mood.feeling + '. Edit entry.' : awake ? ' Add mood.' : ' Open hour details.'}`;
+        html += `<td><button type='button' class='week-cell ${mood ? 'has-mood' : ''} ${awake ? 'is-awake' : ''} ${mood && !awake ? 'has-conflict' : ''}' data-mood-hour='${hour}' data-mood-date='${key}' style='--mood-color:${mood ? moodColor(mood.feeling) : '#f9f6fc'}' aria-label='${escapeText(labelText)}'><span class='week-feeling'>${mood ? escapeText(mood.feeling) : awake ? '+ Add mood' : escapeText(status)}</span>`;
+        if (mood && !awake) html += `<span class='week-status'>Awake time changed</span>`;
+        else if (awake && !activities.length) html += `<span class='week-status'>Awake · no activity</span>`;
+        for (const activity of activities) html += `<span class='week-activity' style='--activity-color:${activity.color}'><span aria-hidden='true'>${escapeText(activity.icon)}</span> ${escapeText(activity.name)}</span>`;
+        html += '</button></td>';
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table></div><p class=\'caption\'>Mood is recorded only when you enter it. A blank mood is never treated as a feeling.</p></section>';
+    return html;
+  }
+
+  function rangeOptions(start, end, selected) {
+    let html = '';
+    for (let index = start; index <= end; index++) {
+      html += `<option value='${index}' ${index === selected ? 'selected' : ''}>${clockLabel(index)}${index >= 32 ? ' (next day)' : ''}</option>`;
+    }
+    return html;
+  }
+  function renderHourlyMoods(record) {
+    const hours = Array.from({ length: 24 }, (_, hour) => hour).filter(hour => D.hasAwake(record, hour) || record.moods[hour]);
+    let html = `<section class='panel' id='hourly-moods'><div class='panel-title-row'><h2>How am I feeling?</h2><span class='pill'>Each awake hour</span></div><p class='caption'>Add your feeling alongside what you were doing. You can update any entry later.</p>`;
+    if (!hours.length) return html + `<div class='hourly-empty'>Choose <strong>Awake</strong>, pick an activity, and mark your time above. Your awake hours will appear here.</div></section>`;
+    html += `<div class='hourly-list'>`;
+    for (const hour of hours) {
+      const mood = record.moods[hour];
+      const awake = D.hasAwake(record, hour);
+      const activities = hourActivities(record, hour);
+      html += `<button type='button' class='hourly-card ${mood ? 'has-mood' : ''}' data-mood-hour='${hour}' data-mood-date='${state.date}' style='--mood-color:${mood ? moodColor(mood.feeling) : '#f9f6fc'}' aria-label='${escapeText(fullHourLabel(state.date, hour) + (mood ? '. Mood: ' + mood.feeling + '. Edit mood.' : '. Add mood.'))}'><span class='hourly-time'>${hourLabel(hour)}</span><span class='hourly-body'><span class='hourly-feeling'>${mood ? escapeText(mood.feeling) : 'How did you feel?'}</span><span class='hourly-activities'>${activities.length ? activities.map(activityChip).join('') : awake ? 'Awake · activity not added' : 'Saved mood · awake time changed'}</span></span><span class='hourly-action'>${mood ? 'Edit' : '+ Add'}</span></button>`;
+    }
+    return html + '</div></section>';
+  }
+  function renderDay() {
+    const record = recordFor(state.date);
+    const selectedActivity = activityFor(state.activityId);
+    let html = `<section class='panel'><div class='detail-head'><div><span class='pill'>MY DAILY LOG</span><h2>${dateLong(state.date)}</h2><p class='sub'>8 AM ${dateMedium(state.date)} → 8 AM ${dateMedium(shiftDate(state.date, 1))}</p></div><div class='detail-actions'><button type='button' class='mini-btn' data-action='back-week'>‹ Week</button></div></div><div class='detail-stats'><div class='detail-stat'><small>Asleep</small><strong>${formatHour(sleepHours(state.date))} hrs</strong></div><div class='detail-stat'><small>Unsure</small><strong>${formatHour(restHours(state.date))} hrs</strong></div><div class='detail-stat'><small>Awake</small><strong>${formatHour(awakeHours(state.date))} hrs</strong></div></div><div class='panel-title-row tracking-mode-heading'><h3>Choose your tracking mode</h3><span class='muted tiny'>Then tap the time squares</span></div><div class='status-picker' role='group' aria-label='Sleep timeline mark type'><button type='button' data-mode='sleep' class='status-btn sleep ${state.mode === 'sleep' ? 'selected' : ''}' aria-pressed='${state.mode === 'sleep'}'>☾ Asleep</button><button type='button' data-mode='rest' class='status-btn rest ${state.mode === 'rest' ? 'selected' : ''}' aria-pressed='${state.mode === 'rest'}'>◇ Unsure</button><button type='button' data-mode='awake' class='status-btn awake ${state.mode === 'awake' ? 'selected' : ''}' aria-pressed='${state.mode === 'awake'}' aria-haspopup='dialog'>☀ Awake ▾</button><button type='button' data-mode='erase' class='status-btn erase ${state.mode === 'erase' ? 'selected' : ''}' aria-pressed='${state.mode === 'erase'}'>⌫ Erase</button></div>`;
+    if (state.mode === 'awake') html += `<div class='activity-selection'><span>${selectedActivity ? activityChip(selectedActivity) : 'Awake without an activity'}</span><button type='button' class='mini-btn' data-action='choose-activity'>Change activity</button></div>`;
+    html += `<p class='timeline-guide'>Each square is <strong>30 minutes</strong>. Tap a square to apply your choice. Use Erase to clear a square. Unmarked time is unknown.</p>`;
+    for (let group = 0; group < 8; group++) {
+      const first = group * 6;
+      const last = first + 6;
+      html += `<section class='time-group daily-time-group'><div class='time-group-label'>${clockLabel(first)} — ${clockLabel(last)}${first >= 32 ? ' (next day)' : last >= 32 ? ' (into next day)' : ''}</div><div class='timeline-hours'>`;
+      for (let hour = 0; hour < 3; hour++) html += `<span>${clockLabel(first + hour * 2).replace(':00', '')}${first + hour * 2 >= 32 ? ' +1' : ''}</span>`;
+      html += `</div><div class='time-slots'>`;
+      for (let index = first; index < last; index++) {
+        const kind = record.slots[index] || 'empty';
+        const activity = kind === 'awake' ? activityFor(record.activities[index]) : null;
+        const label = `${clockLabel(index)}–${clockLabel(index + 1)}${index >= 32 ? ' next day' : ''}: ${STATUS_LABELS[kind]}${activity ? ', ' + activity.name : ''}`;
+        html += `<button type='button' data-slot='${index}' class='time-block ${kind} ${activity ? 'has-activity' : ''}' ${activity ? `style='--activity-color:${activity.color}'` : ''} aria-label='${escapeText(label)}' aria-pressed='${kind !== 'empty'}' title='${escapeText(label)}'>${activity ? `<span class='slot-activity-icon' aria-hidden='true'>${escapeText(activity.icon)}</span>` : `<span class='halfmark' aria-hidden='true'></span>`}</button>`;
+      }
+      html += '</div></section>';
+    }
+    html += `<div class='status-key'><span><i class='key-dot' style='background:#9b83cd'></i> Asleep</span><span><i class='key-dot' style='background:#e4b2d3'></i> Unsure</span><span><i class='key-dot' style='background:#b9d5e8'></i> Awake</span><span><i class='key-dot' style='background:#f9f7fa;border:1px solid #dfd5eb'></i> Unknown</span></div></section><section class='panel'><div class='panel-title-row'><h2>Fill a time range</h2><span class='pill'>Faster logging</span></div><div class='form-row'><div class='form-field'><label for='range-start'>From</label><select id='range-start'>${rangeOptions(0, 47, state.rangeStart)}</select></div><div class='form-field'><label for='range-end'>Until</label><select id='range-end'>${rangeOptions(1, 48, state.rangeEnd)}</select></div></div><div class='form-actions'><button type='button' class='button primary' data-action='fill-range'>Apply ${STATUS_LABELS[state.mode]}${state.mode === 'awake' && selectedActivity ? ' · ' + escapeText(selectedActivity.name) : ''}</button></div><p class='caption'>Choose times within this 8 AM–8 AM day. Your selected mode applies to the whole range.</p></section>`;
+    html += renderHourlyMoods(record);
+    html += `<section class='panel'><h2>How was your sleep?</h2><p class='caption'>Your own rating of your sleep, separate from your hourly mood.</p><div class='quality-row'>${['Poor', 'Okay', 'Restful'].map(quality => `<button type='button' class='quality ${record.quality === quality ? 'active' : ''}' data-quality='${quality}' aria-pressed='${record.quality === quality}'>${quality}</button>`).join('')}</div><div class='form-field day-notes-field'><label for='notes'>Daily notes</label><textarea id='notes' maxlength='3000' placeholder='What would I like to remember about today?'>${escapeText(record.notes)}</textarea></div><div class='form-actions day-save-actions'><button type='button' class='button' data-action='clear-day'>Clear this day's log</button><span class='tiny muted save-state'></span></div></section><div class='panel day-footer-actions'><button type='button' class='button' data-action='prev-day'>← Previous</button><button type='button' class='button primary' data-action='today'>Today</button><button type='button' class='button' data-action='next-day'>Next →</button></div>`;
+    return html;
+  }
+
 function renderMonth(){
   const metrics=statsForMonth();
   let html=`${headerForMonth()}<div class="stats">
-    <div class="stat"><div class="stat-label">Days with sleep logged</div><div class="stat-value">${metrics.keys.length}<span style="font-size:14px;color:#a09ab2">/${dayCount(state.year,state.month)}</span></div><div class="stat-foot">No entries are assumed</div></div>
-    <div class="stat"><div class="stat-label">Average logged sleep</div><div class="stat-value">${metrics.average===null?'—':formatHour(Math.round(metrics.average*10)/10)}<span style="font-size:13px"> ${metrics.average===null?'':'hrs'}</span></div><div class="stat-foot">Only days with entries</div></div>
+    <div class="stat"><div class="stat-label">Days with sleep totals</div><div class="stat-value">${metrics.keys.length}<span style="font-size:14px;color:#a09ab2">/${dayCount(state.year,state.month)}</span></div><div class="stat-foot">No entries are assumed</div></div>
+    <div class="stat"><div class="stat-label">Average logged sleep</div><div class="stat-value">${metrics.average===null?'—':formatHour(Math.round(metrics.average*10)/10)}<span style="font-size:13px"> ${metrics.average===null?'':'hrs'}</span></div><div class="stat-foot">Days with recorded sleep totals</div></div>
     <div class="stat"><div class="stat-label">Reference goal</div><div class="stat-value">8<span style="font-size:13px"> hrs</span></div><div class="stat-foot">Not a pass/fail score</div></div>
   </div><div class="panel"><div class="panel-title-row"><h2>Your monthly sleep log</h2><span class="pill">Tap a day ↗</span></div>
   <div class="month-table-scroll"><div class="month-table"><div class="month-heading"><span class="day-label">Day</span>${Array.from({length:12},(_,i)=>`<span>${i+1}</span>`).join('')}<span>Hrs</span></div>`;
   for(let day=1;day<=dayCount(state.year,state.month);day++){
-    const key=dateKey(state.year,state.month,day), sleep=sleepHours(key), logged=hasSlots(key), col=colorFor(sleep);
+    const key=dateKey(state.year,state.month,day), sleep=sleepHours(key), logged=hasSleepTotal(key), col=colorFor(sleep);
     html+=`<button type="button" class="month-row" data-open-date="${key}" aria-label="Open ${dateLong(key)}; ${logged?formatHour(sleep)+' hours of sleep recorded':'not logged'}">
-      <span class="day-number ${key===dateKey(today.getFullYear(),today.getMonth(),today.getDate())?'today':''}">${day}</span>`;
+      <span class="day-number ${key===trackingToday()?'today':''}">${day}</span>`;
     for(let d=1;d<=12;d++){
       const fill=logged&&(sleep>=d?'full':sleep>=d-.5?'half':'');
       html+=`<span class="dot ${fill}" style="--cat:${col}" aria-hidden="true"></span>`;
@@ -92,115 +296,334 @@ function renderMonth(){
   html+=`</div></div><div class="dot-key"><span><i class="dot-example"></i> 1 hour</span><span><i class="dot-example half"></i> 30 minutes</span><span><i class="dot-example blank"></i> Not recorded</span></div><div class="hint"><strong>How to read it:</strong> Circles fill as you record actual or estimated sleep on each day. If you sleep more than 12 hours, the row shows the real total even though there are only 12 circles. Tap any row for a detailed 24-hour log.</div></div>`;
   return html;
 }
-function clockLabel(slot){
-  const totalMinutes=((8*60)+(slot*30))%(24*60);
-  const hrs=Math.floor(totalMinutes/60),mins=totalMinutes%60;
-  return `${hrs%12||12}:${String(mins).padStart(2,'0')} ${hrs<12?'AM':'PM'}`;
-}
-function rangeOptions(startAt=0,endAt=48){
-  let result='';for(let i=startAt;i<=endAt;i++)result+=`<option value="${i}">${clockLabel(i)}${i===48?' (next day)':''}</option>`;return result;
-}
-function renderDay(){
-  const rec=recordFor(state.date),slots=rec.slots||{},sleep=sleepHours(state.date),rest=restHours(state.date),episodes=sleepEpisodes(state.date);
-  let html=`<div class="panel"><div class="detail-head"><div><span class="pill">MY DAILY SLEEP LOG</span><h2>${dateLong(state.date)}</h2><p class="sub">Tracking window: 8 AM today → 8 AM the next day</p></div><div class="detail-actions"><button class="mini-btn" data-action="back-month">‹ Month</button></div></div>
-  <div class="detail-stats"><div class="detail-stat"><small>Sleep logged</small><strong>${formatHour(sleep)} hrs</strong></div><div class="detail-stat"><small>Rest / unsure</small><strong>${formatHour(rest)} hrs</strong></div><div class="detail-stat"><small>Sleep blocks</small><strong>${episodes.episodes}</strong></div></div>
-  <div class="hint">Unmarked sections mean <strong>unknown</strong>. You can leave uncertain periods blank, or mark them <strong>rest / unsure</strong>. A sleep block is one uninterrupted group of logged 30-minute periods, not proof you slept continuously.</div>
-  <div class="panel-title-row" style="margin-top:20px;margin-bottom:4px"><h3>Choose your tracking mode</h3><span class="muted tiny">Tap the time squares</span></div>
-  <div class="status-picker" role="group" aria-label="Sleep timeline mark type">
-    <button type="button" data-mode="sleep" class="status-btn sleep ${state.mode==='sleep'?'selected':''}" aria-pressed="${state.mode==='sleep'}">☾ Asleep</button>
-    <button type="button" data-mode="rest" class="status-btn rest ${state.mode==='rest'?'selected':''}" aria-pressed="${state.mode==='rest'}">◇ Rest / unsure</button>
-    <button type="button" data-mode="awake" class="status-btn awake ${state.mode==='awake'?'selected':''}" aria-pressed="${state.mode==='awake'}">☀ Awake</button>
-    <button type="button" data-mode="erase" class="status-btn erase ${state.mode==='erase'?'selected':''}" aria-pressed="${state.mode==='erase'}">⌫ Erase</button>
-  </div><p class="timeline-guide">Each square represents <strong>30 minutes</strong>. Starting at 8 AM captures daytime naps, nighttime sleep, and waking periods in the same day.</p>`;
-  for(let g=0;g<4;g++){
-    const first=g*12,last=(g+1)*12;
-    html+=`<section class="time-group"><div class="time-group-label">${clockLabel(first)} — ${clockLabel(last)}${last===48?' (next day)':''}</div><div class="timeline-hours">`;
-    for(let i=0;i<6;i++)html+=`<span>${clockLabel(first+i*2).replace(':00','')}</span>`;
-    html+=`</div><div class="time-slots">`;
-    for(let i=first;i<last;i++){
-      const kind=slots[i]||'empty';
-      html+=`<button type="button" data-slot="${i}" class="time-block ${kind}" aria-label="${clockLabel(i)}–${clockLabel(i+1)}: ${kind==='empty'?'not marked':kind}" aria-pressed="${kind!=='empty'}" title="${clockLabel(i)}–${clockLabel(i+1)}: ${kind}"><span class="halfmark" aria-hidden="true"></span></button>`;
-    }
-    html+=`</div></section>`;
-  }
-  html+=`<div class="status-key"><span><i class="key-dot" style="background:#9b83cd"></i> Asleep</span><span><i class="key-dot" style="background:#e4b2d3"></i> Rest / unsure</span><span><i class="key-dot" style="background:#b9d5e8"></i> Awake</span><span><i class="key-dot" style="background:#f9f7fa;border:1px solid #dfd5eb"></i> Unknown</span></div></div>
-  <section class="panel"><div class="panel-title-row"><h2>Fill a time range</h2><span class="pill">Faster logging</span></div>
-    <div class="form-row"><div class="form-field"><label for="range-start">From</label><select id="range-start">${rangeOptions(0,47)}</select></div><div class="form-field"><label for="range-end">Until</label><select id="range-end">${rangeOptions(1,48)}</select></div></div>
-    <div class="form-actions"><button type="button" class="button primary" data-action="fill-range">Apply chosen mode</button></div>
-    <p class="warn-text">Choose times within this 8 AM–8 AM day. To log sleep across two tracking days, make an entry in each one. This starter version uses 30-minute increments.</p>
-  </section><section class="panel"><h2>How did you feel?</h2><p class="muted tiny">Sleep quality is your own rating — it doesn't depend on the hour count.</p>
-  <div class="quality-row">${['Poor','Okay','Restful'].map(q=>`<button type="button" class="quality ${rec.quality===q?'active':''}" data-quality="${q}" aria-pressed="${rec.quality===q}">${q}</button>`).join('')}</div>
-  <div class="form-field" style="margin-top:18px"><label for="notes">Notes / wake-ups / smoking or withdrawal changes</label><textarea id="notes" maxlength="3000" placeholder="What do I remember about sleeping today? Did I nap or wake up?">${escapeText(rec.notes||'')}</textarea></div>
-  <div class="form-actions" style="display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap"><button type="button" class="button" data-action="clear-day">Clear this day's log</button><span class="tiny muted">Saved automatically on this device</span></div></section>
-  <div class="panel" style="display:flex;justify-content:space-between;gap:8px"><button type="button" class="button" data-action="prev-day">← Previous</button><button type="button" class="button primary" data-action="back-month">Back to month</button><button type="button" class="button" data-action="next-day">Next →</button></div>`;
-  return html;
-}
 function polar(cx,cy,r,angle){return {x:cx+r*Math.cos(angle),y:cy+r*Math.sin(angle)};}
 function sector(cx,cy,inner,outer,start,end){const a=polar(cx,cy,outer,start),b=polar(cx,cy,outer,end),c=polar(cx,cy,inner,end),d=polar(cx,cy,inner,start);return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} A ${outer} ${outer} 0 0 1 ${b.x.toFixed(2)} ${b.y.toFixed(2)} L ${c.x.toFixed(2)} ${c.y.toFixed(2)} A ${inner} ${inner} 0 0 0 ${d.x.toFixed(2)} ${d.y.toFixed(2)} Z`;}
 function renderCircle(){
   const all=monthKeys(), n=all.length,metrics=statsForMonth();
   let svg=`<svg viewBox="0 0 420 420" role="img" aria-label="Circular monthly tracker. Tap a numbered segment to open that day."><defs><radialGradient id="moonHalo"><stop offset="0" stop-color="#fcf5ff"/><stop offset="1" stop-color="#fff9fd"/></radialGradient></defs><circle cx="210" cy="210" r="184" fill="#faf7fd"/>`;
   for(let i=0;i<n;i++){
-    const k=all[i],hrs=sleepHours(k),filled=hasSlots(k),t0=-Math.PI/2+i*2*Math.PI/n,t1=-Math.PI/2+(i+1)*2*Math.PI/n;
+    const k=all[i],hrs=sleepHours(k),filled=hasSleepTotal(k),t0=-Math.PI/2+i*2*Math.PI/n,t1=-Math.PI/2+(i+1)*2*Math.PI/n;
     const pt=polar(210,210,167,(t0+t1)/2);const fill=filled?colorFor(hrs):'#fff';
     svg+=`<g class="ring-day" data-open-date="${k}" role="button" tabindex="0" aria-label="${dateLong(k)}: ${filled?formatHour(hrs)+' hours sleep logged':'no sleep logged'}"><title>${dateLong(k)}: ${filled?formatHour(hrs)+' hours logged':'not logged'}</title><path d="${sector(210,210,143,183,t0,t1)}" fill="${fill}" stroke="#998ab3" stroke-width="1.2"/><text x="${pt.x.toFixed(1)}" y="${pt.y.toFixed(1)}">${i+1}</text></g>`;
   }
   svg+=`<circle cx="210" cy="210" r="135" fill="url(#moonHalo)" stroke="#e6d8ee" stroke-width="1.5"/><circle cx="194" cy="207" r="70" fill="#d8c8f4"/><circle cx="229" cy="174" r="70" fill="#fcf5ff"/><g fill="#d5b1a0"><text x="132" y="157" font-size="21">✦</text><text x="297" y="225" font-size="25">✧</text><text x="158" y="286" font-size="17">✧</text><text x="280" y="144" font-size="15">✦</text></g><text x="210" y="311" text-anchor="middle" font-family="Georgia,serif" font-size="15" fill="#947caa">rest • restore • bloom</text></svg>`;
-  return `${headerForMonth()}<section class="panel"><div class="panel-title-row"><h2>Your monthly moon wheel</h2><span class="pill">Tap a segment</span></div><div class="wheel-wrap">${svg}</div><div class="wheel-legend">${COLORS.map(c=>`<div class="legend-item"><span class="legend-color" style="background:${c.color}"></span>${c.label}</div>`).join('')}</div><p class="caption">One segment per day. Empty means no sleep blocks have been logged. Every color is information, not a grade.</p></section>
-  <section class="panel"><h2>Month at a glance</h2><div class="summary-row"><span>Days with sleep entries</span><strong>${metrics.keys.length} of ${n}</strong></div><div class="summary-row"><span>Average sleep recorded</span><strong>${metrics.average===null?'Not enough information':formatHour(Math.round(metrics.average*10)/10)+' hrs'}</strong></div><div class="summary-row"><span>Logged sleep hours (total)</span><strong>${formatHour(metrics.total)} hrs</strong></div><div class="summary-row"><span>Nightly reference target</span><strong>8 hrs, flexible</strong></div><div class="hint">The wheel shows the hours recorded in each 8 AM–8 AM day. It cannot tell whether you were genuinely asleep without a reliable observation or device measurement.</div></section>`;
+  return `${headerForMonth()}<section class="panel"><div class="panel-title-row"><h2>Your monthly moon wheel</h2><span class="pill">Tap a segment</span></div><div class="wheel-wrap">${svg}</div><div class="wheel-legend">${COLORS.map(c=>`<div class="legend-item"><span class="legend-color" style="background:${c.color}"></span>${c.label}</div>`).join('')}</div><p class="caption">One segment per day. An empty segment means sleep is not recorded yet. Only a fully recorded all-awake day counts as zero sleep. Every color is information, not a grade.</p></section>
+  <section class="panel"><h2>Month at a glance</h2><div class="summary-row"><span>Days with sleep totals</span><strong>${metrics.keys.length} of ${n}</strong></div><div class="summary-row"><span>Average sleep recorded</span><strong>${metrics.average===null?'Not enough information':formatHour(Math.round(metrics.average*10)/10)+' hrs'}</strong></div><div class="summary-row"><span>Logged sleep hours (total)</span><strong>${formatHour(metrics.total)} hrs</strong></div><div class="summary-row"><span>Nightly reference target</span><strong>8 hrs, flexible</strong></div><div class="hint">The wheel shows the hours recorded in each 8 AM–8 AM day. It cannot tell whether you were genuinely asleep without a reliable observation or device measurement.</div></section>`;
 }
-function render(){
-  for(const btn of document.querySelectorAll('.view-tab')){const active=btn.dataset.view===state.view;btn.classList.toggle('active',active);if(active)btn.setAttribute('aria-current','page');else btn.removeAttribute('aria-current');}
-  content.innerHTML=state.view==='day'?renderDay():state.view==='circle'?renderCircle():renderMonth();
-}
-function switchMonth(delta){const dt=new Date(state.year,state.month+delta,1);state.year=dt.getFullYear();state.month=dt.getMonth();if(state.view==='day')state.date=dateKey(state.year,state.month,1);render();}
-function commitSlot(idx){const key=state.date,prev=recordFor(key),slots={...(prev.slots||{})};if(state.mode==='erase'||slots[idx]===state.mode)delete slots[idx];else slots[idx]=state.mode;state.records[key]={...prev,slots};saveRecords();renderKeepScroll();}
-function setQuality(q){const key=state.date,old=recordFor(key);state.records[key]={...old,quality:old.quality===q?'':q};saveRecords();renderKeepScroll();}
-function fillRange(){
-  const start=Number($('#range-start').value),end=Number($('#range-end').value);
-  if(!(start>=0&&start<48&&end>start&&end<=48))return showNotice('Please choose an end time later than the start time within this tracking day.',true);
-  if(state.mode==='erase')return showNotice('Select Asleep, Rest / unsure, or Awake before applying a range.',true);
-  const key=state.date,rec=recordFor(key),slots={...(rec.slots||{})};for(let i=start;i<end;i++)slots[i]=state.mode;state.records[key]={...rec,slots};saveRecords();renderKeepScroll();showNotice(`Recorded ${clockLabel(start)} to ${clockLabel(end)} as ${state.mode}.`);
-}
-content.addEventListener('click',event=>{
-  const open=event.target.closest('[data-open-date]');if(open){openDate(open.dataset.openDate);return;}
-  const slot=event.target.closest('[data-slot]');if(slot){commitSlot(Number(slot.dataset.slot));return;}
-  const mode=event.target.closest('[data-mode]');if(mode){state.mode=mode.dataset.mode;renderKeepScroll();return;}
-  const quality=event.target.closest('[data-quality]');if(quality){setQuality(quality.dataset.quality);return;}
-  const action=event.target.closest('[data-action]')?.dataset.action;
-  if(action==='prev-month')switchMonth(-1);
-  if(action==='next-month')switchMonth(1);
-  if(action==='this-month'){state.year=today.getFullYear();state.month=today.getMonth();render();}
-  if(action==='back-month')changeView('month');
-  if(action==='prev-day')openDate(shiftDate(state.date,-1));
-  if(action==='next-day')openDate(shiftDate(state.date,1));
-  if(action==='fill-range')fillRange();
-  if(action==='clear-day'){
-    if(window.confirm(`Clear all sleep blocks, notes and quality for ${dateLong(state.date)}?`)){delete state.records[state.date];saveRecords();renderKeepScroll();}
-  }
-});
-content.addEventListener('keydown',event=>{const open=event.target.closest('.ring-day[data-open-date]');if(open&&(event.key==='Enter'||event.key===' ')){event.preventDefault();openDate(open.dataset.openDate);}});
-content.addEventListener('input',event=>{if(event.target.id==='notes'){const key=state.date;state.records[key]={...recordFor(key),notes:event.target.value};saveRecords();}});
-for(const btn of document.querySelectorAll('.view-tab'))btn.addEventListener('click',()=>changeView(btn.dataset.view));
-$('#help-btn').addEventListener('click',()=>$('#help-dialog').showModal());
-$('#close-help').addEventListener('click',()=>$('#help-dialog').close());
-$('#got-it-btn').addEventListener('click',()=>$('#help-dialog').close());
-$('#export-btn').addEventListener('click',()=>{
-  const backup={app:'Sleep in Bloom',version:1,exportedAt:new Date().toISOString(),records:state.records};
-  const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=`sleep-in-bloom-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);showNotice('Your backup was prepared. Keep the downloaded JSON file somewhere safe.');
-});
-$('#import-file').addEventListener('change',async event=>{
-  const file=event.target.files?.[0];if(!file)return;
-  if(file.size>3_000_000){showNotice('This backup is larger than expected (3 MB maximum).',true);event.target.value='';return;}
-  try{
-    const data=JSON.parse(await file.text());if(!data||data.app!=='Sleep in Bloom'||data.version!==1||!data.records||typeof data.records!=='object')throw new Error('Invalid Sleep in Bloom file.');
-    if(window.confirm('Importing this backup will REPLACE the sleep entries currently stored on this device. Continue?')){
-      state.records=validateRecords(data.records);saveRecords();render();showNotice('Your sleep entries were imported successfully.');
+
+  function render() {
+    for (const button of document.querySelectorAll('.view-tab')) {
+      const active = button.dataset.view === state.view || (state.view === 'month' && button.dataset.view === 'circle');
+      button.classList.toggle('active', active);
+      if (active) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
     }
-  }catch(e){showNotice('Could not import the file. Choose a valid Sleep in Bloom JSON backup.',true);}finally{event.target.value='';}
-});
-render();
-if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1')){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));
-}
+    if (state.view === 'day') content.innerHTML = renderDay();
+    else if (state.view === 'circle') content.innerHTML = renderCircle() + `<div class='panel'><button type='button' class='button' data-action='back-month'>View monthly sleep totals</button></div>`;
+    else if (state.view === 'month') content.innerHTML = renderMonth() + `<div class='panel'><button type='button' class='button' data-action='back-wheel'>Back to moon wheel</button></div>`;
+    else content.innerHTML = renderWeek();
+    if (state.readOnly) {
+      for (const element of content.querySelectorAll('[data-mode], [data-slot], [data-quality], [data-action=\'fill-range\'], [data-action=\'clear-day\'], [data-action=\'choose-activity\'], #notes')) element.disabled = true;
+    }
+    $('#import-file').disabled = state.readOnly;
+    updateSaveState();
+  }
+  function commitSlot(index) {
+    if (!canEdit()) return;
+    state.data.records[state.date] = D.setSlot(recordFor(state.date), index, state.mode, state.activityId);
+    saveRecords();
+    renderKeepScroll(`[data-slot='${index}']`);
+  }
+  function setQuality(quality) {
+    if (!canEdit()) return;
+    const record = recordFor(state.date);
+    state.data.records[state.date] = { ...record, quality: record.quality === quality ? '' : quality };
+    saveRecords();
+    renderKeepScroll(`[data-quality='${quality}']`);
+  }
+  function fillRange() {
+    if (!canEdit()) return;
+    const start = Number($('#range-start').value);
+    const end = Number($('#range-end').value);
+    try {
+      state.data.records[state.date] = D.setRange(recordFor(state.date), start, end, state.mode, state.activityId);
+      state.rangeStart = start;
+      state.rangeEnd = end;
+      const saved = saveRecords();
+      renderKeepScroll('[data-action=\'fill-range\']');
+      if (saved) showNotice(state.mode === 'erase' ? 'The selected time range was cleared. Any saved moods are still available below.' : `${clockLabel(start)} to ${clockLabel(end)} recorded as ${STATUS_LABELS[state.mode]}${state.mode === 'awake' && activityFor(state.activityId) ? ' · ' + activityFor(state.activityId).name : ''}.`);
+    } catch (error) {
+      showNotice(error.message, true);
+    }
+  }
+
+  function makeDialog(id, labelId) {
+    const dialog = document.createElement('dialog');
+    dialog.id = id;
+    dialog.className = 'bloom-dialog';
+    dialog.setAttribute('aria-labelledby', labelId);
+    document.body.appendChild(dialog);
+    return dialog;
+  }
+  const activityDialog = makeDialog('activity-dialog', 'activity-dialog-title');
+  const moodDialog = makeDialog('mood-dialog', 'mood-dialog-title');
+
+  function openActivityDialog() {
+    if (!canEdit()) return;
+    activityDialog.innerHTML = `<div class='dialog-inner'><div class='dialog-top'><h2 id='activity-dialog-title'>What am I doing?</h2><button type='button' class='icon-button' data-dialog-close aria-label='Close activity choices'>×</button></div><p class='dialog-subtitle'>Choose an awake activity. Then tap your time squares or fill a time range.</p><div class='activity-grid'>${state.data.activities.map(activity => `<button type='button' class='activity-option' data-activity-id='${escapeText(activity.id)}' style='--activity-color:${activity.color}'><span class='activity-icon' aria-hidden='true'>${escapeText(activity.icon)}</span><span>${escapeText(activity.name)}</span></button>`).join('')}</div><button type='button' class='button ghost' data-activity-id=''>Awake without an activity</button><form id='custom-activity-form' class='custom-activity-form'><h3>Add your own activity</h3><div class='form-field'><label for='custom-activity-name'>Activity name</label><input id='custom-activity-name' name='activity-name' maxlength='60' autocomplete='off' placeholder='For example, Gardening' required></div><fieldset class='activity-color-fieldset'><legend>Choose a color</legend><div class='activity-color-options'>${D.ACTIVITY_COLORS.map((option, index) => `<label class='color-option'><input type='radio' name='activity-color' value='${option.color}' ${index === 0 ? 'checked' : ''}><span class='color-dot' style='--activity-color:${option.color}' aria-hidden='true'></span><span>${escapeText(option.label)}</span></label>`).join('')}</div></fieldset><p class='dialog-error' id='activity-error' role='alert' hidden></p><div class='dialog-actions'><button type='button' class='button' data-dialog-close>Cancel</button><button type='submit' class='button primary'>Add and choose</button></div></form></div>`;
+    activityDialog.showModal();
+  }
+  function chooseActivity(id) {
+    if (!canEdit() || (id && !activityFor(id))) return;
+    state.mode = 'awake';
+    state.activityId = id;
+    activityDialog.close();
+    renderKeepScroll('[data-mode=\'awake\']');
+  }
+  activityDialog.addEventListener('click', event => {
+    if (event.target.closest('[data-dialog-close]')) { activityDialog.close(); return; }
+    const choice = event.target.closest('[data-activity-id]');
+    if (choice) chooseActivity(choice.dataset.activityId);
+  });
+  activityDialog.addEventListener('submit', event => {
+    if (event.target.id !== 'custom-activity-form') return;
+    event.preventDefault();
+    if (!canEdit()) return;
+    const name = $('#custom-activity-name').value.trim();
+    const error = $('#activity-error');
+    if (!name) {
+      error.textContent = 'Give your activity a name.';
+      error.hidden = false;
+      $('#custom-activity-name').focus();
+      return;
+    }
+    const existing = state.data.activities.find(activity => activity.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+    if (existing) { chooseActivity(existing.id); return; }
+    if (state.data.activities.length >= 200) {
+      error.textContent = 'This version can keep up to 200 activities. Please choose an existing activity.';
+      error.hidden = false;
+      return;
+    }
+    const selectedColor = activityDialog.querySelector('input[name=\'activity-color\']:checked')?.value;
+    const activity = {
+      id: `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+      name,
+      icon: '✨',
+      color: D.ACTIVITY_COLORS.find(option => option.color === selectedColor)?.color || D.ACTIVITY_COLORS[0].color
+    };
+    state.data.activities.push(activity);
+    saveRecords();
+    chooseActivity(activity.id);
+  });
+
+  function openMoodDialog(key, hour) {
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23 || Number.isNaN(parseDate(key).getTime())) return;
+    const record = recordFor(key);
+    const mood = record.moods[hour];
+    const awake = D.hasAwake(record, hour);
+    const activities = hourActivities(record, hour);
+    state.moodTarget = { key, hour };
+    let html = `<div class='dialog-inner'><div class='dialog-top'><h2 id='mood-dialog-title'>How was I feeling?</h2><button type='button' class='icon-button' data-dialog-close aria-label='Close hourly mood'>×</button></div><p class='dialog-subtitle'>${fullHourLabel(key, hour)}</p><div class='mood-context'><strong>During this hour</strong><p>${escapeText(hourStatus(record, hour))}</p>${activities.map(activityChip).join('')}</div>`;
+    if (!awake && !mood) {
+      html += `<p>This hour is not marked awake. Open the daily log to record what you were doing, then add a feeling.</p><div class='dialog-actions'><button type='button' class='button' data-dialog-close>Close</button><button type='button' class='button primary' data-open-mood-day>Open daily log</button></div></div>`;
+    } else {
+      if (!awake) html += `<p class='saved-mood-warning'>This mood was saved earlier, and the awake time has since changed. Your entry is still here so you can review it.</p>`;
+      html += `<form id='mood-form'><fieldset class='mood-fields' ${state.readOnly ? 'disabled' : ''}><legend class='sr-only'>Hourly mood entry</legend><div class='form-field'><label for='mood-feeling'>My feeling</label><input id='mood-feeling' name='feeling' maxlength='80' autocomplete='off' placeholder='Choose a word below, or write your own' value='${escapeText(mood?.feeling || '')}' required></div><div class='mood-suggestions' role='group' aria-label='Suggested feeling words'>${D.MOOD_OPTIONS.map(option => `<button type='button' class='mood-option ${mood?.feeling === option.label ? 'selected' : ''}' data-mood-suggestion='${escapeText(option.label)}' style='--mood-color:${option.color}' aria-pressed='${mood?.feeling === option.label}'>${escapeText(option.label)}</button>`).join('')}</div><div class='form-field'><label for='mood-note'>Anything I want to remember? (optional)</label><textarea id='mood-note' name='note' maxlength='1000' placeholder='What was happening, or how did it feel?'>${escapeText(mood?.note || '')}</textarea></div></fieldset><p class='dialog-error' id='mood-error' role='alert' hidden></p><div class='dialog-actions'>${mood ? `<button type='button' class='button' data-remove-mood ${state.readOnly ? 'disabled' : ''}>Remove entry</button>` : ''}<button type='button' class='button' data-dialog-close>Cancel</button><button type='submit' class='button primary' ${state.readOnly ? 'disabled' : ''}>Save feeling</button></div></form></div>`;
+    }
+    moodDialog.innerHTML = html;
+    moodDialog.showModal();
+    if (awake || mood) requestAnimationFrame(() => $('#mood-feeling')?.focus({ preventScroll: true }));
+  }
+  function closeMoodAndRender(target) {
+    moodDialog.close();
+    state.moodTarget = null;
+    renderKeepScroll(`[data-mood-date='${target.key}'][data-mood-hour='${target.hour}']`);
+  }
+  moodDialog.addEventListener('click', event => {
+    if (event.target.closest('[data-dialog-close]')) { moodDialog.close(); return; }
+    if (event.target.closest('[data-open-mood-day]')) {
+      const key = state.moodTarget?.key;
+      moodDialog.close();
+      if (key) openDate(key);
+      return;
+    }
+    const suggestion = event.target.closest('[data-mood-suggestion]');
+    if (suggestion && canEdit()) {
+      $('#mood-feeling').value = suggestion.dataset.moodSuggestion;
+      updateMoodSuggestions();
+      return;
+    }
+    if (event.target.closest('[data-remove-mood]') && canEdit() && state.moodTarget) {
+      const target = { ...state.moodTarget };
+      if (!window.confirm('Remove this hour\'s mood entry? Its sleep and activity times will stay as recorded.')) return;
+      state.data.records[target.key] = D.setMood(recordFor(target.key), target.hour, null);
+      const saved = saveRecords();
+      closeMoodAndRender(target);
+      if (saved) showNotice('The hourly mood entry was removed.');
+    }
+  });
+  function updateMoodSuggestions() {
+    const feeling = $('#mood-feeling').value.trim().toLocaleLowerCase();
+    for (const button of moodDialog.querySelectorAll('[data-mood-suggestion]')) {
+      const active = button.dataset.moodSuggestion.toLocaleLowerCase() === feeling;
+      button.classList.toggle('selected', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+  }
+  moodDialog.addEventListener('input', event => {
+    if (event.target.id === 'mood-feeling') updateMoodSuggestions();
+  });
+  moodDialog.addEventListener('submit', event => {
+    if (event.target.id !== 'mood-form') return;
+    event.preventDefault();
+    if (!canEdit() || !state.moodTarget) return;
+    const target = { ...state.moodTarget };
+    try {
+      state.data.records[target.key] = D.setMood(recordFor(target.key), target.hour, {
+        feeling: $('#mood-feeling').value,
+        note: $('#mood-note').value,
+        updatedAt: new Date().toISOString()
+      });
+      const saved = saveRecords();
+      closeMoodAndRender(target);
+      if (saved) showNotice('Your hourly feeling was saved with its activity times.');
+    } catch (error) {
+      $('#mood-error').textContent = error.message;
+      $('#mood-error').hidden = false;
+    }
+  });
+  moodDialog.addEventListener('close', () => {
+    if (!moodDialog.open) state.moodTarget = null;
+  });
+
+  content.addEventListener('click', event => {
+    const open = event.target.closest('[data-open-date]');
+    if (open) { openDate(open.dataset.openDate); return; }
+    const hour = event.target.closest('[data-mood-hour]');
+    if (hour) { openMoodDialog(hour.dataset.moodDate, Number(hour.dataset.moodHour)); return; }
+    const slot = event.target.closest('[data-slot]');
+    if (slot) { commitSlot(Number(slot.dataset.slot)); return; }
+    const mode = event.target.closest('[data-mode]');
+    if (mode) {
+      if (!canEdit()) return;
+      if (mode.dataset.mode === 'awake') { openActivityDialog(); return; }
+      state.mode = mode.dataset.mode;
+      renderKeepScroll(`[data-mode='${state.mode}']`);
+      return;
+    }
+    const quality = event.target.closest('[data-quality]');
+    if (quality) { setQuality(quality.dataset.quality); return; }
+    const action = event.target.closest('[data-action]')?.dataset.action;
+    if (action === 'prev-month') switchMonth(-1);
+    if (action === 'next-month') switchMonth(1);
+    if (action === 'this-month') {
+      const current = parseDate(trackingToday());
+      state.year = current.getFullYear();
+      state.month = current.getMonth();
+      render();
+    }
+    if (action === 'prev-week' || action === 'next-week') {
+      state.week = shiftDate(state.week, action === 'prev-week' ? -7 : 7);
+      render();
+    }
+    if (action === 'this-week') { state.week = D.weekStart(trackingToday()); render(); }
+    if (action === 'back-week') { state.week = D.weekStart(state.date); changeView('week'); }
+    if (action === 'back-month') changeView('month');
+    if (action === 'back-wheel') changeView('circle');
+    if (action === 'today') openDate(trackingToday());
+    if (action === 'prev-day') openDate(shiftDate(state.date, -1));
+    if (action === 'next-day') openDate(shiftDate(state.date, 1));
+    if (action === 'fill-range') fillRange();
+    if (action === 'choose-activity') openActivityDialog();
+    if (action === 'clear-day' && canEdit()) {
+      if (window.confirm(`Clear the sleep, activities, hourly moods, notes and sleep quality for ${dateLong(state.date)}?`)) {
+        delete state.data.records[state.date];
+        saveRecords();
+        renderKeepScroll('[data-action=\'clear-day\']');
+      }
+    }
+  });
+  content.addEventListener('keydown', event => {
+    const open = event.target.closest('.ring-day[data-open-date]');
+    if (open && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      openDate(open.dataset.openDate);
+    }
+  });
+  content.addEventListener('input', event => {
+    if (event.target.id === 'notes' && canEdit()) {
+      state.data.records[state.date] = { ...recordFor(state.date), notes: event.target.value };
+      saveRecords();
+    }
+  });
+  content.addEventListener('change', event => {
+    if (event.target.id === 'range-start') state.rangeStart = Number(event.target.value);
+    if (event.target.id === 'range-end') state.rangeEnd = Number(event.target.value);
+  });
+  for (const button of document.querySelectorAll('.view-tab')) button.addEventListener('click', () => changeView(button.dataset.view));
+  $('#help-btn').addEventListener('click', () => $('#help-dialog').showModal());
+  $('#close-help').addEventListener('click', () => $('#help-dialog').close());
+  $('#got-it-btn').addEventListener('click', () => $('#help-dialog').close());
+
+  function downloadText(contents, filename) {
+    const blob = new Blob([contents], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+  }
+  $('#export-btn').addEventListener('click', () => {
+    const filenameDate = dateKey(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+    if (state.readOnly) {
+      try {
+        const raw = storage.getItem(D.STORAGE_KEY) || storage.getItem(D.LEGACY_KEY);
+        if (!raw) throw new Error('No readable stored copy.');
+        downloadText(raw, `life-in-bloom-recovery-${filenameDate}.json`);
+        showNotice('Your unchanged saved data was downloaded for recovery. Keep this file when asking for help.', true);
+      } catch (_) {
+        showNotice('This browser could not read a saved copy to export. Please ask for help before changing the browser settings.', true);
+      }
+      return;
+    }
+    try {
+      downloadText(JSON.stringify(D.makeBackup(state.data), null, 2), `life-in-bloom-backup-${filenameDate}.json`);
+      showNotice(state.unsaved ? 'Your latest changes were included in the downloaded backup. This browser still could not save them.' : 'Your backup includes sleep, activities, hourly moods and notes. Keep the downloaded JSON file somewhere safe.', state.unsaved);
+    } catch (_) {
+      showNotice('A backup could not be prepared. Please keep this page open and ask for help.', true);
+    }
+  });
+  $('#import-file').addEventListener('change', async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!canEdit()) { event.target.value = ''; return; }
+    if (file.size > 25_000_000) {
+      showNotice('This backup is larger than the 25 MB limit for this version. Your entries have not been changed.', true);
+      event.target.value = '';
+      return;
+    }
+    try {
+      const data = D.parseBackup(await file.text());
+      if (!window.confirm('Replace the entries on this device with this backup? Your current sleep, moods and activities will be replaced. Export first if you need to keep them.')) return;
+      D.saveData(storage, data);
+      state.data = data;
+      state.unsaved = false;
+      if (!activityFor(state.activityId)) state.activityId = '';
+      render();
+      showNotice('Your backup was imported. Sleep, moods and activities are available on this device.');
+    } catch (error) {
+      showNotice(`The backup could not be imported. Your entries have not been replaced. ${error.message || 'Please choose a valid backup file.'}`, true);
+    } finally {
+      event.target.value = '';
+    }
+  });
+
+  render();
+  if (loaded.warning) showNotice(loaded.warning, true);
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js').catch(() => {}));
+  }
+})();
