@@ -4,6 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Grocery = require('../bloom-grocery.js');
+const Model = require('../bloom-food-model.js');
 
 function readyState(overrides = {}) {
   return {
@@ -14,7 +15,7 @@ function readyState(overrides = {}) {
     ...overrides
   };
 }
-function harness(initial = readyState(), localItems = []) {
+function harness(initial = readyState(), localItems = [], options = {}) {
   let current = initial;
   let confirmation = true;
   const calls = [];
@@ -22,7 +23,7 @@ function harness(initial = readyState(), localItems = []) {
   const refreshes = [];
   const methods = {};
   const store = { snapshot: () => current };
-  for (const name of ['init', 'refresh', 'signIn', 'signUp', 'resetPassword', 'updatePassword', 'signOut', 'createHousehold', 'joinHousehold', 'createInvite', 'savePrivateProfile', 'saveDietProfile', 'saveBudget', 'saveInventory', 'deleteInventory', 'saveShoppingItem', 'toggleShoppingItem', 'deleteShoppingItem', 'importLocalShopping']) {
+  for (const name of ['init', 'refresh', 'signIn', 'signUp', 'resetPassword', 'updatePassword', 'signOut', 'createHousehold', 'joinHousehold', 'createInvite', 'savePrivateProfile', 'saveDietProfile', 'saveBudget', 'saveInventory', 'deleteInventory', 'saveShoppingItem', 'toggleShoppingItem', 'deleteShoppingItem', 'importLocalShopping', 'exportHousehold', 'importHouseholdBackup']) {
     store[name] = async (...args) => {
       calls.push({ name, args });
       if (methods[name]) return methods[name](...args);
@@ -30,9 +31,9 @@ function harness(initial = readyState(), localItems = []) {
     };
   }
   const controller = Grocery.createController({
-    store, getLocalShopping: () => localItems,
+    store, model: Model, getLocalShopping: () => localItems,
     refresh: selector => refreshes.push(selector), notify: (message, error) => notices.push({ message, error }),
-    confirm: () => confirmation, getNow: () => new Date(2026, 10, 4, 12)
+    confirm: () => confirmation, getNow: () => new Date(2026, 10, 4, 12), ...options
   });
   controller.render();
   function input(key, value) { return controller.handleInput({ target: { dataset: { groceryField: key }, value } }); }
@@ -133,23 +134,27 @@ test('inventory saves exact fields, preserves its revision, and rejects invalid 
   assert.match(h.notices.at(-1).message, /valid package date/);
   h.submit('inventory', { quantity: '1.5', location: 'freezer', expires_on: '2026-11-20' });
   await h.idle();
-  assert.deepEqual(h.calls[0], { name: 'saveInventory', args: [{ id: row.id, request_id: '', revision: 3, name: 'Rice', brand: '', quantity: 1.5, unit: 'lb', location: 'freezer', expires_on: '2026-11-20', notes: 'Opened' }] });
+  const { request_id, ...saved } = h.calls[0].args[0];
+  assert.match(request_id, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(saved, { id: row.id, revision: 3, name: 'Rice', brand: '', quantity: 1.5, unit: 'lb', location: 'freezer', expires_on: '2026-11-20', notes: 'Opened', product_id: null, frozen_on: null, opened_on: null, date_type: 'unknown', freezer_use_by: null, reminder_days: 3 });
 });
 
 test('budget uses exact cents and real months, while incomplete totals remain unknown', async () => {
   const h = harness(readyState({ budgets: [
     { month: '2026-10-01', amount_cents: 42037, currency: 'USD', revision: 2 },
     { month: '2026-11-01', amount_cents: 50000, currency: 'USD', revision: 1 }
-  ] }));
+  ], shoppingItems: [{ id: 'unpriced', name: 'Vegetables', month: '2026-11-01', category: 'food', checked: false, estimate_cents: null }] }));
   h.click('tab', { tab: 'budget' });
   let html = h.controller.render();
   assert.match(html, /November 2026/);
   assert.match(html, /\$500\.00/);
-  assert.equal((html.match(/Not calculated yet/g) || []).length, 3);
-  assert.doesNotMatch(html, />\$0\.00</);
+  assert.match(html, /incomplete/);
+  assert.match(html, /Household/);
+  assert.match(html, /Choose your amount/);
+  assert.match(html, /\$0\.00/);
   h.submit('budget', { amount: '510.07' });
   await h.idle();
-  assert.deepEqual(h.calls[0], { name: 'saveBudget', args: [{ month: '2026-11-01', amount_cents: 51007, currency: 'USD', revision: 1 }] });
+  assert.deepEqual(h.calls[0], { name: 'saveBudget', args: [{ month: '2026-11-01', amount_cents: 51007, household_amount_cents: null, currency: 'USD', revision: 1 }] });
   assert.equal(Grocery.centsFromInput('0'), 0);
   assert.equal(Grocery.centsFromInput('3.1'), 310);
   assert.throws(() => Grocery.centsFromInput('12.345'));
@@ -195,7 +200,7 @@ test('private measurements and shared nutrition profiles have separate payloads'
   const publicPayload = h.calls[0].args[0];
   assert.equal(publicPayload.calories_kcal, null);
   assert.equal(publicPayload.protein_g, 75);
-  assert.equal(publicPayload.color, 'purple');
+  assert.equal(publicPayload.color, 'pink', 'Person 1 stays pink even if a form attempts to change the fixed role color');
   assert.equal(publicPayload.revision, 3);
   assert.equal(Object.hasOwn(publicPayload, 'height_cm'), false);
   assert.equal(Object.hasOwn(publicPayload, 'weight_kg'), false);
@@ -426,4 +431,81 @@ test('new-item request IDs survive failed retries and cannot be replaced by form
   h.submit('inventory', { name: 'Beans', quantity: '2' });
   await h.idle();
   assert.notEqual(h.calls.at(-1).args[0].request_id, inventoryId);
+});
+
+test('historical shopping stays in its month while Home always counts this month', () => {
+  const h = harness(readyState({ shoppingItems: [
+    { id: 'old', name: 'October item', month: '2026-10-01', checked: false, category: 'food', estimate_cents: 250 },
+    { id: 'now', name: 'November item', month: '2026-11-01', checked: false, category: 'food', estimate_cents: null },
+    { id: 'future', name: 'December item', month: '2026-12-01', checked: false, category: 'household', estimate_cents: 0 }
+  ] }));
+  assert.match(h.controller.render(), /November item/); assert.doesNotMatch(h.controller.render(), /October item|December item/);
+  h.changeMonth('2026-10'); assert.match(h.controller.render(), /October item/); assert.doesNotMatch(h.controller.render(), /November item/);
+  assert.equal(h.controller.getHomeSummary().count, 1);
+  h.state = readyState({ user: { id: 'new-user' }, household: { id: 'new-home' } });
+  assert.match(h.controller.render(), /value="2026-11"/);
+});
+
+test('freezing preserves printed dates and requires saving a reviewed inventory draft', async () => {
+  const h = harness(readyState({ inventory: [{ id: 'stock', name: 'Soup', quantity: 2, unit: 'cup', location: 'refrigerator', expires_on: '2026-11-06', date_type: 'use_by', opened_on: '2026-11-03', revision: 2 }] }));
+  h.controller.selectTab('inventory'); h.click('freeze-inventory', { id: 'stock' });
+  assert.equal(h.calls.length, 0); const html = h.controller.render();
+  assert.match(html, /value="2026-11-04"/); assert.match(html, /value="2026-11-06"/);
+  h.submit('inventory', { freezer_use_by: '2027-01-15' }); await h.idle();
+  const row = h.calls[0].args[0]; assert.equal(row.location, 'freezer'); assert.equal(row.frozen_on, '2026-11-04'); assert.equal(row.expires_on, '2026-11-06'); assert.equal(row.opened_on, '2026-11-03'); assert.equal(row.freezer_use_by, '2027-01-15');
+});
+
+function householdBackup() {
+  return { app: 'Life in Bloom Household', version: 1, household_id: 'home-one', exported_at: '2026-11-04T12:00:00Z', data: Object.fromEntries(['products', 'recurringProducts', 'budgets', 'inventory', 'shoppingItems', 'bills', 'recipes', 'mealEntries', 'receipts', 'moneyEntries', 'foodFiles'].map(key => [key, []])) };
+}
+
+test('household backup import previews same-household records and retains a failed restore for retry', async () => {
+  const h = harness(); h.controller.selectTab('household');
+  const data = householdBackup(); data.data.products.push({ id: 'sample', name: 'Sample' }); data.data.receipts.push({ id: 'receipt', total_cents: 500 });
+  const choose = payload => h.controller.handleChange({ target: { dataset: { groceryHouseholdImport: '' }, files: [{ name: '<saved>.json', size: 1000, text: async () => JSON.stringify(payload) }] } });
+  choose({ ...data, household_id: 'another-household' }); await h.idle(); assert.equal(h.calls.length, 0); assert.match(h.notices.at(-1).message, /same household/);
+  choose(data); await h.idle(); assert.equal(h.calls.length, 0);
+  let html = h.controller.render(); assert.match(html, /Review &lt;saved&gt;\.json/); assert.match(html, /1 products · 1 receipts/); assert.match(html, /without recording the purchases again/);
+  h.methods.importHouseholdBackup = () => { throw new Error('Existing record differs; nothing was changed.'); };
+  h.click('restore-household'); await h.idle(); assert.equal(h.calls[0].name, 'importHouseholdBackup'); assert.deepEqual(h.calls[0].args[0], data);
+  html = h.controller.render(); assert.match(html, /Restore missing records/); assert.match(html, /&lt;saved&gt;\.json/);
+  h.methods.importHouseholdBackup = () => ({ skippedFiles: 1 }); h.click('restore-household'); await h.idle(); assert.equal(h.calls.length, 2); assert.match(h.notices.at(-1).message, /1 unavailable attachment/);
+  assert.doesNotMatch(h.controller.render(), /Review &lt;saved&gt;/);
+});
+
+test('only an owner can import a household backup; export sends a reviewable data file', async () => {
+  const downloads = [], h = harness(readyState(), [], { download: (data, name) => downloads.push({ data, name }) });
+  const data = householdBackup(); h.methods.exportHousehold = () => data;
+  h.click('export-household'); await h.idle(); assert.deepEqual(downloads[0].data, data); assert.match(downloads[0].name, /life-in-bloom-household-2026-11-04\.json/);
+  h.state = { ...h.state, members: [{ user_id: 'user-one', role: 'member' }] };
+  h.controller.handleChange({ target: { dataset: { groceryHouseholdImport: '' }, files: [{ name: 'backup.json', size: 100, text: async () => JSON.stringify(data) }] } });
+  await h.idle(); assert.equal(h.calls.length, 1); assert.match(h.notices.at(-1).message, /Only the household owner/);
+});
+
+test('autosaved shopping drafts restore per account without authentication or sharing-code data', () => {
+  const values = new Map(), draftStore = {
+    read: (u, household, area) => values.get([u, household, area].join(':')),
+    write: (u, household, area, data) => { values.set([u, household, area].join(':'), { data: structuredClone(data) }); return true; }
+  };
+  const h = harness(readyState(), [], { draftStore });
+  h.input('auth.password', 'secret-password'); h.input('household.code', 'private-sharing-code'); h.input('shopping.name', 'Draft carrots');
+  const saved = values.get('user-one:home-one:grocery'); assert.doesNotMatch(JSON.stringify(saved), /secret-password|private-sharing-code/);
+  const restored = harness(readyState(), [], { draftStore }); assert.match(restored.controller.render(), /value="Draft carrots"/);
+  const switched = harness(readyState({ user: { id: 'different-user' } }), [], { draftStore }); assert.doesNotMatch(switched.controller.render(), /Draft carrots/);
+  assert.equal(restored.controller.hasUnpersistedChanges(), false);
+});
+
+test('use-soon opens the specific Food section and private measurements remain unavailable offline', () => {
+  const opened = [], h = harness(readyState({ offline: true, privateProfile: null }), [], { openFood: tab => opened.push(tab) });
+  h.controller.selectTab('inventory'); h.click('use-soon'); assert.deepEqual(opened, ['soon']);
+  h.controller.selectTab('profiles'); const html = h.controller.render(); assert.doesNotMatch(html, /data-grocery-form="private"/); assert.match(html, /Reconnect/);
+});
+
+test('signout protects an unsaved attachment in another section without prompting for persisted drafts', async () => {
+  let otherUnpersisted = true;
+  const draftStore = { read: () => null, write: () => true };
+  const h = harness(readyState(), [], { draftStore, hasOtherUnpersistedChanges: () => otherUnpersisted });
+  h.confirmation = false; h.click('signout'); await h.idle(); assert.equal(h.calls.length, 0);
+  otherUnpersisted = false; h.input('shopping.name', 'Persisted item draft');
+  h.click('signout'); await h.idle(); assert.equal(h.calls[0].name, 'signOut');
 });

@@ -7,6 +7,8 @@
   const P = window.BloomPages;
   const G = window.BloomGrocery;
   const GS = window.BloomGroceryStore;
+  const C = window.BloomCommerce;
+  const F = window.BloomFood;
   const Personal = window.BloomPersonal;
   const $ = selector => document.querySelector(selector);
   const content = $('#content');
@@ -70,6 +72,9 @@
   };
   let cloud = null;
   let grocery = null;
+  let commerce = null;
+  let food = null;
+  const draftStore = window.BloomDrafts ? window.BloomDrafts.create() : null;
   let activeAccountIdentity;
   const unsavedJournals = new Map();
   const PAGE_DETAILS = {
@@ -189,14 +194,15 @@
     return true;
   }
   function leaveDraft() {
-    if (grocery && grocery.isBusy()) {
+    if ((grocery && grocery.isBusy()) || (commerce && commerce.isBusy()) || (food && food.isBusy())) {
       showNotice('Please wait for the Grocery change to finish saving.', true);
       return false;
     }
-    if (!pages.hasUnsavedDraft() && !(grocery && grocery.hasUnsavedDraft())) return true;
+    // Household forms remain in their own account-scoped saved drafts when the
+    // person opens another section. A receipt still requires explicit posting.
+    if (!pages.hasUnsavedDraft()) return true;
     if (!window.confirm('Leave this page and discard your unsaved text? Choose Cancel to stay and save it first.')) return false;
     pages.discardDraft();
-    if (grocery) grocery.discardDraft();
     return true;
   }
   function navigate(page) {
@@ -281,13 +287,24 @@
     commitData
   });
   cloud = GS.createStore({ config: window.BloomCloudConfig, onChange: handleCloudChange });
+  const sharedOptions = { store:cloud, notify:showNotice, refresh:selector=>renderKeepScroll(selector), navigate,
+    confirm:message=>window.confirm(message), draftStore };
+  if (C) commerce = C.createController(sharedOptions);
+  if (F) food = F.createController({ ...sharedOptions, openGrocery:tab=>{
+    if(navigate('grocery')) { if(grocery && grocery.selectTab) grocery.selectTab(tab); renderKeepScroll(); }
+  }});
   grocery = G.createController({
     store: cloud,
     getLocalShopping: () => personalAvailable() ? (state.data.shoppingList || []) : [],
     notify: showNotice,
     refresh: selector => renderKeepScroll(selector),
     navigate,
-    confirm: message => window.confirm(message)
+    confirm: message => window.confirm(message),
+    commerce, draftStore,
+    hasOtherUnpersistedChanges: () => Boolean(food && food.hasUnpersistedChanges && food.hasUnpersistedChanges()),
+    openFood: tab => {
+      if(navigate('food')) { if(food && food.selectTab) food.selectTab(tab); renderKeepScroll(); }
+    }
   });
 
   function personalAvailable() {
@@ -325,9 +342,12 @@
       }
       if (personalManager) switchPersonal(personalManager.open(snapshot.user));
       grocery.hasUnsavedDraft(); // Also discard previous-account UI state when viewing another section.
+      if(commerce) commerce.hasUnsavedDraft();
+      if(food) food.hasUnsavedDraft();
     }
     if (snapshot.recovery) state.page = 'grocery';
-    if (changed || snapshot.recovery || state.page !== 'grocery' || (!grocery.hasUnsavedDraft() && !grocery.isBusy())) renderKeepScroll();
+    const editing = grocery.hasUnsavedDraft() || grocery.isBusy() || (commerce && (commerce.hasUnsavedDraft() || commerce.isBusy())) || (food && (food.hasUnsavedDraft() || food.isBusy()));
+    if (changed || snapshot.recovery || !['grocery','food','wellness','money'].includes(state.page) || !editing) renderKeepScroll();
   }
   function renderPersonalGate() {
     const signedIn = cloud && cloud.snapshot().user;
@@ -535,12 +555,18 @@ function renderCircle(){
       else button.removeAttribute('aria-current');
     }
     if (state.page === 'grocery') content.innerHTML = (personalState.mode === 'choose' ? renderPersonalGate() : '') + grocery.render();
+    else if (state.page === 'money' && commerce) content.innerHTML = commerce.render('money');
+    else if (['food','wellness'].includes(state.page) && food) content.innerHTML = food.render(state.page);
     else if (!personalAvailable() && ['sleep-mood', 'ideas'].includes(state.page)) content.innerHTML = renderPersonalGate();
     else if (!isSleepMood) content.innerHTML = (state.page === 'home' && !personalAvailable() ? renderPersonalGate() : '') + pages.render(state.page);
     else if (state.view === 'day') content.innerHTML = renderDay();
     else if (state.view === 'circle') content.innerHTML = renderCircle() + `<div class='panel'><button type='button' class='button' data-action='back-month'>View monthly sleep totals</button></div>`;
     else if (state.view === 'month') content.innerHTML = renderMonth() + `<div class='panel'><button type='button' class='button' data-action='back-wheel'>Back to moon wheel</button></div>`;
     else content.innerHTML = renderWeek();
+    const shared=cloud && cloud.snapshot();
+    if(shared && ['home','grocery','food','wellness','money'].includes(state.page) && (shared.offline || shared.cacheWarning)) {
+      content.insertAdjacentHTML('afterbegin','<aside class="panel cloud-status" role="status">'+escapeText(shared.offline ? 'Offline — showing your saved device copy. Keep working on drafts; reconnect and save to update the household. Last copy: '+new Date(shared.cachedAt).toLocaleString() : shared.cacheWarning)+'</aside>');
+    }
     if (state.readOnly && state.page !== 'grocery') {
       for (const element of content.querySelectorAll('[data-mode], [data-slot], [data-quality], [data-action=\'fill-range\'], [data-action=\'clear-day\'], [data-action=\'choose-activity\'], #notes')) element.disabled = true;
     }
@@ -734,6 +760,8 @@ function renderCircle(){
       } catch (error) { showNotice(error.message, true); }
       return;
     }
+    if (food && food.handleClick(event)) return;
+    if (commerce && commerce.handleClick(event)) return;
     if (grocery.handleClick(event)) return;
     const destination = event.target.closest('[data-page]');
     if (destination) { navigate(destination.dataset.page); return; }
@@ -807,6 +835,8 @@ function renderCircle(){
     }
   });
   content.addEventListener('input', event => {
+    if (food && food.handleInput(event)) return;
+    if (commerce && commerce.handleInput(event)) return;
     if (grocery.handleInput(event)) return;
     if (pages.handleInput(event)) return;
     if (event.target.id === 'notes' && canEdit()) {
@@ -815,6 +845,8 @@ function renderCircle(){
     }
   });
   content.addEventListener('change', event => {
+    if (food && food.handleChange(event)) return;
+    if (commerce && commerce.handleChange(event)) return;
     if (grocery.handleChange(event)) return;
     if (pages.handleChange(event)) return;
     if (event.target.id === 'week-jump-date' && !Number.isNaN(parseDate(event.target.value).getTime())) {
@@ -825,7 +857,11 @@ function renderCircle(){
     if (event.target.id === 'range-start') state.rangeStart = Number(event.target.value);
     if (event.target.id === 'range-end') state.rangeEnd = Number(event.target.value);
   });
-  content.addEventListener('submit', event => { if (!grocery.handleSubmit(event)) pages.handleSubmit(event); });
+  content.addEventListener('submit', event => {
+    if(food && food.handleSubmit(event)) return;
+    if(commerce && commerce.handleSubmit(event)) return;
+    if (!grocery.handleSubmit(event)) pages.handleSubmit(event);
+  });
   for (const button of document.querySelectorAll('.view-tab')) button.addEventListener('click', () => changeView(button.dataset.view));
   const appMenu = $('#app-menu');
   const menuButton = $('#menu-btn');
@@ -915,7 +951,11 @@ function renderCircle(){
   });
 
   window.addEventListener('beforeunload', event => {
-    if (!state.unsaved && !unsavedJournals.size && !pages.hasUnsavedDraft() && !grocery.hasUnsavedDraft() && !grocery.isBusy()) return;
+    if (!state.unsaved && !unsavedJournals.size && !pages.hasUnsavedDraft() && !(draftStore && draftStore.hasFailedWrites()) &&
+        !(grocery.hasUnpersistedChanges && grocery.hasUnpersistedChanges()) &&
+        !(commerce && commerce.hasUnpersistedChanges && commerce.hasUnpersistedChanges()) &&
+        !(food && food.hasUnpersistedChanges && food.hasUnpersistedChanges()) &&
+        !grocery.isBusy() && !(commerce && commerce.isBusy()) && !(food && food.isBusy())) return;
     event.preventDefault();
     event.returnValue = '';
   });
@@ -924,8 +964,10 @@ function renderCircle(){
   if (loaded.warning) showNotice(loaded.warning, true);
   cloud.init().catch(error => showNotice(error.message || 'Grocery could not connect. Please try again.', true));
   window.addEventListener('focus', () => {
-    if (cloud.snapshot().user && !grocery.hasUnsavedDraft() && !grocery.isBusy()) cloud.refresh().catch(() => {});
+    if (cloud.snapshot().user && !grocery.isBusy() && !(commerce && commerce.isBusy()) && !(food && food.isBusy())) cloud.init().catch(() => {});
   });
+  window.addEventListener('online', () => cloud.init().catch(() => {}));
+  window.addEventListener('offline', () => cloud.refresh().catch(() => {}));
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
     window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js').catch(() => {}));
   }

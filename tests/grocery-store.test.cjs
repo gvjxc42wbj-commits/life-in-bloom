@@ -92,7 +92,7 @@ function harness(options = {}) {
       stopAutoRefresh() { calls.push({ auth: 'stopAutoRefresh' }); }
     }
   };
-  const store = createStore({ client, onChange: value => changes.push(value), redirectTo: 'http://127.0.0.1:8000/' });
+  const store = createStore({ client, onChange: value => changes.push(value), redirectTo: 'http://127.0.0.1:8000/', ...options.storeOptions });
   function emit(event, user) { session = user ? { user } : null; if (listener) listener(event, session); }
   return { store, client, rows, calls, changes, controls, emit };
 }
@@ -277,7 +277,7 @@ test('auth uses supplied callback URL and clears recovery only after a confirmed
   h.store.destroy();
 });
 
-test('missing SDK is recoverable through init retry, and browser sessions use per-tab storage with implicit flow', async () => {
+test('missing SDK is recoverable through init retry, and browser sessions use the configured storage with implicit flow', async () => {
   const original = globalThis.supabase;
   const h = harness({ signedOut: true });
   const storage = { getItem() { return null; }, setItem() {}, removeItem() {} };
@@ -369,5 +369,158 @@ test('signing in after signing out keeps the SDK automatic session-refresh lifec
   h.emit('TOKEN_REFRESHED', USER);
   assert.equal(h.store.snapshot().status, 'ready');
   assert.equal(h.store.snapshot().user.id, USER.id);
+  h.store.destroy();
+});
+
+function memory() {
+  const values = new Map();
+  return { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key), values };
+}
+
+test('persistent sign-in migrates this tab once without replacing an existing browser session', async () => {
+  const previous = { localStorage: globalThis.localStorage, sessionStorage: globalThis.sessionStorage, supabase: globalThis.supabase };
+  const local = memory(), tab = memory(), key = 'life-in-bloom.grocery.auth.v1';
+  const h = harness({ signedOut: true }); let configured;
+  try {
+    globalThis.localStorage = local; globalThis.sessionStorage = tab;
+    tab.setItem(key, 'prior-session');
+    globalThis.supabase = { createClient(url, key, options) { configured = options; return h.client; } };
+    const store = createStore({ config: { url: 'https://project.supabase.co', publishableKey: 'sb_publishable_example' } });
+    await store.init();
+    assert.equal(configured.auth.storage, local);
+    assert.equal(configured.auth.persistSession, true);
+    assert.equal(configured.auth.autoRefreshToken, true);
+    assert.equal(local.getItem(key), 'prior-session'); assert.equal(tab.getItem(key), null);
+    store.destroy();
+    tab.setItem(key, 'stale-tab');
+    const another = createStore({ client: h.client });
+    assert.equal(local.getItem(key), 'prior-session');
+    another.destroy();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
+    h.store.destroy();
+  }
+});
+
+test('offline reopening uses a labeled last-saved household copy and never posts transactions', async () => {
+  const cacheStorage = memory(), storage = memory(); let online = true;
+  storage.setItem('life-in-bloom.grocery.auth.v1',JSON.stringify({user:USER,refresh_token:'test-only'}));
+  const h = harness({ storeOptions: { cacheStorage, isOnline: () => online }, rows: {
+    bloom_products: [{ id: 'product-one', household_id: 'house-one', name: 'Oats', revision: 1 }]
+  } });
+  await h.store.init();
+  const encoded = cacheStorage.getItem('life-in-bloom.household-cache.v1.' + USER.id);
+  assert.ok(encoded); assert.doesNotMatch(encoded, /weight_kg|privateProfile|access_token|refresh_token/);
+  online = false; h.store.destroy();
+  const reopened = createStore({ cacheStorage, storage, isOnline: () => false });
+  const state = await reopened.init();
+  assert.equal(state.status, 'ready'); assert.equal(state.offline, true); assert.ok(state.cachedAt);
+  assert.equal(state.products[0].name, 'Oats'); assert.equal(state.privateProfile, null);
+  await assert.rejects(reopened.recordReceipt({ id: 'receipt-one', items: [] }), /draft.*Reconnect/i);
+  await reopened.signOut();
+  assert.equal(cacheStorage.getItem('life-in-bloom.household-cache.v1.' + USER.id), null);
+  assert.equal(cacheStorage.getItem('life-in-bloom.household-cache.v1.last-account'), null);
+  reopened.destroy();
+});
+
+test('offline cache cannot select an account that is absent or different in persisted auth', async () => {
+  const cacheStorage = memory();
+  const h = harness({storeOptions:{cacheStorage}}); await h.store.init(); h.store.destroy();
+  for(const session of [null,{user:OTHER,refresh_token:'test-only'}]) {
+    const storage = memory();
+    if(session) storage.setItem('life-in-bloom.grocery.auth.v1',JSON.stringify(session));
+    const offline = createStore({cacheStorage,storage,isOnline:()=>false});
+    const state = await offline.init();
+    assert.equal(state.user,null); assert.equal(state.household,null); assert.deepEqual(state.shoppingItems,[]);
+    offline.destroy();
+  }
+});
+
+test('an offline tab clears its household view when another tab signs out', async () => {
+  const cacheStorage=memory(), storage=memory();
+  const h=harness({storeOptions:{cacheStorage}}); await h.store.init(); h.store.destroy();
+  storage.setItem('life-in-bloom.grocery.auth.v1',JSON.stringify({user:USER,refresh_token:'test-only'}));
+  const oldAdd=globalThis.addEventListener, oldRemove=globalThis.removeEventListener; let listener;
+  try {
+    globalThis.addEventListener=(name,fn)=>{if(name==='storage') listener=fn;};
+    globalThis.removeEventListener=(name,fn)=>{if(listener===fn) listener=null;};
+    const offline=createStore({cacheStorage,storage,isOnline:()=>false});
+    assert.equal((await offline.init()).offline,true);
+    storage.removeItem('life-in-bloom.grocery.auth.v1'); listener({key:'life-in-bloom.grocery.auth.v1',newValue:null});
+    assert.equal(offline.snapshot().status,'signed-out'); assert.deepEqual(offline.snapshot().shoppingItems,[]);
+    offline.destroy(); assert.equal(listener,null);
+  } finally {
+    if(oldAdd===undefined) delete globalThis.addEventListener; else globalThis.addEventListener=oldAdd;
+    if(oldRemove===undefined) delete globalThis.removeEventListener; else globalThis.removeEventListener=oldRemove;
+  }
+});
+
+test('membership loss removes the offline household copy instead of allowing it to reappear', async () => {
+  const cacheStorage = memory();
+  const h = harness({ storeOptions: { cacheStorage } }); await h.store.init();
+  h.rows.bloom_household_members = []; await h.store.refresh();
+  assert.equal(cacheStorage.getItem('life-in-bloom.household-cache.v1.' + USER.id), null);
+  assert.equal(cacheStorage.getItem('life-in-bloom.household-cache.v1.last-account'), null);
+  h.store.destroy();
+});
+
+test('receipt and manual money writes use one server transaction and strip unrelated data', async () => {
+  const h = harness(); await h.store.init();
+  await h.store.recordReceipt({ id: 'receipt-one', purchased_on: '2026-11-04', store: 'Example', notes: '', payer_slot: 1,
+    privateJournal: 'never send', household_id: 'foreign',
+    items: [{ name: 'Oats', category: 'food', packs: 1, line_total_cents: 200, nutritionProfile: 'private' }] });
+  const receipt = h.calls.find(call => call.rpc === 'bloom_record_receipt');
+  assert.equal(Object.hasOwn(receipt.args.p_receipt, 'privateJournal'), false);
+  assert.equal(Object.hasOwn(receipt.args.p_receipt, 'household_id'), false);
+  assert.equal(Object.hasOwn(receipt.args.p_receipt.items[0], 'nutritionProfile'), false);
+  assert.equal(h.calls.filter(call => call.operation && call.operation !== 'select').length, 0);
+  await h.store.recordMoneyEntry({ id: 'money-one', direction: 'expense', category: 'other', amount_cents: 100, receipt_id: 'forged', access_token: 'secret' });
+  const money = h.calls.find(call => call.rpc === 'bloom_record_money_entry');
+  assert.equal(Object.hasOwn(money.args.p_entry, 'receipt_id'), false);
+  assert.equal(Object.hasOwn(money.args.p_entry, 'access_token'), false);
+  h.store.destroy();
+});
+
+test('recurring plan retries never duplicate or reopen a completed monthly shopping item', async () => {
+  const h = harness(); await h.store.init();
+  const item = { source_key: 'recurring:2026-11:product-one', month: '2026-11-01', product_id: 'product-one', name: 'Oats',
+    packs: 2, estimate_cents: 400, category: 'food', quantity: '2 packs', checked: false, private_notes: 'excluded' };
+  assert.equal((await h.store.saveShoppingItems([item])).added, 1);
+  const saved = h.rows.bloom_shopping_items.find(row => row.source_key === item.source_key); saved.checked = true;
+  assert.equal((await h.store.saveShoppingItems([item])).alreadyPresent, 1);
+  assert.equal(saved.checked, true);
+  assert.equal(h.rows.bloom_shopping_items.filter(row => row.source_key === item.source_key).length, 1);
+  assert.equal(Object.hasOwn(saved, 'private_notes'), false);
+  h.store.destroy();
+});
+
+test('household export excludes personal records and import checks the exact household', async () => {
+  const h = harness(); await h.store.init();
+  const backup = h.store.exportHousehold();
+  assert.equal(backup.app, 'Life in Bloom Household'); assert.equal(backup.household_id, 'house-one');
+  assert.ok(backup.data.shoppingItems.length);
+  assert.doesNotMatch(JSON.stringify(backup), /weight_kg|privateProfile|access_token|refresh_token|password/);
+  assert.throws(() => h.store.importHouseholdBackup({ ...backup, household_id: 'house-two' }), /same household/);
+  await h.store.importHouseholdBackup({ ...backup, ignored: 'do not transmit' });
+  const call = h.calls.find(call => call.rpc === 'bloom_restore_household_backup');
+  assert.equal(Object.hasOwn(call.args.p_backup, 'ignored'), false);
+  h.store.destroy();
+});
+
+test('product insertion retry compares nested JSON by value rather than database key order', async () => {
+  const h = harness(); await h.store.init();
+  const product = { request_id: '55555555-5555-4555-8555-555555555555', name: 'Oats', nutrients: { calories_kcal: 100, protein_g: 4 } };
+  await h.store.saveProduct(product);
+  const saved = h.rows.bloom_products[0]; saved.nutrients = { protein_g: 4, calories_kcal: 100 };
+  assert.equal((await h.store.saveProduct(product)).id, product.request_id);
+  assert.equal(h.rows.bloom_products.length, 1);
+  h.store.destroy();
+});
+
+test('private attachment links are limited to current saved household files', async () => {
+  const h = harness({ rows: { bloom_food_files: [{ id: 'file-one', household_id: 'house-one', path: 'foreign-house/file.jpg', revision: 1 }] } });
+  await h.store.init();
+  await assert.rejects(h.store.getFoodFileUrl({ id: 'not-saved', path: 'house-one/arbitrary.jpg' }), /no longer available/);
+  await assert.rejects(h.store.getFoodFileUrl({ id: 'file-one' }), /no longer available/);
   h.store.destroy();
 });

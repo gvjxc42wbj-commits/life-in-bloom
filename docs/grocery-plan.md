@@ -1,6 +1,6 @@
 # Smart Monthly Grocery Plan — Life in Bloom
 
-Status: implementation specification for the complete Grocery system. The first connected foundation includes authentication, two-person households, separate personal/shared profiles, monthly food budgets, inventory locations, and a shared shopping checklist. Its hosted database migration and access tests passed on November 4, 2026. The full meal-planning, purchase, price, and nutrition calculation system below remains future work. See [Grocery setup](grocery-setup.md) for authentication setup and current limitations.
+Status: specification for the complete future Grocery system, with a working development implementation of accounts, two-person households, profiles, monthly Food/Household budgets, catalog prices, recurring shopping quantities, atomic receipts and ledger entries, dated inventory, recipes, and planned/eaten portion nutrition. Hosted migrations and rollback access/transaction tests passed on November 4, 2026. The full optimization, stock reservations, cooking/leftovers, live retailer prices, and automated meal-plan generation described below remain future work. See the [Food and Grocery guide](food-and-grocery-guide.md) for exactly what the current screens do, and [Grocery setup](grocery-setup.md) for account configuration.
 
 ## Purpose
 

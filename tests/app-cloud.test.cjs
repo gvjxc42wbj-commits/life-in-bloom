@@ -12,6 +12,7 @@ const appointmentsSource = fs.readFileSync(root + '/bloom-appointments.js', 'utf
 const pagesSource = fs.readFileSync(root + '/bloom-pages.js', 'utf8');
 const personalSource = fs.readFileSync(root + '/bloom-personal.js', 'utf8');
 const grocerySource = fs.readFileSync(root + '/bloom-grocery.js', 'utf8');
+const foodSources = ['bloom-drafts.js','bloom-food-model.js','bloom-commerce.js','bloom-food.js'].map(name => ({ name, source:fs.readFileSync(root + '/' + name,'utf8') }));
 function createRuntime(seed = {}, failWrites = false) {
   const elements = new Map();
   const downloads = [];
@@ -22,6 +23,7 @@ function createRuntime(seed = {}, failWrites = false) {
     addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); },
     attributes: {}, setAttribute(name,value) { this.attributes[name]=value; }, removeAttribute(name) { delete this.attributes[name]; }, focus() {},
     querySelector() { return null; }, querySelectorAll() { return []; },
+    insertAdjacentHTML(where, value) { this.innerHTML = where === 'afterbegin' ? value + this.innerHTML : this.innerHTML + value; },
     showModal() { this.open = true; }, close() { this.open = false; for (const fn of this.listeners.close || []) fn(); },
     remove() {}, click() { if (this.download) downloads.push(this); },
     async fire(type, target) { for (const fn of this.listeners[type] || []) await fn({ target: target || this, preventDefault() {} }); }
@@ -61,6 +63,7 @@ function createRuntime(seed = {}, failWrites = false) {
   vm.runInContext(appointmentsSource, context, { filename: 'bloom-appointments.js' });
   vm.runInContext(pagesSource, context, { filename: 'bloom-pages.js' });
   vm.runInContext(personalSource, context, { filename: 'bloom-personal.js' });
+  for(const item of foodSources) vm.runInContext(item.source, context, { filename:item.name });
   vm.runInContext(grocerySource, context, { filename: 'bloom-grocery.js' });
   let onChange;
   let cloudSnapshot = {status:'signed-out',user:null,household:null,members:[],privateProfile:null,dietProfiles:[],budgets:[],inventory:[],shoppingItems:[]};
@@ -161,4 +164,31 @@ test('an account changing during asynchronous personal import cannot replace the
   assert.match(rt.get('notice').textContent,/account changed/);
   const target='life-in-bloom.personal.'+userB.id+'.'+rt.D.STORAGE_KEY;
   assert.equal(rt.backing.get(target),undefined);
+});
+
+test('Food, Wellness and Money routes open their connected household screens and use-soon deep link', async()=>{
+  const rt=createRuntime();
+  rt.cloud.set({status:'ready',user:userA,household:{id:'h-a',name:'Household',owner_user_id:userA.id},members:[{user_id:userA.id,household_id:'h-a',role:'owner'}],
+    products:[],recipes:[],mealEntries:[],receipts:[],moneyEntries:[],bills:[],foodFiles:[],recurringProducts:[]});
+  await rt.navigate('food');
+  assert.match(rt.get('content').innerHTML,/Saved recipes/);
+  await rt.navigate('wellness');
+  assert.match(rt.get('content').innerHTML,/Person 1/);
+  assert.match(rt.get('content').innerHTML,/Person 2/);
+  await rt.navigate('money');
+  assert.match(rt.get('content').innerHTML,/Your monthly money ledger/);
+  await rt.navigate('grocery');
+  await rt.click('content',{groceryAction:'use-soon'});
+  assert.match(rt.get('content').innerHTML,/Use soon/);
+  assert.match(rt.get('content').innerHTML,/data-food-action="tab" data-tab="soon" aria-current="page"/);
+});
+
+test('offline shared routes show a dated saved-copy notice without changing personal logs', async()=>{
+  const rt=createRuntime();
+  rt.cloud.set({status:'ready',user:userA,household:{id:'h-a',name:'Household',owner_user_id:userA.id},members:[{user_id:userA.id,household_id:'h-a',role:'owner'}],
+    offline:true,cachedAt:'2026-11-04T12:00:00Z',products:[],recipes:[],mealEntries:[],receipts:[],moneyEntries:[],bills:[],foodFiles:[],recurringProducts:[]});
+  for(const page of ['food','wellness','money','grocery']) {
+    await rt.navigate(page);
+    assert.match(rt.get('content').innerHTML,/Offline — showing your saved device copy/);
+  }
 });

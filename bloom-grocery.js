@@ -3,10 +3,11 @@
   'use strict';
 
   const TABS = [
-    ['list', 'Shopping list'], ['budget', 'Monthly budget'], ['inventory', 'Food at home'],
+    ['list', 'Shopping list'], ['catalog', 'Products'], ['recurring', 'Regular products'], ['receipts', 'Receipts'], ['budget', 'Monthly budget'], ['inventory', 'Food at home'],
     ['profiles', 'Profiles'], ['history', 'Budget history'], ['household', 'Household']
   ];
   const LOCATIONS = [['pantry', 'Pantry'], ['refrigerator', 'Refrigerator'], ['freezer', 'Freezer']];
+  const DATE_TYPES = [['unknown', 'Type not specified'], ['best_before', 'Best before'], ['use_by', 'Use by'], ['sell_by', 'Sell by'], ['expiry', 'Expiration']];
   const TARGETS = [
     ['calories_kcal', 'Calories', 'kcal', 20000], ['protein_g', 'Protein', 'g', 2000],
     ['carbs_g', 'Carbohydrates', 'g', 2000], ['fat_g', 'Fat', 'g', 2000], ['fiber_g', 'Fiber', 'g', 2000]
@@ -83,9 +84,9 @@
     const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
     return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
   }
-  function blankShopping() { return { id: '', request_id: draftRequestId(), name: '', quantity: '', checked: false, revision: null }; }
+  function blankShopping() { return { id: '', request_id: draftRequestId(), name: '', quantity: '', checked: false, revision: null, product_id: '', packs: '', estimate: '', category: 'food', month: '' }; }
   function blankInventory(location) {
-    return { id: '', request_id: draftRequestId(), name: '', brand: '', quantity: '', unit: 'each', location: location || 'pantry', expires_on: '', notes: '', revision: null };
+    return { id: '', request_id: draftRequestId(), name: '', brand: '', quantity: '', unit: 'each', location: location || 'pantry', expires_on: '', notes: '', revision: null, product_id: '', frozen_on: '', opened_on: '', date_type: 'unknown', freezer_use_by: '', reminder_days: '3' };
   }
   function blankPrivate() {
     return { display_name: '', age_years: '', height_value: '', height_unit: 'in', weight_value: '', weight_unit: 'lb', activity_level: '', notes: '', revision: null };
@@ -147,6 +148,10 @@
     const getNow = options.getNow || (() => new Date());
     const getLocalShopping = options.getLocalShopping || (() => []);
     const confirm = options.confirm || (message => typeof root.confirm === 'function' && root.confirm(message));
+    const commerce = options.commerce || null;
+    const model = options.model || root.BloomFoodModel;
+    const draftStore = options.draftStore;
+    const navigate = options.navigate || (() => {});
     let tab = 'list';
     let authMode = 'signin';
     let selectedMonth = monthKey(getNow());
@@ -161,19 +166,23 @@
     let profileVersions = { private: null, diet: null, budget: null };
     let drafts;
     let baselines;
+    let draftStatus = '', draftWriteFailed = false;
+    let backupReview = null;
 
     function resetDrafts() {
       drafts = {
         auth: { email: '', password: '', confirmation: '' },
         household: { name: '', code: '' },
         shopping: blankShopping(), inventory: blankInventory(), private: blankPrivate(), diet: blankDiet(),
-        budget: { amount: '', revision: null }
+        budget: { amount: '', household_amount: '', revision: null }
       };
       baselines = JSON.parse(JSON.stringify(drafts));
       profileVersions = { private: null, diet: null, budget: null };
       pendingDelete = null;
       migrationReview = null;
       invite = null;
+      backupReview = null;
+      draftWriteFailed = false;
     }
     resetDrafts();
 
@@ -187,31 +196,66 @@
         resetDrafts();
         tab = 'list';
         authMode = 'signin';
+        selectedMonth = monthKey(getNow());
+        inventoryFilter = 'all';
+        draftStatus = '';
+        if (draftStore && current.user && current.household) {
+          try {
+            const saved = draftStore.read(current.user.id, current.household.id, 'grocery');
+            const value = saved && saved.data;
+            if (value && value.version === 1 && value.drafts && value.baselines) {
+              for (const group of ['shopping', 'inventory', 'private', 'diet', 'budget']) if (value.drafts[group] && value.baselines[group]) {
+                drafts[group] = { ...drafts[group], ...value.drafts[group] };
+                baselines[group] = { ...baselines[group], ...value.baselines[group] };
+              }
+              if (validMonth(value.month)) selectedMonth = value.month;
+              if (TABS.some(([key]) => key === value.tab)) tab = value.tab;
+              draftStatus = 'Your device draft was restored.';
+            }
+          } catch (_) { draftStatus = 'Your saved device draft could not be opened.'; }
+        }
       }
       return current;
+    }
+    function persistDrafts() {
+      if (!draftStore) return;
+      const current = store.snapshot();
+      if (!current.user || !current.household) return;
+      const previouslyFailed = draftWriteFailed;
+      const savedDrafts = {}, savedBaselines = {};
+      for (const group of ['shopping', 'inventory', 'private', 'diet', 'budget']) { savedDrafts[group] = drafts[group]; savedBaselines[group] = baselines[group]; }
+      try {
+        const ok = draftStore.write(current.user.id, current.household.id, 'grocery', { version: 1, month: selectedMonth, tab, drafts: savedDrafts, baselines: savedBaselines });
+        draftWriteFailed = !ok;
+        draftStatus = ok ? 'Draft saved on this device.' : 'This device could not save your draft. Keep this page open until you save online.';
+      } catch (_) { draftWriteFailed = true; draftStatus = 'This device could not save your draft. Keep this page open until you save online.'; }
+      if (draftWriteFailed && !previouslyFailed) announce(draftStatus, true);
     }
     function dirty(group) {
       return JSON.stringify(drafts[group]) !== JSON.stringify(baselines[group]);
     }
     function hasUnsavedDraft() {
       snapshot();
-      return Boolean(busy) || Object.keys(drafts).some(dirty);
+      return Boolean(busy) || Object.keys(drafts).some(dirty) || Boolean(commerce && commerce.hasUnsavedDraft());
     }
     function discardDraft() {
       // Any request already sent may still complete on the server. Never pretend it was canceled.
-      if (busy) return false;
+      if (busy || (commerce && commerce.isBusy())) return false;
       resetDrafts();
+      if (commerce) commerce.discardDraft();
+      persistDrafts();
       return true;
     }
     function resetGroup(group, value) {
       drafts[group] = value;
       baselines[group] = { ...value };
+      persistDrafts();
     }
     function updateDerivedDrafts(current) {
       const own = current.user && current.user.id;
       const privateRow = current.privateProfile && current.privateProfile.user_id === own ? current.privateProfile : null;
       const privateVersion = privateRow ? String(privateRow.revision) : 'new';
-      if (!dirty('private') && profileVersions.private !== privateVersion) {
+      if (!current.offline && !dirty('private') && profileVersions.private !== privateVersion) {
         const value = blankPrivate();
         if (privateRow) {
           for (const field of ['display_name', 'age_years', 'activity_level', 'notes', 'revision']) value[field] = privateRow[field] == null ? '' : privateRow[field];
@@ -233,13 +277,13 @@
       const budget = (current.budgets || []).find(row => row.month === selectedMonth + '-01');
       const budgetVersion = selectedMonth + ':' + (budget ? budget.revision : 'new');
       if (!dirty('budget') && profileVersions.budget !== budgetVersion) {
-        resetGroup('budget', { amount: budget ? moneyInput(budget.amount_cents) : '', revision: budget ? budget.revision : null });
+        resetGroup('budget', { amount: budget ? moneyInput(budget.amount_cents) : '', household_amount: budget ? moneyInput(budget.household_amount_cents) : '', revision: budget ? budget.revision : null });
         profileVersions.budget = budgetVersion;
       }
     }
     function announce(message, error) { notify(message, Boolean(error)); }
     function run(label, action, onSuccess, focus) {
-      if (busy) return;
+      if (busy || (commerce && commerce.isBusy())) return;
       const token = { generation, context };
       busy = { token, label };
       refresh();
@@ -266,13 +310,15 @@
       if (!validMonth(value)) { announce('Choose a month between January 1900 and December 2200.', true); return false; }
       if (value === selectedMonth) return true;
       if (dirty('budget') && confirm('Change month and discard the budget amount you have not saved?') !== true) return false;
+      if (commerce && !commerce.setMonth(value)) return false;
       selectedMonth = value;
-      resetGroup('budget', { amount: '', revision: null });
+      resetGroup('budget', { amount: '', household_amount: '', revision: null });
       profileVersions.budget = null;
+      persistDrafts();
       refresh('#grocery-month');
       return true;
     }
-    function disabled() { return busy ? ' disabled' : ''; }
+    function disabled() { return busy || (commerce && commerce.isBusy()) ? ' disabled' : ''; }
     function button(action, label, attrs, primary) {
       return '<button type="button" class="button' + (primary ? ' primary' : '') + '" data-grocery-action="' + action + '"' + (attrs || '') + disabled() + '>' + label + '</button>';
     }
@@ -304,6 +350,7 @@
       const title = mode === 'signup' ? 'Create your Grocery account' : mode === 'reset' ? 'Reset your password' : 'Sign in to your household';
       let fields = input('auth', 'email', 'Your email', 'type="email" required maxlength="254" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false"');
       if (mode !== 'reset') fields += input('auth', 'password', 'Password', 'type="password" required ' + (mode === 'signup' ? 'minlength="12" ' : '') + 'maxlength="256" autocomplete="' + (mode === 'signup' ? 'new-password' : 'current-password') + '"');
+      if (mode === 'signin') fields += '<p class="grocery-help">Stay signed in on this device. Use Sign out when you want to switch accounts.</p>';
       if (mode === 'signup') fields += input('auth', 'confirmation', 'Repeat password', 'type="password" required minlength="12" maxlength="256" autocomplete="new-password"') + '<p class="grocery-help">Use at least 12 characters. Each household member creates their own account.</p>';
       fields += '<div class="grocery-actions">' + submit(mode === 'signup' ? 'Create my account' : mode === 'reset' ? 'Send reset email' : 'Sign in') + '</div>';
       let html = '<section class="panel grocery-auth"><p class="page-kicker">Grocery together</p><h2>' + title + '</h2><p>Share your shopping list, monthly food budget, and food inventory. Each person keeps an individual nutrition profile.</p>' + form('auth', fields) + '<div class="grocery-auth-links">';
@@ -316,7 +363,7 @@
       return '<section class="panel"><p class="page-kicker">Your shared space</p><h2>Set up your household</h2><p>You are signed in as <strong>' + escapeText(current.user && current.user.email || 'your account') + '</strong>.</p><div class="grocery-setup-grid"><section><h3>Create a household</h3><p class="grocery-help">One shared list, budget, and food inventory for two people.</p>' + form('household-create', input('household', 'name', 'Household name', 'type="text" required maxlength="80" autocomplete="off"') + '<div class="grocery-actions">' + submit('Create household') + '</div>') + '</section><section><h3>Join your household</h3><p class="grocery-help">If the other person already created it, ask them for the sharing code.</p>' + form('household-join', input('household', 'code', 'Sharing code', 'type="text" required maxlength="128" autocomplete="off" autocapitalize="none" spellcheck="false"') + '<div class="grocery-actions">' + submit('Join household') + '</div>') + '</section></div><p class="grocery-help">Household members can see its grocery list, food inventory, budgets, and shared dietary targets and restrictions.</p><div class="grocery-actions">' + button('signout', 'Sign out') + '</div></section>' + localPreviewPanel();
     }
     function renderHeader(current) {
-      return '<div class="grocery-heading"><div><p class="page-kicker">Your household groceries</p><h2>' + escapeText(current.household.name || 'Our household') + '</h2><p class="grocery-help">Shared online · ' + (current.members || []).length + ' of 2 household members</p></div><div class="grocery-actions">' + button('refresh', 'Refresh list', ' aria-label="Refresh shared Grocery records"') + '</div></div><nav class="grocery-tabs" aria-label="Grocery sections">' + TABS.map(([value, label]) => '<button type="button" data-grocery-action="tab" data-tab="' + value + '"' + (tab === value ? ' aria-current="page"' : '') + disabled() + '>' + label + '</button>').join('') + '</nav>';
+      return '<div class="grocery-heading"><div><p class="page-kicker">Your household groceries</p><h2>' + escapeText(current.household.name || 'Our household') + '</h2><p class="grocery-help">' + (current.offline ? 'Saved device copy · ' : 'Shared online · ') + (current.members || []).length + ' of 2 household members</p></div><div class="grocery-actions">' + button('refresh', 'Refresh list', ' aria-label="Refresh shared Grocery records"') + '</div></div><nav class="grocery-tabs" aria-label="Grocery sections">' + TABS.map(([value, label]) => '<button type="button" data-grocery-action="tab" data-tab="' + value + '"' + (tab === value ? ' aria-current="page"' : '') + disabled() + '>' + label + '</button>').join('') + '</nav>';
     }
     function deleteControls(type, row) {
       if (pendingDelete && pendingDelete.type === type && pendingDelete.row.id === row.id) {
@@ -333,50 +380,87 @@
       if (!migrationReview) return '<section class="panel grocery-migration"><div><h3>Bring in your saved device list</h3><p class="grocery-help">Review ' + items.length + ' saved item' + (items.length === 1 ? '' : 's') + ' before copying them to this household.</p></div>' + button('review-import', 'Review device list') + '</section>';
       return '<section class="panel grocery-migration-review"><p class="page-kicker">Review before sharing</p><h3>Copy ' + migrationReview.items.length + ' item' + (migrationReview.items.length === 1 ? '' : 's') + ' to ' + escapeText(current.household.name) + '?</h3><p class="grocery-help">Both household members will be able to see these items. Your original device list is kept.</p><ul class="grocery-preview-list">' + migrationReview.items.map(item => '<li><strong>' + escapeText(item.name) + '</strong><span>' + escapeText(item.quantity) + '</span><small>' + (item.checked ? 'Picked up' : 'To buy') + '</small></li>').join('') + '</ul><div class="grocery-actions">' + button('confirm-import', 'Copy this list to our household', '', true) + button('cancel-import', 'Keep it on this device') + '</div></section>';
     }
+    function monthItems(current) {
+      return (current.shoppingItems || []).filter(row => !row.month || row.month.slice(0, 7) === selectedMonth);
+    }
+    function monthControl() {
+      return '<label class="grocery-field grocery-month-picker" for="grocery-month"><span>Choose month</span><input id="grocery-month" type="month" min="1900-01" max="2200-12" value="' + selectedMonth + '" data-grocery-month' + disabled() + '></label>';
+    }
+    function productChoices(current) {
+      return [['', 'Enter an item manually'], ...(current.products || []).filter(row => !row.archived).map(row => [row.id, row.name + (row.brand ? ' · ' + row.brand : '')])];
+    }
     function renderList(current) {
-      const items = (current.shoppingItems || []).slice().sort((a, b) => Number(a.checked) - Number(b.checked));
+      const items = monthItems(current).slice().sort((a, b) => Number(a.checked) - Number(b.checked));
       const remaining = items.filter(item => !item.checked).length;
       const editing = Boolean(drafts.shopping.id);
-      let html = '<section class="panel"><div class="panel-title-row"><h2>Your grocery list</h2><span class="pill">' + remaining + ' to buy</span></div><p class="grocery-help">Add what your household needs. Both people see the same saved list.</p>';
-      html += form('shopping', '<div class="grocery-form-grid">' + input('shopping', 'name', editing ? 'Edit item' : 'Item to buy', 'type="text" required maxlength="160" autocomplete="off"') + input('shopping', 'quantity', 'Quantity or size <small>(optional)</small>', 'type="text" maxlength="120" autocomplete="off" placeholder="For example, 2 cartons"') + '</div><div class="grocery-actions">' + submit(editing ? 'Save item changes' : '+ Add to shared list') + button('clear-shopping', editing ? 'Discard changes' : 'Clear form') + '</div>');
-      if (!items.length) html += '<div class="grocery-empty"><span aria-hidden="true">✦</span><h3>A little room for your next shop</h3><p>Your household list is empty. Add an item above, or bring in the list saved on this device.</p></div>';
-      else html += '<ul class="grocery-items">' + items.map(item => '<li class="grocery-item' + (item.checked ? ' is-checked' : '') + '"><label class="grocery-item-check" for="grocery-check-' + escapeText(item.id) + '"><input id="grocery-check-' + escapeText(item.id) + '" type="checkbox" data-grocery-shopping-toggle="' + escapeText(item.id) + '"' + (item.checked ? ' checked' : '') + disabled() + '><span><strong>' + escapeText(item.name) + '</strong>' + (item.quantity ? '<small>' + escapeText(item.quantity) + '</small>' : '') + '<small>' + (item.checked ? 'Picked up' : 'To buy') + '</small></span></label>' + deleteControls('shopping', item) + '</li>').join('') + '</ul>';
-      return html + '<p class="grocery-help grocery-footnote">Checking an item marks it picked up. Actual purchase costs and stock changes will be recorded in the purchase workflow when it is added.</p></section>' + renderImport(current);
+      const known = items.filter(item => !item.checked && item.estimate_cents != null).reduce((sum, item) => sum + Number(item.estimate_cents), 0);
+      const missing = items.filter(item => !item.checked && item.estimate_cents == null).length;
+      let html = '<section class="panel"><div class="grocery-month-heading"><div><p class="page-kicker">' + monthLabel(selectedMonth) + '</p><h2>Your grocery list</h2><span class="pill">' + remaining + ' to buy</span></div>' + monthControl() + '</div><p class="grocery-help">Add what your household needs. Both people see the same saved monthly list. Earlier lists remain in their own months.</p><div class="grocery-list-summary"><span>Known shopping estimate <strong>' + money(known) + '</strong>' + (missing ? '<small>' + missing + ' price(s) needed — estimate incomplete</small>' : '') + '</span><div class="grocery-actions">' + button('record-trip', 'Record a shopping trip', '', true) + button('tab', 'Browse products', ' data-tab="catalog"') + '</div></div>';
+      html += form('shopping', '<div class="grocery-form-grid">' + select('shopping', 'product_id', 'Saved product <small>(optional)</small>', productChoices(current)) + input('shopping', 'name', editing ? 'Edit item' : 'Item to buy', 'type="text" required maxlength="160" autocomplete="off"') + input('shopping', 'quantity', 'Quantity or size <small>(optional)</small>', 'type="text" maxlength="120" autocomplete="off" placeholder="For example, 2 cartons"') + input('shopping', 'packs', 'Purchased packages planned <small>(optional)</small>', 'type="number" min="0" step="any" max="1000000000" inputmode="decimal"') + select('shopping', 'category', 'Budget category', [['food', 'Food'], ['household', 'Household']]) + input('shopping', 'estimate', 'Estimated total for this item (USD)', 'type="text" inputmode="decimal" maxlength="12" placeholder="Leave blank if unknown"') + '</div><div class="grocery-actions">' + submit(editing ? 'Save item changes' : '+ Add to shared list') + button('clear-shopping', editing ? 'Discard changes' : 'Clear form') + '</div>');
+      if (!items.length) html += '<div class="grocery-empty"><span aria-hidden="true">✦</span><h3>A little room for your next shop</h3><p>This month’s household list is empty. Add an item above, browse products, or review your recurring monthly quantities.</p></div>';
+      else html += '<ul class="grocery-items">' + items.map(item => '<li class="grocery-item' + (item.checked ? ' is-checked' : '') + '"><label class="grocery-item-check" for="grocery-check-' + escapeText(item.id) + '"><input id="grocery-check-' + escapeText(item.id) + '" type="checkbox" data-grocery-shopping-toggle="' + escapeText(item.id) + '"' + (item.checked ? ' checked' : '') + disabled() + '><span><strong>' + escapeText(item.name) + '</strong>' + (item.quantity ? '<small>' + escapeText(item.quantity) + '</small>' : '') + '<small>' + (item.checked ? 'Picked up' : 'To buy') + ' · ' + (item.category === 'household' ? 'Household' : 'Food') + ' · ' + (item.estimate_cents == null ? 'Price needed' : money(Number(item.estimate_cents)) + ' estimated') + '</small></span></label>' + deleteControls('shopping', item) + '</li>').join('') + '</ul>';
+      return html + '<p class="grocery-help grocery-footnote">Checking an item marks it picked up. Use Record a shopping trip to confirm actual costs, update inventory, and add the expense to Money in Bloom once.</p></section>' + renderImport(current);
     }
+
     function renderBudget(current) {
       const row = (current.budgets || []).find(entry => entry.month === selectedMonth + '-01');
-      return '<section class="panel"><div class="grocery-month-heading"><div><p class="page-kicker">Monthly grocery budget</p><h2>' + monthLabel(selectedMonth) + '</h2></div><label class="grocery-field grocery-month-picker" for="grocery-month"><span>Choose month</span><input id="grocery-month" type="month" min="1900-01" max="2200-12" value="' + selectedMonth + '" data-grocery-month' + disabled() + '></label></div><div class="grocery-budget-grid"><div class="grocery-budget-card is-main"><span>Your chosen amount</span><strong>' + money(row && row.amount_cents) + '</strong><small>Shared food budget</small></div>' + ['Spent', 'Planned', 'Available after plan'].map(label => '<div class="grocery-budget-card"><span>' + label + '</span><strong class="grocery-pending-number">Not calculated yet</strong><small>Needs purchase and meal records</small></div>').join('') + '</div><p class="grocery-help">Your monthly food limit saves now. Spending, planned shopping costs, and the amount left after your plan will come from the purchase and meal-planning tools as they are added.</p>' + form('budget', '<div class="grocery-budget-form">' + input('budget', 'amount', 'Food budget for ' + monthLabel(selectedMonth) + ' (USD)', 'type="text" inputmode="decimal" required maxlength="12" autocomplete="off" placeholder="Enter your amount"') + submit(row ? 'Save budget changes' : 'Save monthly budget') + '</div>') + '<p class="grocery-help">This limit covers food. Household supplies and dog items will have separate categories in the purchase records.</p></section><section class="panel grocery-next-step"><h3>The meal planner will build on this</h3><p>Saved profiles, food already at home, and this budget will help calculate ingredient shortages and shopping estimates. Planning food and recording what you actually eat will stay separate.</p></section>';
+      const summary = model && model.monthlyMoney ? model.monthlyMoney(current, selectedMonth) : null;
+      const format = value => value == null ? 'Not calculated yet' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value / 100);
+      let html = '<section class="panel"><div class="grocery-month-heading"><div><p class="page-kicker">Monthly grocery budget</p><h2>' + monthLabel(selectedMonth) + '</h2></div>' + monthControl() + '</div>';
+      for (const [key, label, budgetAmount] of [['food', 'Food', row && row.amount_cents], ['household', 'Household', row && row.household_amount_cents]]) {
+        const totals = summary && summary[key];
+        html += '<h3 class="grocery-budget-category">' + label + '</h3><div class="grocery-budget-grid"><div class="grocery-budget-card is-main"><span>Your chosen amount</span><strong>' + money(budgetAmount) + '</strong><small>' + label + ' allocation</small></div><div class="grocery-budget-card"><span>Spent</span><strong>' + format(totals && totals.spent_cents) + '</strong><small>Recorded actual expenses</small></div><div class="grocery-budget-card"><span>Planned</span><strong>' + format(totals && totals.planned_cents) + '</strong><small>' + (totals && totals.missing_prices ? totals.missing_prices + ' price(s) needed; incomplete' : 'Outstanding shopping estimates') + '</small></div><div class="grocery-budget-card"><span>Available after plan</span><strong class="' + (totals && totals.available_cents < 0 ? 'is-over-budget' : '') + '">' + format(totals && totals.available_cents) + '</strong><small>' + (totals && totals.missing_prices ? 'Needs the missing prices' : 'Budget − spent − planned') + '</small></div></div>';
+      }
+      html += form('budget', '<div class="grocery-form-grid">' + input('budget', 'amount', 'Food budget for ' + monthLabel(selectedMonth) + ' (USD)', 'type="text" inputmode="decimal" required maxlength="12" autocomplete="off" placeholder="Enter your amount"') + input('budget', 'household_amount', 'Household supplies budget (USD, optional)', 'type="text" inputmode="decimal" maxlength="12" autocomplete="off" placeholder="Leave blank if not set"') + '</div><div class="grocery-actions">' + submit(row ? 'Save budget changes' : 'Save monthly budget') + button('open-money', 'Open Money in Bloom ›') + '</div>');
+      return html + '<p class="grocery-help">These allocations are saved for this calendar month. A shopping estimate is a plan; a confirmed receipt records actual spending in the money ledger. Unpriced items keep the plan incomplete.</p></section>';
     }
+
     function renderHistory(current) {
-      const rows = (current.budgets || []).slice().sort((a, b) => b.month.localeCompare(a.month));
-      return '<section class="panel"><p class="page-kicker">Budget history</p><h2>Your saved months</h2><p class="grocery-help">Each month keeps its own chosen food budget. Purchase and nutrition comparisons will appear when those records are available.</p>' + (rows.length ? '<ul class="grocery-history">' + rows.map(row => '<li><button type="button" data-grocery-action="open-budget" data-month="' + escapeText(row.month.slice(0, 7)) + '"' + disabled() + '><span>' + monthLabel(row.month.slice(0, 7)) + '</span><strong>' + money(row.amount_cents) + '</strong><span class="grocery-history-arrow" aria-hidden="true">›</span></button></li>').join('') + '</ul>' : '<div class="grocery-empty"><h3>Your first month starts here</h3><p>Choose a food budget and save it. That month will appear in this history.</p>' + button('tab', 'Set a monthly budget', ' data-tab="budget"', true) + '</div>') + '</section>';
+      const months = new Set((current.budgets || []).map(row => row.month.slice(0, 7)));
+      for (const row of current.receipts || []) if (row.purchased_on) months.add(row.purchased_on.slice(0, 7));
+      for (const row of current.shoppingItems || []) if (row.month) months.add(row.month.slice(0, 7));
+      const rows = Array.from(months).filter(validMonth).sort((a, b) => b.localeCompare(a));
+      return '<section class="panel"><p class="page-kicker">Monthly history</p><h2>Your saved months</h2><p class="grocery-help">Each month keeps its Food and Household allocations, shopping list, receipts, and actual spending. Food inventory carries forward.</p>' + (rows.length ? '<ul class="grocery-history">' + rows.map(value => {
+        const budget = (current.budgets || []).find(row => row.month === value + '-01');
+        const summary = model && model.monthlyMoney ? model.monthlyMoney(current, value) : null;
+        return '<li><button type="button" data-grocery-action="open-budget" data-month="' + value + '"' + disabled() + '><span>' + monthLabel(value) + '<small>' + (summary ? 'Food spent ' + money(summary.food.spent_cents) + ' · Household spent ' + money(summary.household.spent_cents) : 'Open this month') + '</small></span><strong>' + money(budget && budget.amount_cents) + '</strong><span class="grocery-history-arrow" aria-hidden="true">›</span></button></li>';
+      }).join('') + '</ul>' : '<div class="grocery-empty"><h3>Your first month starts here</h3><p>Choose a food budget and save it. That month will appear in this history.</p>' + button('tab', 'Set a monthly budget', ' data-tab="budget"', true) + '</div>') + '</section>';
     }
+
     function renderInventory(current) {
       const all = current.inventory || [];
       const rows = all.filter(row => inventoryFilter === 'all' || row.location === inventoryFilter);
       const editing = Boolean(drafts.inventory.id);
-      let html = '<section class="panel"><p class="page-kicker">Pantry inventory</p><h2>Food already at home</h2><p class="grocery-help">Keep amounts and storage locations together. Food carries forward when a new month starts.</p><div class="grocery-location-tabs" aria-label="Food storage locations">' + [['all', 'All food'], ...LOCATIONS].map(([value, label]) => '<button type="button" data-grocery-action="filter-location" data-location="' + value + '" aria-pressed="' + (inventoryFilter === value) + '"' + disabled() + '><span>' + label + '</span><strong>' + (value === 'all' ? all.length : all.filter(row => row.location === value).length) + '</strong></button>').join('') + '</div>';
-      html += '<h3>' + (editing ? 'Update this food' : 'Add food you already have') + '</h3>' + form('inventory', '<div class="grocery-form-grid">' + input('inventory', 'name', 'Food or product name', 'type="text" required maxlength="160" autocomplete="off"') + input('inventory', 'brand', 'Brand <small>(optional)</small>', 'type="text" maxlength="120" autocomplete="off"') + input('inventory', 'quantity', 'Amount remaining', 'type="number" min="0" max="1000000000" step="any" inputmode="decimal" required') + input('inventory', 'unit', 'Unit', 'type="text" list="grocery-unit-options" maxlength="30" required autocomplete="off"') + select('inventory', 'location', 'Stored in', LOCATIONS) + input('inventory', 'expires_on', 'Package date <small>(optional)</small>', 'type="date" min="1900-01-01" max="2200-12-31"') + '</div><datalist id="grocery-unit-options"><option value="each"><option value="g"><option value="kg"><option value="oz"><option value="lb"><option value="mL"><option value="L"><option value="fl oz"><option value="cups"><option value="packages"></datalist>' + textarea('inventory', 'notes', 'Notes <small>(optional)</small>', 2000, 'For example, note whether the package date is a use-by or best-before date.') + '<div class="grocery-actions">' + submit(editing ? 'Save food changes' : '+ Add to inventory') + button('clear-inventory', editing ? 'Discard changes' : 'Clear form') + '</div>') + '</section>';
+      const today = monthKey(getNow()) + '-' + String(getNow().getDate()).padStart(2, '0');
+      const due = model && model.dueItems ? model.dueItems(all, today) : [];
+      let html = '<section class="panel"><div class="panel-title-row"><div><p class="page-kicker">Food inventory</p><h2>Food already at home</h2></div>' + button('use-soon', 'Use-soon food & recipes ›') + '</div><p class="grocery-help">Track each package or batch, its remaining amount, and the dates printed on it. Food carries forward when a new month starts.</p><div class="grocery-location-tabs" aria-label="Food storage locations">' + [['all', 'All food'], ...LOCATIONS].map(([value, label]) => '<button type="button" data-grocery-action="filter-location" data-location="' + value + '" aria-pressed="' + (inventoryFilter === value) + '"' + disabled() + '><span>' + label + '</span><strong>' + (value === 'all' ? all.length : all.filter(row => row.location === value).length) + '</strong></button>').join('') + '</div>';
+      html += '<h3>' + (editing ? 'Update this food' : 'Add food you already have') + '</h3>' + form('inventory', select('inventory', 'product_id', 'Link to a saved product <small>(optional)</small>', productChoices(current)) + '<div class="grocery-form-grid">' + input('inventory', 'name', 'Food or product name', 'type="text" required maxlength="160" autocomplete="off"') + input('inventory', 'brand', 'Brand <small>(optional)</small>', 'type="text" maxlength="120" autocomplete="off"') + input('inventory', 'quantity', 'Amount remaining', 'type="number" min="0" max="1000000000" step="any" inputmode="decimal" required') + input('inventory', 'unit', 'Unit', 'type="text" list="grocery-unit-options" maxlength="30" required autocomplete="off"') + select('inventory', 'location', 'Stored in', LOCATIONS) + '</div><datalist id="grocery-unit-options"><option value="each"><option value="g"><option value="kg"><option value="oz"><option value="lb"><option value="ml"><option value="l"><option value="fl_oz"><option value="cup"><option value="packages"></datalist><fieldset class="grocery-date-fields"><legend>Expiration, freezing & reminders</legend><div class="grocery-form-grid">' + input('inventory', 'expires_on', 'Expiration / printed package date', 'type="date" min="1900-01-01" max="2200-12-31"') + select('inventory', 'date_type', 'What does that date say?', DATE_TYPES) + input('inventory', 'opened_on', 'Date opened <small>(optional)</small>', 'type="date" min="1900-01-01" max="2200-12-31"') + input('inventory', 'frozen_on', 'Date frozen <small>(optional)</small>', 'type="date" min="1900-01-01" max="2200-12-31"') + input('inventory', 'freezer_use_by', 'Your freezer reminder date <small>(optional)</small>', 'type="date" min="1900-01-01" max="2200-12-31"') + input('inventory', 'reminder_days', 'Show a reminder this many days before', 'type="number" min="0" max="30" step="1" inputmode="numeric" required') + '</div><p class="grocery-help">A frozen date records what you did. It does not automatically extend the printed date or determine food safety. Leave dates blank when you do not know them.</p></fieldset>' + textarea('inventory', 'notes', 'Notes <small>(optional)</small>', 2000) + '<div class="grocery-actions">' + submit(editing ? 'Save food changes' : '+ Add to inventory') + button('clear-inventory', editing ? 'Discard changes' : 'Clear form') + '</div>') + '</section>';
       html += '<section class="panel"><div class="panel-title-row"><h3>' + (inventoryFilter === 'all' ? 'Your food inventory' : LOCATIONS.find(entry => entry[0] === inventoryFilter)[1]) + '</h3><span class="pill">' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + '</span></div>';
       if (!rows.length) html += '<div class="grocery-empty"><p>No food recorded here yet. Add what you have above, using the amount and unit on your package.</p></div>';
-      else html += '<ul class="grocery-stock-list">' + rows.map(row => '<li class="grocery-stock-item"><div class="grocery-stock-heading"><div><h3>' + escapeText(row.name) + '</h3>' + (row.brand ? '<p class="grocery-help">' + escapeText(row.brand) + '</p>' : '') + '</div><strong class="grocery-stock-amount">' + escapeText(row.quantity) + ' <span>' + escapeText(row.unit) + '</span></strong></div><div class="grocery-stock-meta"><span class="pill">' + escapeText((LOCATIONS.find(entry => entry[0] === row.location) || ['', row.location])[1]) + '</span>' + (row.expires_on ? '<span>Package date: ' + escapeText(dateLabel(row.expires_on)) + '</span>' : '') + '</div>' + (row.notes ? '<p class="grocery-stock-notes">' + escapeText(row.notes) + '</p>' : '') + deleteControls('inventory', row) + '</li>').join('') + '</ul>';
-      return html + '<p class="grocery-help grocery-footnote">Package dates come from the information you enter. Food entries remain until you update or remove them.</p></section>';
+      else html += '<ul class="grocery-stock-list">' + rows.map(row => {
+        const reminder = Array.isArray(due) ? due.find(entry => entry.id === row.id || entry.item && entry.item.id === row.id) : null;
+        const printedLabel = DATE_TYPES.find(([key]) => key === row.date_type)?.[1] || 'Package date';
+        return '<li class="grocery-stock-item"><div class="grocery-stock-heading"><div><h3>' + escapeText(row.name) + '</h3>' + (row.brand ? '<p class="grocery-help">' + escapeText(row.brand) + '</p>' : '') + '</div><strong class="grocery-stock-amount">' + escapeText(row.quantity) + ' <span>' + escapeText(row.unit) + '</span></strong></div><div class="grocery-stock-meta"><span class="pill">' + escapeText(LOCATIONS.find(([key]) => key === row.location)?.[1] || row.location) + '</span>' + (reminder ? '<span class="grocery-date-alert">Review recorded date</span>' : '') + '</div><dl class="grocery-stock-dates"><div><dt>' + escapeText(printedLabel === 'Type not specified' ? 'Expiration / package date' : printedLabel) + '</dt><dd>' + (row.expires_on ? dateLabel(row.expires_on) : 'Not recorded') + '</dd></div>' + (row.opened_on ? '<div><dt>Opened</dt><dd>' + dateLabel(row.opened_on) + '</dd></div>' : '') + (row.frozen_on ? '<div><dt>Frozen</dt><dd>' + dateLabel(row.frozen_on) + '</dd></div>' : '') + (row.freezer_use_by ? '<div><dt>Freezer reminder</dt><dd>' + dateLabel(row.freezer_use_by) + '</dd></div>' : '') + '</dl>' + (row.notes ? '<p class="grocery-stock-notes">' + escapeText(row.notes) + '</p>' : '') + deleteControls('inventory', row) + (row.location !== 'freezer' ? '<div class="grocery-actions grocery-freeze-action">' + button('freeze-inventory', 'Move to freezer…', ' data-id="' + escapeText(row.id) + '"') + '</div>' : '') + '</li>';
+      }).join('') + '</ul>';
+      return html + '</section>';
     }
+
     function profileCards(current) {
-      const profiles = current.dietProfiles || [];
-      const members = current.members || [];
-      return '<div class="grocery-profile-cards">' + members.map((member, index) => {
-        const profile = profiles.find(row => row.user_id === member.user_id);
-        const own = current.user && member.user_id === current.user.id;
-        const color = profile && profile.color === 'purple' ? 'purple' : profile && profile.color === 'pink' ? 'pink' : index === 1 ? 'purple' : 'pink';
-        const title = profile && profile.display_name || (own ? 'Your shared profile' : 'Household member');
-        return '<article class="grocery-profile-card grocery-profile-' + color + '"><p class="page-kicker">' + (own ? 'Your profile' : 'Household profile') + '</p><h3>' + escapeText(title) + '</h3>' + (!profile ? '<p class="grocery-help">' + (own ? 'Add your targets and preferences below.' : 'This person has not saved their shared profile yet.') + '</p>' : '<dl class="grocery-target-summary">' + TARGETS.map(([key, label, unit]) => '<div><dt>' + label + '</dt><dd>' + (profile[key] == null ? 'Not set' : escapeText(profile[key]) + ' ' + unit) + '</dd></div>').join('') + '</dl><details class="grocery-diet-details"><summary>Shared preferences &amp; restrictions</summary>' + [['allergies', 'Allergies'], ['restrictions', 'Restrictions'], ['preferences', 'Preferences'], ['notes', 'Other targets or notes']].map(([key, label]) => '<p><strong>' + label + '</strong><span>' + escapeText(profile[key] || 'Not entered') + '</span></p>').join('') + '</details>') + '</article>';
-      }).join('') + (members.length < 2 ? '<article class="grocery-profile-card grocery-profile-empty"><p class="page-kicker">Second household member</p><h3>A place for their own profile</h3><p class="grocery-help">They can create an account and join using your household sharing code.</p>' + button('tab', 'Open household', ' data-tab="household"') + '</article>' : '') + '</div>';
+      return '<div class="grocery-profile-cards">' + [1, 2].map(slot => {
+        const member = (current.members || []).find(row => row.role === (slot === 1 ? 'owner' : 'member'));
+        const profile = member && (current.dietProfiles || []).find(row => row.user_id === member.user_id);
+        let html = '<article class="grocery-profile-card' + (slot === 2 ? ' grocery-profile-purple' : '') + '"><p class="page-kicker">Person ' + slot + ' · ' + (slot === 1 ? 'Pink' : 'Purple') + '</p><h3>' + escapeText(profile && profile.display_name || (member ? 'Planning profile' : 'Second household member')) + '</h3>';
+        if (!member) return html + '<p class="grocery-help">This place is ready for the second person. They can join with their own login.</p></article>';
+        html += '<dl class="grocery-target-summary">' + TARGETS.map(([key, label, unit]) => '<div><dt>' + label + '</dt><dd>' + (profile && profile[key] != null ? escapeText(profile[key]) + ' ' + unit : 'Not set') + '</dd></div>').join('') + '</dl>';
+        if (profile) html += '<details class="grocery-diet-details"><summary>Preferences and label checks</summary>' + ['allergies', 'restrictions', 'preferences', 'notes'].map(key => '<p><strong>' + key[0].toUpperCase() + key.slice(1) + '</strong><span>' + escapeText(profile[key] || 'Not recorded') + '</span></p>').join('') + '</details>';
+        return html + '</article>';
+      }).join('') + '</div>';
     }
     function renderProfiles(current) {
       let html = '<section class="panel"><p class="page-kicker">Household nutrition</p><h2>Two people, individual needs</h2><p class="grocery-help">Each person edits their own profile. Shared targets and dietary preferences help your household plan together.</p>' + profileCards(current) + '</section>';
-      html += '<section class="panel"><span class="grocery-scope-label">Shared with your household</span><h3>Your planning profile</h3><p class="grocery-help">Enter daily targets you already use. Automatic estimates and meal-nutrition calculations will be added with the planner.</p>';
-      html += form('diet', '<div class="grocery-form-grid">' + input('diet', 'display_name', 'Name your household will see', 'type="text" required maxlength="80" autocomplete="nickname"') + select('diet', 'color', 'Profile color', [['pink', 'Pink'], ['purple', 'Purple']]) + '</div><div class="grocery-target-fields">' + TARGETS.map(([key, label, unit, maximum]) => input('diet', key, label + ' (' + unit + '/day)', 'type="number" min="0" max="' + maximum + '" step="any" inputmode="decimal"')).join('') + '</div><p class="grocery-help">Leave a target blank when it is unknown. A blank value does not mean zero.</p>' + textarea('diet', 'allergies', 'Allergies and label checks', 4000, 'Record the ingredients and package warnings your household needs to check.') + textarea('diet', 'restrictions', 'Other dietary restrictions', 4000) + textarea('diet', 'preferences', 'Foods, brands, and stores you prefer', 4000) + textarea('diet', 'notes', 'Other nutrition targets or notes', 4000, 'You can record vitamin and mineral targets here for now.') + '<div class="grocery-actions">' + submit('Save shared planning profile') + button('clear-diet', 'Discard changes') + '</div>') + '</section>';
+      html += '<section class="panel"><span class="grocery-scope-label">Shared with your household</span><h3>Your planning profile</h3><p class="grocery-help">Enter daily targets you already use. Saved recipe and product nutrition appears in Wellness when you plan or log portions.</p>';
+      html += form('diet', input('diet', 'display_name', 'Name your household will see', 'type="text" required maxlength="80" autocomplete="nickname"') + '<div class="grocery-target-fields">' + TARGETS.map(([key, label, unit, maximum]) => input('diet', key, label + ' (' + unit + '/day)', 'type="number" min="0" max="' + maximum + '" step="any" inputmode="decimal"')).join('') + '</div><p class="grocery-help">Leave a target blank when it is unknown. A blank value does not mean zero. Person 1 stays pink and Person 2 stays purple throughout the food screens.</p>' + textarea('diet', 'allergies', 'Allergies and label checks', 4000, 'Record the ingredients and package warnings your household needs to check.') + textarea('diet', 'restrictions', 'Other dietary restrictions', 4000) + textarea('diet', 'preferences', 'Foods, brands, and stores you prefer', 4000) + textarea('diet', 'notes', 'Other nutrition targets or notes', 4000, 'You can record vitamin and mineral targets here for now.') + '<div class="grocery-actions">' + submit('Save shared planning profile') + button('clear-diet', 'Discard changes') + '</div>') + '</section>';
+      if (current.offline) return html + '<section class="panel"><h3>Your private profile inputs</h3><p class="grocery-help">Connect to the internet to open your private profile. It is not included in the household offline copy.</p></section>';
       html += '<section class="panel"><span class="grocery-scope-label is-private">Visible only to your account</span><h3>Your personal profile inputs</h3><p class="grocery-help">These optional measurements and notes are separate from the information shared with your household.</p>';
       html += form('private', '<div class="grocery-form-grid">' + input('private', 'display_name', 'Your personal profile name', 'type="text" maxlength="80" autocomplete="nickname"') + input('private', 'age_years', 'Age in years <small>(optional)</small>', 'type="number" min="0" max="130" step="1" inputmode="numeric"') + input('private', 'height_value', 'Height <small>(optional)</small>', 'type="number" min="0" max="' + measurementMaximum('height', drafts.private.height_unit) + '" step="any" inputmode="decimal"') + select('private', 'height_unit', 'Height unit', [['in', 'Inches'], ['cm', 'Centimeters']]) + input('private', 'weight_value', 'Weight <small>(optional)</small>', 'type="number" min="0" max="' + measurementMaximum('weight', drafts.private.weight_unit) + '" step="any" inputmode="decimal"') + select('private', 'weight_unit', 'Weight unit', [['lb', 'Pounds'], ['kg', 'Kilograms']]) + '</div>' + input('private', 'activity_level', 'Usual activity level <small>(optional)</small>', 'type="text" maxlength="200" autocomplete="off"') + textarea('private', 'notes', 'Private profile notes', 4000) + '<div class="grocery-actions">' + submit('Save private profile') + button('clear-private', 'Discard changes') + '</div>') + '</section>';
       return html;
@@ -398,7 +482,10 @@
         }
         html += '<div class="grocery-actions">' + button('create-invite', invite ? 'Create a new sharing code' : 'Create sharing code', '', true) + '</div></div>';
       } else if (members.length >= 2) html += '<p class="grocery-help">Both household places are filled.</p>';
-      return html + '<div class="grocery-actions grocery-signout">' + button('signout', 'Sign out of Grocery') + '</div></section>';
+      html += '<div class="grocery-backup"><h3>Your household backup</h3><p class="grocery-help">Export shared products, inventory, recipes, shopping lists, monthly budgets, receipts, and money history. File references are included; attached photos and PDFs remain in private online storage.</p><div class="grocery-actions">' + button('export-household', 'Export household backup') + '</div>';
+      if (owner) html += '<label class="grocery-field grocery-backup-picker"><span>Restore missing records from a household backup</span><input type="file" accept="application/json,.json" data-grocery-household-import' + disabled() + '></label><p class="grocery-help">Restore is for this same household. Existing records are kept; conflicting changes stop the restore for review. Receipt history is restored without recording the purchases again.</p>';
+      if (owner && backupReview) html += '<div class="grocery-backup-review"><h4>Review ' + escapeText(backupReview.name) + '</h4><p class="grocery-help">This household · ' + backupReview.payload.data.products.length + ' products · ' + backupReview.payload.data.receipts.length + ' receipts · ' + backupReview.payload.data.moneyEntries.length + ' money entries</p><div class="grocery-actions">' + button('restore-household', 'Restore missing records', '', true) + button('cancel-household-import', 'Cancel restore') + '</div></div>';
+      return html + '</div><div class="grocery-actions grocery-signout">' + button('signout', 'Sign out of Grocery') + '</div></section>';
     }
     function render() {
       const current = snapshot();
@@ -412,46 +499,70 @@
       if (!current.user || current.status === 'signed-out') return html + renderAuth(current) + '</section>';
       if (!current.household || current.status === 'no-household') return html + renderHouseholdSetup(current) + '</section>';
       html += renderHeader(current);
+      if (current.offline) html += '<p class="grocery-working" role="status">Offline — saved device copy. Changes are drafts until saved online.</p>';
+      else if (draftStatus) html += '<p class="grocery-help grocery-draft-status" role="status">' + escapeText(draftStatus) + '</p>';
       if (tab === 'budget') html += renderBudget(current);
       else if (tab === 'inventory') html += renderInventory(current);
       else if (tab === 'profiles') html += renderProfiles(current);
       else if (tab === 'history') html += renderHistory(current);
       else if (tab === 'household') html += renderHousehold(current);
+      else if (commerce && ['catalog', 'recurring', 'receipts'].includes(tab)) html += commerce.render(tab);
       else html += renderList(current);
-      return html + '<p class="grocery-cloud-caption">Saved online for your household. Use Refresh list to see the latest changes.</p></section>';
+      return html + '<p class="grocery-cloud-caption">' + (current.offline ? 'You are viewing the saved device copy. Reconnect and save your drafts to update the household.' : 'Saved records are online for your household. Your typed drafts are kept on this device; choose Save to share them.') + '</p></section>';
     }
     function readForm(formElement, group) {
       for (const key of Object.keys(drafts[group])) {
-        if (['id', 'request_id', 'revision', 'checked'].includes(key)) continue;
+        if (['id', 'request_id', 'revision', 'checked', 'month'].includes(key)) continue;
         const field = formElement.elements && typeof formElement.elements.namedItem === 'function'
           ? formElement.elements.namedItem(key) : null;
         if (field && typeof field.value === 'string') drafts[group][key] = field.value;
       }
+      if (!['auth', 'household'].includes(group)) persistDrafts();
     }
     function handleInput(event) {
+      if (commerce && commerce.handleInput(event)) return true;
       snapshot();
       const field = event.target;
       const key = field && field.dataset && field.dataset.groceryField;
       if (!key) return false;
       const [group, name, extra] = key.split('.');
-      if (extra || !Object.hasOwn(drafts, group) || !Object.hasOwn(drafts[group], name) || ['id', 'request_id', 'revision', 'checked'].includes(name)) return false;
-      if (!busy) {
+      if (extra || !Object.hasOwn(drafts, group) || !Object.hasOwn(drafts[group], name) || ['id', 'request_id', 'revision', 'checked', 'month'].includes(name)) return false;
+      if (!busy && !(commerce && commerce.isBusy())) {
         drafts[group][name] = field.value;
         if (group === 'private' && ['height_unit', 'weight_unit'].includes(name)) {
           const kind = name.slice(0, -5);
           const measurementField = field.form && field.form.elements && field.form.elements.namedItem(kind + '_value');
           if (measurementField && Object.hasOwn(MEASUREMENTS[kind].factors, field.value)) measurementField.max = String(measurementMaximum(kind, field.value));
         }
+        if (['shopping', 'inventory'].includes(group) && name === 'product_id') {
+          const product = (store.snapshot().products || []).find(row => row.id === field.value && !row.archived);
+          if (product) {
+            drafts[group].name = product.name;
+            if (group === 'inventory') { drafts.inventory.brand = product.brand || ''; drafts.inventory.unit = product.package_unit; if (drafts.inventory.quantity === '') drafts.inventory.quantity = String(product.package_quantity); }
+            else { drafts.shopping.category = product.category; drafts.shopping.packs = '1'; drafts.shopping.quantity = '1 package · ' + product.package_quantity + ' ' + product.package_unit; drafts.shopping.estimate = moneyInput(product.price_cents); }
+            refresh();
+          }
+        }
+        if (group === 'shopping' && name === 'packs' && drafts.shopping.product_id) {
+          const product = (store.snapshot().products || []).find(row => row.id === drafts.shopping.product_id);
+          if (product && Number(field.value) > 0) {
+            drafts.shopping.estimate = product.price_cents == null ? '' : moneyInput(Math.round(Number(field.value) * Number(product.price_cents)));
+            drafts.shopping.quantity = field.value + ' package(s) · ' + Number(field.value) * Number(product.package_quantity) + ' ' + product.package_unit;
+            for (const key of ['estimate', 'quantity']) { const changed = field.form && field.form.elements && field.form.elements.namedItem(key); if (changed) changed.value = drafts.shopping[key]; }
+          }
+        }
+        if (!['auth', 'household'].includes(group)) persistDrafts();
       }
       return true;
     }
     function handleSubmit(event) {
+      if (commerce && commerce.handleSubmit(event)) return true;
       const element = event.target;
       const kind = element && element.dataset && element.dataset.groceryForm;
       if (!['auth', 'password', 'household-create', 'household-join', 'shopping', 'inventory', 'budget', 'private', 'diet'].includes(kind)) return false;
       event.preventDefault();
       const current = snapshot();
-      if (busy) return true;
+      if (busy || (commerce && commerce.isBusy())) return true;
       try {
         if (kind === 'auth' || kind === 'password') {
           readForm(element, 'auth');
@@ -496,7 +607,12 @@
         if (!requireReady(current)) return true;
         readForm(element, kind);
         if (kind === 'shopping') {
-          const payload = { ...drafts.shopping, name: textField(drafts.shopping.name, 'Item name', 160, true), quantity: textField(drafts.shopping.quantity, 'Quantity', 120, false) };
+          const value = drafts.shopping;
+          if (value.product_id && !(current.products || []).some(product => product.id === value.product_id && !product.archived)) throw new Error('Choose a saved product, or choose Enter an item manually.');
+          const packs = optionalNumber(value.packs, 'Packages planned', 1000000000, false);
+          if (packs === 0) throw new Error('Packages planned must be greater than zero, or leave the field blank.');
+          if (!['food', 'household'].includes(value.category)) throw new Error('Choose Food or Household for this item.');
+          const payload = { id: value.id, request_id: value.request_id, revision: value.revision, checked: value.checked, name: textField(value.name, 'Item name', 160, true), quantity: textField(value.quantity, 'Quantity', 120, false), month: value.month || selectedMonth + '-01', product_id: value.product_id || null, packs, estimate_cents: value.estimate.trim() === '' ? null : centsFromInput(value.estimate), category: value.category };
           run('Saving your shopping item…', () => store.saveShoppingItem(payload), () => {
             resetGroup('shopping', blankShopping());
             announce('Your shopping item was saved for the household.');
@@ -507,21 +623,29 @@
           if (quantity === null) throw new Error('Enter how much of this food you have.');
           if (!LOCATIONS.some(([location]) => location === value.location)) throw new Error('Choose Pantry, Refrigerator, or Freezer.');
           if (value.expires_on && !dateLabel(value.expires_on)) throw new Error('Choose a valid package date.');
+          for (const field of ['frozen_on', 'opened_on', 'freezer_use_by']) if (value[field] && !dateLabel(value[field])) throw new Error('Choose a valid ' + field.replace(/_/g, ' ') + ' date.');
+          if (value.frozen_on && value.freezer_use_by && value.freezer_use_by < value.frozen_on) throw new Error('The freezer reminder must be on or after the date frozen.');
+          if (!DATE_TYPES.some(([type]) => type === value.date_type)) throw new Error('Choose the package date type.');
+          if (value.product_id && !(current.products || []).some(product => product.id === value.product_id)) throw new Error('Choose a saved product or enter this food manually.');
+          const reminderDays = optionalNumber(value.reminder_days, 'Reminder days', 30, true);
+          if (reminderDays === null) throw new Error('Enter how many days before the recorded date to show a reminder.');
           const payload = {
             id: value.id, request_id: value.request_id, revision: value.revision, name: textField(value.name, 'Food name', 160, true), brand: textField(value.brand, 'Brand', 120, false),
             quantity, unit: textField(value.unit, 'Unit', 30, true), location: value.location,
-            expires_on: value.expires_on || null, notes: textField(value.notes, 'Notes', 2000, false)
+            expires_on: value.expires_on || null, notes: textField(value.notes, 'Notes', 2000, false), product_id: value.product_id || null,
+            frozen_on: value.frozen_on || null, opened_on: value.opened_on || null, date_type: value.date_type,
+            freezer_use_by: value.freezer_use_by || null, reminder_days: reminderDays
           };
           run('Saving your food inventory…', () => store.saveInventory(payload), () => {
             resetGroup('inventory', blankInventory(inventoryFilter === 'all' ? 'pantry' : inventoryFilter));
             announce('Your food inventory was updated for the household.');
           }, '#grocery-inventory-name');
         } else if (kind === 'budget') {
-          const payload = { month: selectedMonth + '-01', amount_cents: centsFromInput(drafts.budget.amount), currency: 'USD', revision: drafts.budget.revision };
+          const payload = { month: selectedMonth + '-01', amount_cents: centsFromInput(drafts.budget.amount), household_amount_cents: drafts.budget.household_amount.trim() === '' ? null : centsFromInput(drafts.budget.household_amount), currency: 'USD', revision: drafts.budget.revision };
           run('Saving the monthly budget…', () => store.saveBudget(payload), () => {
-            resetGroup('budget', { amount: '', revision: null });
+            resetGroup('budget', { amount: '', household_amount: '', revision: null });
             profileVersions.budget = null;
-            announce('The food budget for ' + monthLabel(selectedMonth) + ' was saved.');
+            announce('The Food and Household budgets for ' + monthLabel(selectedMonth) + ' were saved.');
           });
         } else if (kind === 'private') {
           const value = drafts.private;
@@ -543,7 +667,8 @@
           });
         } else if (kind === 'diet') {
           const value = drafts.diet;
-          const payload = { revision: value.revision, display_name: textField(value.display_name, 'Shared profile name', 80, true), color: value.color === 'purple' ? 'purple' : 'pink' };
+          const member = (current.members || []).find(row => row.user_id === current.user.id);
+          const payload = { revision: value.revision, display_name: textField(value.display_name, 'Shared profile name', 80, true), color: member && member.role === 'member' ? 'purple' : 'pink' };
           TARGETS.forEach(([key, label, unit, maximum]) => { payload[key] = optionalNumber(value[key], label, maximum, false); });
           for (const key of ['allergies', 'restrictions', 'preferences', 'notes']) payload[key] = textField(value[key], key[0].toUpperCase() + key.slice(1), 4000, false);
           run('Saving your shared planning profile…', () => store.saveDietProfile(payload), () => {
@@ -555,11 +680,28 @@
       return true;
     }
     function handleChange(event) {
+      if (commerce && commerce.handleChange(event)) return true;
       const field = event.target;
       if (!field || !field.dataset) return false;
       const current = snapshot();
+      if (Object.hasOwn(field.dataset, 'groceryHouseholdImport')) {
+        const file = field.files && field.files[0];
+        if (!file || busy || (commerce && commerce.isBusy())) return true;
+        if (!requireReady(current)) return true;
+        const mine = (current.members || []).find(member => member.user_id === current.user.id);
+        if (!mine || mine.role !== 'owner') { announce('Only the household owner can restore a household backup.', true); return true; }
+        if (file.size > 20 * 1024 * 1024) { announce('Choose a household JSON backup up to 20 MB.', true); return true; }
+        backupReview = null;
+        run('Reading the household backup for review…', async () => JSON.parse(await file.text()), payload => {
+          const keys = ['products', 'recurringProducts', 'budgets', 'inventory', 'shoppingItems', 'bills', 'recipes', 'mealEntries', 'receipts', 'moneyEntries', 'foodFiles'];
+          if (!payload || payload.app !== 'Life in Bloom Household' || payload.version !== 1 || payload.household_id !== current.household.id || !payload.data || !keys.every(key => Array.isArray(payload.data[key]))) throw new Error('Choose a Life in Bloom Household backup for this same household. No records were changed.');
+          backupReview = { name: file.name, payload, userId: current.user.id, householdId: current.household.id };
+          announce('Review the backup details before restoring missing records.');
+        });
+        return true;
+      }
       if (Object.hasOwn(field.dataset, 'groceryMonth')) {
-        if (busy || !chooseMonth(field.value)) field.value = selectedMonth;
+        if (busy || (commerce && commerce.isBusy()) || !chooseMonth(field.value)) field.value = selectedMonth;
         return true;
       }
       if (field.dataset.groceryShoppingToggle) {
@@ -574,13 +716,14 @@
       return handleInput(event);
     }
     function handleClick(event) {
+      if (commerce && commerce.handleClick(event)) return true;
       const element = event.target && event.target.closest && event.target.closest('[data-grocery-action]');
       if (!element || !element.dataset || !element.dataset.groceryAction) return false;
       const action = element.dataset.groceryAction;
-      const actions = ['tab', 'auth-mode', 'retry', 'refresh', 'signout', 'filter-location', 'open-budget', 'edit-shopping', 'edit-inventory', 'clear-shopping', 'clear-inventory', 'clear-private', 'clear-diet', 'delete-shopping', 'delete-inventory', 'confirm-delete', 'keep-item', 'review-import', 'confirm-import', 'cancel-import', 'create-invite'];
+      const actions = ['tab', 'auth-mode', 'retry', 'refresh', 'signout', 'filter-location', 'open-budget', 'edit-shopping', 'edit-inventory', 'clear-shopping', 'clear-inventory', 'clear-private', 'clear-diet', 'delete-shopping', 'delete-inventory', 'confirm-delete', 'keep-item', 'review-import', 'confirm-import', 'cancel-import', 'create-invite', 'record-trip', 'open-money', 'use-soon', 'freeze-inventory', 'export-household', 'restore-household', 'cancel-household-import'];
       if (!actions.includes(action)) return false;
       const current = snapshot();
-      if (busy) return true;
+      if (busy || (commerce && commerce.isBusy())) return true;
       try {
         if (action === 'auth-mode') {
           if (!['signin', 'signup', 'reset'].includes(element.dataset.groceryMode)) return true;
@@ -595,13 +738,52 @@
           return true;
         }
         if (action === 'signout') {
-          if (hasUnsavedDraft() && confirm('Sign out and discard the Grocery form changes you have not saved?') !== true) return true;
+          const unpersisted = draftWriteFailed || (!draftStore && hasUnsavedDraft()) || Boolean(commerce && commerce.hasUnpersistedChanges && commerce.hasUnpersistedChanges()) || Boolean(options.hasOtherUnpersistedChanges && options.hasOtherUnpersistedChanges());
+          if (unpersisted && confirm('Sign out and leave changes that this device has not saved? Cancel to save your changes or upload the selected file first.') !== true) return true;
           run('Signing out…', () => store.signOut(), () => { resetDrafts(); announce('You are signed out of Grocery.'); });
           return true;
         }
         if (!requireReady(current)) return true;
         if (action === 'tab') {
-          if (TABS.some(([value]) => value === element.dataset.tab)) { tab = element.dataset.tab; refresh(); }
+          selectTab(element.dataset.tab);
+        } else if (action === 'record-trip') {
+          if (!commerce) throw new Error('The receipt tools did not finish loading. Refresh the app.');
+          const purchased = new Set((current.receipts || []).filter(row => !row.voided_at).flatMap(row => (row.items || []).map(item => item.shopping_item_id).filter(Boolean)));
+          const items = monthItems(current).filter(row => !row.checked || !purchased.has(row.id));
+          commerce.startReceipt(items, selectedMonth);
+        } else if (action === 'open-money') { if (commerce) commerce.setMonth(selectedMonth); navigate('money'); }
+        else if (action === 'use-soon') { if (options.openFood) options.openFood('soon'); else navigate('food'); }
+        else if (action === 'export-household') {
+          run('Preparing the household backup…', () => store.exportHousehold(), payload => {
+            const filename = 'life-in-bloom-household-' + monthKey(getNow()) + '-' + String(getNow().getDate()).padStart(2, '0') + '.json';
+            if (options.download) options.download(payload, filename);
+            else {
+              const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob), link = document.createElement('a');
+              link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }
+            announce('Your household records were exported. Attached file contents stay in private online storage.');
+          });
+        } else if (action === 'cancel-household-import') { backupReview = null; refresh(); }
+        else if (action === 'restore-household') {
+          const mine = (current.members || []).find(member => member.user_id === current.user.id);
+          if (!mine || mine.role !== 'owner' || !backupReview || backupReview.userId !== current.user.id || backupReview.householdId !== current.household.id) throw new Error('The household owner must review a backup for this household before restoring it.');
+          const payload = backupReview.payload;
+          run('Restoring missing household records…', () => store.importHouseholdBackup(payload), result => {
+            backupReview = null;
+            const skipped = result && (result.skippedFiles || result.skipped_files) || 0;
+            announce('The backup was checked and missing household records restored. Existing records were kept.' + (skipped ? ' ' + skipped + ' unavailable attachment reference(s) were skipped.' : ''));
+          });
+        } else if (action === 'freeze-inventory') {
+          const row = (current.inventory || []).find(item => item.id === element.dataset.id);
+          if (!row) return true;
+          if (dirty('inventory')) { announce('Save or discard the food entry you are editing first.', true); return true; }
+          const value = { ...blankInventory(), ...row, location: 'freezer', frozen_on: monthKey(getNow()) + '-' + String(getNow().getDate()).padStart(2, '0') };
+          for (const key of ['expires_on', 'opened_on', 'freezer_use_by']) value[key] = value[key] || '';
+          resetGroup('inventory', value);
+          announce('Review the frozen date, then save this food. Its printed package date is kept.');
+          refresh('#grocery-inventory-frozen-on');
         } else if (action === 'open-budget') {
           if (chooseMonth(element.dataset.month)) { tab = 'budget'; refresh('#grocery-month'); }
         } else if (action === 'filter-location') {
@@ -627,7 +809,8 @@
           if (action.startsWith('delete-')) pendingDelete = { type: group, row: { ...row } };
           else {
             const value = group === 'shopping' ? blankShopping() : blankInventory();
-            for (const key of Object.keys(value)) value[key] = row[key] == null ? (key === 'revision' ? null : '') : row[key];
+            for (const key of Object.keys(value)) if (row[key] != null) value[key] = row[key];
+            if (group === 'shopping') value.estimate = moneyInput(row.estimate_cents);
             resetGroup(group, value);
             pendingDelete = null;
           }
@@ -663,15 +846,29 @@
       } catch (error) { announce(errorMessage(error), true); refresh(); }
       return true;
     }
+    function selectTab(value) {
+      snapshot();
+      if (!TABS.some(([key]) => key === value) || busy || (commerce && commerce.isBusy())) return false;
+      if (commerce && ['catalog', 'recurring', 'receipts'].includes(value) && !commerce.setMonth(selectedMonth)) return false;
+      tab = value;
+      persistDrafts(); refresh(); return true;
+    }
     function getHomeSummary() {
       const current = snapshot();
       if (current.status === 'ready' && current.household) {
-        const count = (current.shoppingItems || []).filter(item => !item.checked).length;
+        const thisMonth = monthKey(getNow());
+        const count = (current.shoppingItems || []).filter(item => !item.checked && (!item.month || item.month.slice(0, 7) === thisMonth)).length;
         return { count, title: count + ' item' + (count === 1 ? '' : 's') + ' to buy', description: 'Shared with ' + (current.household.name || 'your household'), status: current.status };
       }
       return { count: null, title: current.status === 'loading' ? 'Opening Grocery…' : current.user ? 'Open your household' : 'Sign in to Grocery', description: 'Your shared shopping list', status: current.status };
     }
-    return { render, handleClick, handleSubmit, handleInput, handleChange, hasUnsavedDraft, discardDraft, getHomeSummary, isBusy: () => Boolean(busy), whenIdle: () => pendingTask };
+    if (commerce && commerce.setSectionHandler) commerce.setSectionHandler((value, month) => {
+      snapshot();
+      if (validMonth(month) && month !== selectedMonth) { selectedMonth = month; resetGroup('budget', { amount: '', household_amount: '', revision: null }); profileVersions.budget = null; }
+      if (TABS.some(([key]) => key === value)) tab = value;
+      persistDrafts(); refresh();
+    });
+    return { render, handleClick, handleSubmit, handleInput, handleChange, hasUnsavedDraft, hasUnpersistedChanges: () => draftWriteFailed || (!draftStore && hasUnsavedDraft()) || Boolean(commerce && commerce.hasUnpersistedChanges && commerce.hasUnpersistedChanges()), discardDraft, getHomeSummary, selectTab, isBusy: () => Boolean(busy) || Boolean(commerce && commerce.isBusy()), whenIdle: () => commerce ? Promise.all([pendingTask, commerce.whenIdle()]) : pendingTask };
   }
 
   const api = { createController, centsFromInput, localShoppingPreview };

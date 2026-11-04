@@ -1,0 +1,46 @@
+# Food, Grocery, and Money implementation contract
+
+Internal contract for the November 2026 development update. Existing household membership, private profiles, personal journals, and row revisions remain authoritative. No personal examples or spending are seeded in public code.
+
+## Common conventions
+
+New editable tables have UUID `id`, `household_id`, server-managed `revision`, `created_at`, and `updated_at`; use the existing revision guard and household RLS. New inserts use stable form UUIDs. Currency is USD integer cents. Dates are `YYYY-MM-DD`; month is its first day. Unknown values are null. User content must be escaped. Public RPC wrappers are invokers; any required privileged implementation is in bloom_private, validates auth.uid and current membership, and has narrow grants. Root applies reviewed hosted migrations. Agents do not make remote mutations.
+
+## New tables
+
+- `bloom_products`: name, brand, category (`food`/`household`), aisle, package_quantity (>0), package_unit, item_label, price_cents nullable, price_date nullable, store, source_url, serving_quantity nullable, serving_unit, nutrients jsonb, allergens, notes, archived boolean. Units: each, g, kg, oz, lb, ml, l, fl_oz, cup, tbsp, tsp. Nutrient keys: calories_kcal, protein_g, carbs_g, fat_g, fiber_g, sodium_mg, calcium_mg, iron_mg, potassium_mg, vitamin_d_mcg, fluid_ml; numeric >=0 or null, per serving_quantity/serving_unit. No limit of 38 products.
+- `bloom_recurring_products`: product_id, person_slot nullable (1/2), quantity (>0), basis (`units`/`packs`), every_days (>0), active boolean. Product units mean its package_unit. Calculate full calendar month; round required purchases to packs after compatible stock, with user review. Repeating products are plans, never spending or actual consumption.
+- `bloom_receipts`: immutable id, household_id, purchased_on, store, payer_slot nullable 1/2, notes, items jsonb, total_cents, request_payload jsonb, created_by, created_at, voided_at nullable. Items preserve product name and price snapshots. No direct client writes; RPC only.
+- `bloom_money_entries`: immutable id, household_id, occurred_on, direction (`income`/`expense`), category (`food`/`household`/`bill`/`other`), amount_cents, description, payer_slot nullable, receipt_id nullable, bill_id nullable, request_payload jsonb, created_by, created_at, voided_at nullable. Unique receipt_id+category and bill_id when set. Only RPC writes.
+- `bloom_bills`: month, name, amount_cents nullable, variable boolean, due_on nullable, notes. Planned amounts only. Actual payment is a money entry linked by bill_id.
+- `bloom_recipes`: name, servings (>0), ingredients jsonb array of {product_id,quantity,unit}, instructions, source_url, notes, archived boolean. Ingredient quantities are for the entire recipe. Recipe nutrition uses catalog servings and unit conversion; missing nutrients remain explicitly incomplete.
+- `bloom_meal_entries`: occurred_on, person_slot (1/2), kind (`planned`/`eaten`), recipe_id nullable, product_id nullable, servings (>0), label snapshot, nutrition_snapshot jsonb, notes. Exactly one recipe/product. Snapshot preserves old logged nutrition when a product/recipe is edited. Planned and eaten never combined. Logging a meal does not assert that it was cooked or change inventory in this update.
+- `bloom_food_files`: product_id nullable, recipe_id nullable, name, path, mime_type, size_bytes. Exactly one product/recipe. Private storage bucket `bloom-food-files`, 10MB each, jpg/png/webp/pdf only; path `<household UUID>/<random UUID>.<extension>`. Membership-based upload/read/delete policies. No OCR claims.
+
+## Existing table additions
+
+- inventory: product_id nullable, frozen_on nullable, opened_on nullable, date_type (`best_before`/`use_by`/`sell_by`/`expiry`/`unknown`, default unknown), freezer_use_by nullable, reminder_days integer 0..30 default3, receipt_id nullable. Preserve existing expires_on. Never invent a new safe date when freezing.
+- shopping_items: month date, product_id nullable, packs nullable >0, estimate_cents nullable, category food/household defaultfood. Existing quantity text remains. Backfill month from created_at in America/New_York. Filter the list by selected month; preserve old months.
+- budgets: household_amount_cents nullable. Existing amount_cents remains the Food allocation; existing user values retained.
+
+## Receipt and ledger RPC contract
+
+`bloom_record_receipt(p_receipt jsonb) -> uuid`: {id,purchased_on,store,payer_slot,notes,items:[{product_id nullable,name,category,packs (>0),line_total_cents (>=0),stock_quantity nullable,stock_unit,location,expires_on nullable,date_type,frozen_on nullable,freezer_use_by nullable,shopping_item_id nullable}]}. Idempotency id+identical payload. Transaction validates all fields and ownership, inserts receipt once, inserts one expense money entry per category sum, adds separate inventory batches for positive food stock_quantity, and fulfills linked shopping quantities (partial packs reduce remaining; full marks checked). Receipt is the only spending source for its ledger entries; UI never adds another expense. Tax/discount/deposit amounts must be entered explicitly in reviewed line totals/adjustment lines, not assumed. If validation fails, nothing changes.
+
+`bloom_void_receipt(p_receipt_id uuid) -> void`: reverse ledger and mark receipt voided; remove its inventory batches only if unchanged from their original quantities. Otherwise fail with a clear correction-required error. No silent deletion of consumed/modified stock. Repeating void is safe.
+
+`bloom_record_money_entry(p_entry jsonb) -> uuid`: {id,occurred_on,direction,category,amount_cents,description,payer_slot,bill_id nullable}. Derive household from current membership; no receipt_id accepted. Validate bill household. Stable-id idempotency; bill may be recorded once.
+
+`bloom_void_money_entry(p_entry_id uuid) -> void`: manual entries only; receipt entries require voiding their receipt.
+
+## Client/UI contract
+
+Root extends BloomGroceryStore snapshot with arrays: products, recurringProducts, receipts, moneyEntries, bills, recipes, mealEntries, foodFiles. Methods saveProduct(row), saveRecurringProduct(row), saveBill(row), saveRecipe(row), saveMealEntry(row), deleteMealEntry(row), recordReceipt(payload), voidReceipt(id), recordMoneyEntry(payload), voidMoneyEntry(id), uploadFoodFile({product_id?,recipe_id?,file}), deleteFoodFile(row), getFoodFileUrl(row), saveShoppingItems(rows), exportHousehold(), importHouseholdBackup(payload). CRUD saves carry id/request_id and revision. Existing store methods remain.
+
+Root passes the same store to controllers. `BloomCommerce.createController({store,notify,refresh,navigate,confirm,getNow?})` handles Grocery extras and Money. Methods render(tab), handleClick/Submit/Input/Change (synchronous bool), hasUnsavedDraft(), discardDraft(), isBusy(), whenIdle(). Tabs: catalog, recurring, receipts, money. `render('money')` shows monthly budgets, Food/Household spent, bills and ledger. Agent owns bloom-commerce.js, commerce.css and its tests; can modify bloom-grocery.js, grocery.css and grocery-ui tests for routing extra tabs, monthly list/budgets and expanded inventory fields. Root will pass `commerce` through Grocery options; Grocery delegates new tabs/events to it.
+
+`BloomFood.createController({store,notify,refresh,navigate,confirm,getNow?})` owns Food in Bloom and Wellness nutrition. Methods render(page='food'), events/drafts/busy as above. Food has prominent Grocery shortcut, Recipes, Use soon, and food logging. Wellness shows Person1 pink / Person2 purple, separate planned/eaten totals by day, and links to Grocery profiles. Map member owner to Person1 and member to Person2 for existing goal rows. Root owns app integration.
+
+`BloomFoodModel` is pure shared calculation code. Export NUTRIENTS, UNITS, AISLES, convertQuantity(q,from,to), recipeNutrition(recipe,products,servings=1), productNutrition(product,servings=1), nutritionTotals(entries), dueItems(inventory,today), recipeSuggestions(recipes,products,inventory,today), recurringPlan(recurring,products,inventory,month), monthlyMoney(snapshot,month). Nutrition result `{values:{key:number|null},missing:{key:number},complete:boolean}`; sum known values but expose missing contributions. No mass-volume conversion or medical recommendations. Suggested recipes explain matching due ingredients and missing stock; known allergy conflicts must be visible, no claim of allergy-safe certification. Shared unit conversion and money definitions used by Commerce.
+
+Root adds persistent SDK session storage, account-scoped autosaved drafts/cached household reading, safe offline draft behavior, static asset caching, and app navigation integration. Actual receipts and account changes require an online confirmation; offline drafts never pretend to be posted spending. No automatic messages or notifications are sent. Expiry reminders initially appear in app with optional calendar-file export; phone push requires deployed HTTPS, subscription and delivery setup.

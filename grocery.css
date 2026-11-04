@@ -110,6 +110,28 @@
 .grocery-sharing { margin-top: 22px; padding-top: 20px; border-top: 1px solid #f0dde7; }
 .grocery-signout { margin-top: 26px; padding-top: 17px; border-top: 1px solid #f0dde7; }
 .grocery-cloud-caption { color: #7e6270; font-size: 12px; line-height: 1.6; margin: 10px 3px 16px; }
+.grocery-draft-status { margin: 0 4px 14px; }
+.grocery-list-summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; padding: 16px; margin: 17px 0; border: 1px solid #e9bfd2; border-radius: 14px; background: #fff3f9; }
+.grocery-list-summary > span { display: flex; flex-direction: column; gap: 6px; color: #755165; font-size: 12px; }
+.grocery-list-summary strong { color: #8c4262; font-size: 24px; }
+.grocery-list-summary small { color: #7d6170; font-size: 11px; }
+.grocery-budget-category { margin: 24px 0 10px; }
+.grocery-budget-card .is-over-budget { color: #a13c43; }
+.grocery-history button > span:first-child small { display: block; margin-top: 7px; color: #826674; font-size: 10px; font-weight: 400; line-height: 1.5; }
+.grocery-date-fields { min-width: 0; padding: 17px; margin: 5px 0; border: 1px solid #dfafc6; border-radius: 15px; background: #fff7fb; }
+.grocery-date-fields legend { padding: 0 7px; color: #79465e; font-size: 13px; font-weight: 750; }
+.grocery-date-fields .grocery-help { margin-bottom: 0; }
+.grocery-stock-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 16px; margin: 13px 0 17px; padding: 12px; border: 1px solid #eed7e3; border-radius: 11px; background: #fff; }
+.grocery-stock-dates > div { min-width: 0; }
+.grocery-stock-dates dt { color: #806272; font-size: 10px; margin: 0 0 5px; }
+.grocery-stock-dates dd { color: #70435b; font-size: 12px; font-weight: 650; margin: 0; overflow-wrap: anywhere; }
+.grocery-date-alert { border: 1px solid #e0b99b; border-radius: 100px; padding: 5px 9px; color: #7e5639; background: #fff1e4; font-size: 11px; font-weight: 700; }
+.grocery-freeze-action { margin-top: 9px; }
+.grocery-freeze-action .button { font-size: 12px; background: #f1f8fb; border-color: #c4dce8; color: #4a6f85; }
+.grocery-backup { margin-top: 25px; padding-top: 20px; border-top: 1px solid #ebcfde; }
+.grocery-backup-picker { margin-top: 19px; }
+.grocery-backup-review { margin-top: 15px; padding: 16px; border: 1px solid #ddb1c6; border-radius: 13px; background: #fff4f9; }
+.grocery-backup-review h4 { margin: 0 0 10px; color: #74425a; overflow-wrap: anywhere; }
 @media (min-width: 850px) {
   .grocery-budget-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .grocery-budget-card > strong { font-size: 23px; }

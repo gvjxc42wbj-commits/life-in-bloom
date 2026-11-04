@@ -1,0 +1,99 @@
+/* Food catalog, purchase review, and household money. */
+.commerce-page { min-width: 0; }
+.commerce-page h2 { line-height: 1.25; }
+.commerce-page h3, .commerce-page h4 { color: #653a4d; }
+.commerce-page h4 { margin: 8px 0 5px; font-size: 15px; line-height: 1.5; }
+.commerce-page p, .commerce-page li { overflow-wrap: anywhere; }
+.commerce-page .panel { margin-bottom: 18px; }
+.commerce-page .button { min-height: 44px; }
+.commerce-page [disabled] { opacity: .55; cursor: wait; }
+.commerce-page .panel-title-row { flex-wrap: wrap; gap: 14px; }
+.commerce-page .panel-title-row .page-kicker { margin-top: 0; }
+.commerce-draft-status { margin: 0 4px 14px; }
+.commerce-editor { border-color: #dca8bf; background: linear-gradient(140deg, #fff9fc, #fff); }
+.commerce-editor h3 { margin-top: 0; }
+.commerce-details { margin-top: 14px; padding: 0 15px 14px; border: 1px solid #efd6e1; border-radius: 13px; background: #fffafd; }
+.commerce-details > summary { color: #7c425c; font-size: 13px; font-weight: 750; padding: 14px 0; min-height: 44px; cursor: pointer; }
+.commerce-nutrients { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; margin-top: 15px; }
+.commerce-check { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.6; color: #704255; cursor: pointer; min-height: 44px; padding: 9px 0; }
+.commerce-check input { flex: 0 0 auto; width: 22px; height: 22px; margin: 0; accent-color: #a4476b; }
+.commerce-product-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+.commerce-product { display: flex; flex-direction: column; min-width: 0; padding: 20px; margin-bottom: 0 !important; }
+.commerce-product-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.commerce-product-top small { color: #795b68; font-size: 11px; }
+.commerce-product h3 { font-size: 18px; line-height: 1.45; margin: 16px 0 6px; }
+.commerce-product > p:not(.grocery-help) { font-size: 13px; color: #7a5b69; margin: 0 0 12px; }
+.commerce-product-price { font-size: 25px; color: #8f4264; }
+.commerce-product .grocery-actions { margin-top: auto; padding-top: 8px; }
+.commerce-product .grocery-actions .button { font-size: 12px; padding-inline: 12px; }
+.commerce-pagination { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 14px; margin: 22px 0; font-size: 13px; color: #775363; }
+.commerce-review { border: 1px solid #d59db5; background: #fff5fa; }
+.commerce-review-list, .commerce-record-list, .commerce-file-list, .commerce-ledger { margin: 16px 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.commerce-review-list > li { display: flex; justify-content: space-between; gap: 15px; padding: 13px 0; border-bottom: 1px solid #ecd1de; font-size: 13px; }
+.commerce-review-list > li > div { min-width: 0; }
+.commerce-review-list > li > div:last-child { text-align: right; }
+.commerce-review-list strong { color: #75445c; line-height: 1.5; }
+.commerce-review-list small { display: block; color: #7c6270; line-height: 1.55; margin-top: 4px; }
+.commerce-review-total { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; padding: 15px 0; color: #783d58; font-size: 15px; font-weight: 700; }
+.commerce-review-total strong { font-size: 26px; }
+.commerce-record-list > li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid #eed6e2; border-radius: 14px; padding: 15px; background: #fffafd; }
+.commerce-record-list > li > div { min-width: 0; }
+.commerce-record-list p { color: #795c6b; font-size: 12px; line-height: 1.6; margin: 6px 0 0; }
+.commerce-person { display: inline-block; padding: 5px 9px; border: 1px solid #e2c8d6; border-radius: 999px; color: #765368; background: #f8f3f5; font-size: 11px; font-weight: 750; }
+.commerce-person.person-1 { background: #fbe0ed; border-color: #e6b3cc; color: #823d5c; }
+.commerce-person.person-2 { background: #ede4f7; border-color: #cdb5e4; color: #654581; }
+.commerce-files { margin-top: 24px; padding-top: 18px; border-top: 1px solid #ead0de; }
+.commerce-file-list > li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border-radius: 11px; border: 1px solid #ead2df; color: #734f62; font-size: 13px; }
+.commerce-file-list > li > span { min-width: 0; overflow-wrap: anywhere; }
+.commerce-file-list a.button { display: inline-flex; align-items: center; text-decoration: none; font-weight: 700; }
+.commerce-receipt-lines { display: grid; gap: 17px; }
+.commerce-receipt-line { margin: 0; min-width: 0; padding: 17px; border: 1px solid #e5c5d5; border-radius: 15px; background: #fff; }
+.commerce-receipt-line > legend { padding: 0 7px; color: #884b65; font-size: 13px; font-weight: 750; }
+.commerce-receipt-line.is-excluded { background: #faf6f8; border-style: dashed; }
+.commerce-line-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 13px; }
+.commerce-line-top .button { font-size: 11px; }
+.commerce-receipt-history { display: grid; gap: 12px; margin-top: 18px; }
+.commerce-receipt-record { padding: 0 16px 15px; border: 1px solid #e9cddb; border-radius: 14px; background: #fffbfd; }
+.commerce-receipt-record summary { display: flex; gap: 12px; justify-content: space-between; align-items: center; min-height: 70px; padding: 15px 0; cursor: pointer; color: #75445c; font-size: 15px; font-weight: 700; }
+.commerce-receipt-record summary > span { min-width: 0; }
+.commerce-receipt-record summary small { display: block; color: #876c79; font-size: 11px; font-weight: 400; margin-top: 6px; }
+.commerce-receipt-record summary strong { white-space: nowrap; font-size: 21px; }
+.commerce-note { white-space: pre-wrap; color: #795769; font-size: 13px; line-height: 1.7; }
+.commerce-money-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
+.commerce-money-totals > div { display: flex; flex-direction: column; gap: 8px; padding: 17px 15px; border-radius: 14px; border: 1px solid #e9c8d9; background: #fff5fa; min-width: 0; }
+.commerce-money-totals span { color: #795269; font-size: 12px; font-weight: 700; }
+.commerce-money-totals strong { color: #8a4160; font-size: 24px; overflow-wrap: anywhere; }
+.commerce-money-totals small { color: #846d78; font-size: 10px; line-height: 1.5; }
+.commerce-budget-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.commerce-budget-link { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; padding: 18px 16px; border: 1px solid #e3b9ce; border-radius: 15px; background: #fff9fc; text-align: left; color: #77435c; }
+.commerce-budget-link > span { font-size: 12px; font-weight: 750; }
+.commerce-budget-link > strong { font-size: 25px; }
+.commerce-budget-link > small { color: #795b6b; font-size: 11px; line-height: 1.55; }
+.commerce-ledger > li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid #efdce6; font-size: 13px; }
+.commerce-ledger > li > div { min-width: 0; }
+.commerce-ledger > li > div > strong { color: #724459; }
+.commerce-ledger > li > div > small { display: block; margin-top: 5px; font-size: 11px; color: #856576; }
+.commerce-ledger > li > strong { color: #8d3e60; white-space: nowrap; }
+.commerce-ledger > li > strong.commerce-income { color: #407556; }
+.commerce-ledger > li > small { color: #826a76; font-size: 10px; }
+.commerce-ledger .button { padding-inline: 10px; font-size: 11px; }
+.commerce-page .is-voided { opacity: .7; }
+.commerce-page .is-voided > strong, .commerce-page .is-voided summary > strong { text-decoration: line-through; }
+@media (max-width: 650px) {
+  .commerce-product-grid, .commerce-budget-links { grid-template-columns: minmax(0, 1fr); }
+  .commerce-nutrients { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .commerce-money-totals { grid-template-columns: minmax(0, 1fr); }
+  .commerce-money-totals > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .commerce-money-totals small { grid-column: 1 / -1; }
+  .commerce-receipt-line { padding: 13px 11px; }
+  .commerce-product .grocery-actions .button { flex: 1; }
+  .commerce-page .grocery-month-picker { max-width: none; width: 100%; }
+  .commerce-ledger > li { grid-template-columns: minmax(0, 1fr) auto; }
+  .commerce-ledger > li > .button, .commerce-ledger > li > small { grid-column: 1 / -1; justify-self: start; }
+}
+@media (max-width: 380px) {
+  .commerce-nutrients { grid-template-columns: minmax(0, 1fr); }
+  .commerce-review-list > li { flex-wrap: wrap; }
+  .commerce-review-list > li > div:last-child { text-align: left; }
+  .commerce-money-totals strong { font-size: 20px; }
+}

@@ -8,14 +8,18 @@ The bottom bar has five destinations: **Home · Wellness · Grocery · Dog · Mo
 
 The hamburger menu contains **Sleep & Mood, Money in Bloom, Food in Bloom, Skills in Bloom, Idea’s in Bloom, Housework, Dog, and Smoking Log**. The title in the app header also returns Home.
 
-This development version has Sleep & Mood tools, appointments, saved Ideas notes, and the first shared Grocery foundation. The other sections are introductory pages for their future tools. They do not contain a completed ledger, nutrition tracker, dog-care tracker, or smoking log yet.
+This development version has Sleep & Mood tools, appointments, saved Ideas notes, shared Grocery, Food in Bloom recipes and nutrition, and a Money ledger. Dog, Skills, Housework, and Smoking Log remain introductory pages for their future tools.
 
 ### Grocery and Ideas
 
-- **Grocery:** sign in, create or join a two-person household, and maintain a shared list. Other tabs save food budgets by month, Pantry/Refrigerator/Freezer quantities, personal profile inputs, and explicitly shared nutrition targets and preferences. Shopping checkmarks do not create purchases or deduct inventory. Purchase recording, calculated nutrition goals, meal planning, price estimates, and ingredient substitutions are not implemented in this foundation.
+- **Grocery:** sign in, create or join a two-person household, and maintain a monthly shopping list. Catalog products carry package quantities, reference prices, optional label nutrients, and private photo/PDF attachments. Review recurring monthly needs before adding them to the list. A confirmed receipt records every purchased line, food stock, and Food/Household spending together. Shopping checkmarks alone do not create purchases.
+- **Food in Bloom:** save recipes with measured catalog ingredients and a recipe yield. Open **Use soon** for recorded food dates and matching saved recipes. Log planned or eaten portions for pink Person 1 and purple Person 2. Nutrition uses product-label values and preserves unknown fields; these are estimates, not prescribed targets or a validated meal plan.
+- **Money in Bloom:** review actual income and expenses, including Grocery receipt expenses. Set Food and Household allocations and monthly bill plans. Recording a bill payment creates its actual expense once. Unknown variable bills remain blank. Income less expenses is a ledger calculation, not a bank balance.
 - **Idea’s in Bloom:** type a title and/or a note, then choose **Save note**. Open saved notes to edit them. Unsaved form text is kept while editing; navigation asks before discarding it. Save notes before closing the app.
 
-Shared Grocery records save online and are retrieved on sign-in or refresh. Failed operations keep form drafts and report an error. The earlier device checklist is retained; copying it into a household requires reviewing and confirming the items. Only checklist fields are copied. Ideas and other personal journal entries stay local.
+Shared household records save online and are retrieved on sign-in or refresh. Sign-in persists in this browser/app until sign-out or session loss. Grocery, Food, and Money forms automatically retain account-scoped drafts on this device. A draft is not a posted receipt or household update: choose the form's Save/Record action to commit it. Failed operations keep drafts and report an error. The earlier device checklist is retained; copying it into a household requires reviewing and confirming the items. Only checklist fields are copied. Ideas and other personal journal entries stay local.
+
+See [Food and Grocery guide](docs/food-and-grocery-guide.md) for the shopping, receipt, nutrition, date, and backup workflows.
 
 See [Grocery setup](docs/grocery-setup.md) for the required authentication settings and first-account steps. The project connection itself does not create the two people’s app accounts.
 
@@ -71,6 +75,8 @@ A day with only some awake activities recorded has no sleep total yet and is exc
 
 Personal journals save in this browser or installed app, on this device. Household Grocery records save separately to Supabase. Keep regular personal backups, particularly before changing devices or clearing browser data. Grocery cloud requests never contain Sleep & Mood, appointments, activities, or Ideas.
 
+Grocery **Household → Export household backup** saves the catalog, recurring settings, budgets, inventory, shopping lists, bills, recipes, meal entries, receipts, ledger entries, and attachment metadata. It excludes passwords, session tokens, private measurements, and personal journals. The owner can review **Restore missing records** for the same household. This is additive: existing conflicting records abort the whole restore; they are never overwritten. Receipt history is restored without replaying purchase effects. Image/PDF bytes are not included, and missing uploaded files need to be attached again. Save original photos/PDFs separately.
+
 After Grocery sign-in, personal journals use separate local storage for each account. If earlier entries exist, the user explicitly chooses **These are my earlier entries** or **Start a separate journal**. Earlier original storage remains untouched. Signing out hides the account’s journal. This is local account separation, not encryption, server access control, or online synchronization of personal journals. Someone with browser/device access can still inspect local storage.
 
 The current format uses the storage key `life-in-bloom.data.v4`. When that key is absent, entries are copied from the newest available earlier key: `life-in-bloom.sleep-mood.v3`, `life-in-bloom.sleep-mood.v2`, or the original `sleep-in-bloom.records.v1`. Earlier keys are retained. An intentionally empty latest save does not restore older entries, and an unreadable save is protected from replacement. The legacy status value `rest` is preserved internally and displayed as **Unsure**.
@@ -100,7 +106,11 @@ Keep the terminal running while previewing. On macOS or Linux use `python3 -m ht
 
 The existing published version comes from `main`. Preview development changes before merging them into `main`.
 
-The service worker caches only its explicit list of static app assets. It never caches account callbacks, API responses, or arbitrary same-origin requests. Deploy all app files together and update the cache version when changing the app. The Supabase browser SDK is pinned to **2.118.0** in `index.html` and `browser-dependencies.lock.json`; it loads from jsDelivr. Shared Grocery and sign-in require an internet connection. There is no offline cloud-write queue in this version.
+The service worker caches its explicit list of static app assets and the pinned SDK, never account callbacks, API responses, private files, or arbitrary requests. Deploy all app files together and update the cache version when changing the app. The Supabase browser SDK is pinned to **2.118.0** in `index.html` and `browser-dependencies.lock.json`; it loads from jsDelivr and is cached when available.
+
+After an online household load, the app keeps a labeled last-saved device copy for offline viewing, excluding private measurements. Offline forms remain local drafts. Reconnect, refresh, and explicitly save to post updates. Sign-in, uploads, and transactions require a connection; there is no automatic offline transaction queue. Signing out removes the household cache. Device caches/drafts are not encrypted and can be cleared by the browser; they are not a substitute for exported backups.
+
+Food-date reminders are visible inside the app. **Download calendar reminder** creates an optional local calendar file that the user imports. The app does not yet deliver background push notifications, read retailer prices automatically, or extract receipt/label text from uploads.
 
 On iPhone, open the published address in Safari and use **Add to Home Screen**. Browser and installed-app storage can be separate; use backups when moving entries.
 
@@ -115,9 +125,15 @@ On iPhone, open the published address in Safari and use **Add to Home Screen**. 
 - `bloom-personal.js`: explicit local journal ownership and account separation.
 - `bloom-grocery.js`, `grocery.css`: shared Grocery forms, navigation, and status.
 - `bloom-grocery-store.js`: Supabase authentication and scoped, version-checked Grocery requests.
+- `bloom-drafts.js`: account/household-scoped device drafts, excluding credentials.
+- `bloom-food-model.js`: unit-aware nutrient estimates, stock-aware recurring plans, date reminders, and ledger calculations.
+- `bloom-commerce.js`, `commerce.css`: catalog, recurring review, receipts, and Money screens.
+- `bloom-food.js`, `food.css`: saved recipes, use-soon suggestions, nutrition logs, and calendar-file downloads.
 - `bloom-config.js`: public project connection settings.
 - `db/grocery-foundation.sql`: database schema, policies, and household operations.
 - `db/grocery-foundation-tests.sql`: rollback-only database access and behavior checks.
+- `db/food-expansion.sql`: additive Food/Money tables, private storage policies, atomic transaction functions, and constrained backup restore.
+- `db/food-expansion-tests.sql`: rollback-only checks for receipt totals, stock, retries, household access, nutrition history, and restore boundaries.
 - `styles.css`: responsive layout, focus states, and dialogs.
 - `service-worker.js`: offline assets.
 - `tests/*.test.cjs`: regression checks for saved data, recurrence, monthly comparisons, grocery items, and Ideas notes.
