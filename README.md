@@ -1,6 +1,21 @@
 # LIFE IN BLOOM
 
-A small, dependency-free personal web app. **Sleep & Mood** is available in the hamburger menu, with a light pink app theme. Its tabs open in the order **Moon Wheel → Weekly Mood → Daily Log**.
+A small, dependency-free personal web app with a light pink theme. It opens on a separate **Life in Bloom Home** dashboard. **Sleep & Mood** is a section in the hamburger menu; its tabs appear in the order **Moon Wheel → Weekly Mood → Daily Log**.
+
+## Finding your way around
+
+The bottom bar has five destinations: **Home · Wellness · Grocery · Dog · Money**. Grocery opens the saved shopping list directly. Wellness is the entry point for nutrition. Dog and Money open the same pages as their hamburger-menu shortcuts.
+
+The hamburger menu contains **Sleep & Mood, Money in Bloom, Food in Bloom, Skills in Bloom, Idea’s in Bloom, Housework, Dog, and Smoking Log**. The title in the app header also returns Home.
+
+This development version has working Sleep & Mood tools, appointments, a simple Grocery checklist, and saved Ideas notes. The other sections are introductory pages for their future tools. They do not contain a completed ledger, nutrition tracker, dog-care tracker, or smoking log yet.
+
+### Grocery and Ideas
+
+- **Grocery:** add an item with an optional quantity, edit it, check it off, or remove it. Items left to buy appear before items picked up. Checking an item does not yet create an inventory or money entry.
+- **Idea’s in Bloom:** type a title and/or a note, then choose **Save note**. Open saved notes to edit them. Unsaved form text is kept while editing; navigation asks before discarding it. Save notes before closing the app.
+
+Saved grocery items and Ideas notes are included in backups and stay on this device between visits. They do not sync automatically to a different device.
 
 ## The three views
 
@@ -28,7 +43,11 @@ These comparisons use sleep and mood in the **same 8 AM–8 AM tracking day**. T
 
 ## Appointments and repeats
 
-In **Weekly Mood**, choose **Add appointment** and enter a normal calendar date, start and end times, a title, an optional note, and a color. Use **Ends next day** for an overnight appointment. Plans appear in the weekly agenda and alongside the relevant hourly grid cells. An early-morning appointment before 8 AM appears in the previous tracking-day column, with its actual calendar date shown in the appointment details.
+In **Weekly Mood** or **Daily Log**, choose **Add appointment** and enter a normal calendar date, start and end times, a title, an optional note, and a color. Use **Ends next day** for an overnight appointment. The same saved appointment appears in the weekly agenda, as a colored **Planned** block inside each overlapping hourly grid cell, and in the daily agenda and corresponding timeline groups.
+
+Choose **Show in grid** to jump to an appointment's time in the weekly grid, or **Open day** to see its daily log. Saving an appointment for a different week or day opens the appropriate time window. Editing either view changes the same appointment; there is no duplicate entry to maintain.
+
+An early-morning appointment before 8 AM appears in the previous tracking-day column and daily log, with its actual calendar date shown in the appointment details. An appointment that crosses 8 AM can appear in both overlapping tracking days.
 
 Appointments can occur once or repeat daily, weekly on selected weekdays, or monthly. Repeats support an interval and an optional inclusive end date. Monthly appointments keep their numbered day; a monthly appointment on the 31st skips months without a 31st.
 
@@ -38,7 +57,7 @@ Appointments are plans inside Life in Bloom. They do not mark Awake, add an acti
 
 ## Dates and times
 
-Each tracking day runs from **8 AM to 8 AM the next morning**. For example, a Tuesday tracking day includes Wednesday at 2 AM. After-midnight entries show the actual calendar date. Before 8 AM, the app initially opens the previous tracking day.
+Each tracking day runs from **8 AM to 8 AM the next morning**. For example, a Tuesday tracking day includes Wednesday at 2 AM. After-midnight entries show the actual calendar date. Before 8 AM, the default daily log uses the previous tracking day; the app still opens on Home.
 
 Sleep and activities use 48 approximate half-hour blocks. Mood uses 24 hourly entries within the same window. This is a clock-time journal; it does not calculate exact elapsed durations during daylight-saving clock changes.
 
@@ -50,9 +69,9 @@ A day with only some awake activities recorded has no sleep total yet and is exc
 
 Entries save in this browser or installed app, on this device. There are no accounts, cloud uploads, analytics, or automatic synchronization. Keep regular exported backups, particularly before changing devices or clearing browser data.
 
-The current format uses the storage key `life-in-bloom.sleep-mood.v3`. When that key is absent, entries are copied from `life-in-bloom.sleep-mood.v2`, or from the original `sleep-in-bloom.records.v1` if v2 is absent. Earlier keys are retained. An intentionally empty latest save does not restore older entries, and an unreadable save is protected from replacement. The legacy status value `rest` is preserved internally and displayed as **Unsure**.
+The current format uses the storage key `life-in-bloom.data.v4`. When that key is absent, entries are copied from the newest available earlier key: `life-in-bloom.sleep-mood.v3`, `life-in-bloom.sleep-mood.v2`, or the original `sleep-in-bloom.records.v1`. Earlier keys are retained. An intentionally empty latest save does not restore older entries, and an unreadable save is protected from replacement. The legacy status value `rest` is preserved internally and displayed as **Unsure**.
 
-Version 3 exports include sleep, quality, notes, hourly moods, activity assignments, custom activities, and appointment definitions with repeat rules and skipped dates. Import accepts version 1 and version 2 Sleep in Bloom backups as well as version 3 Life in Bloom backups. Import replaces current records and plans after confirmation; it does not merge devices. Invalid backups are rejected before replacement.
+Version 4 exports include sleep, quality, daily notes, hourly moods, activity assignments, custom activities, appointment definitions with repeat rules and skipped dates, grocery items, and saved Ideas notes. Import accepts versions 1–4 of the recognized Sleep in Bloom / Life in Bloom backup formats. Import replaces current entries after confirmation; it does not merge devices. Invalid backups are rejected before replacement. Unsaved Grocery or Ideas form text must be saved or explicitly discarded before importing.
 
 If browser storage is full or unavailable, the app reports the save failure. Export before closing. If stored data cannot be read, edits are blocked to protect the stored copy.
 
@@ -69,7 +88,7 @@ Personal exports should not be committed to this repository. Publishing app code
    ```
 
 4. Open `http://127.0.0.1:8000` in Edge or Chrome.
-5. Choose **Daily Log**, select **Awake → Cooking**, mark a time, then add that hour's feeling. Check it in **Weekly Mood**.
+5. Home opens first. Use the hamburger menu to open **Sleep & Mood → Daily Log**, select **Awake → Cooking**, mark a time, then add that hour's feeling. Check it in **Weekly Mood**.
 
 Keep the terminal running while previewing. On macOS or Linux use `python3 -m http.server 8000 --bind 127.0.0.1`.
 
@@ -77,7 +96,7 @@ Keep the terminal running while previewing. On macOS or Linux use `python3 -m ht
 
 The existing published version comes from `main`. Preview development changes before merging them into `main`.
 
-The service worker caches HTML, CSS, scripts, manifest, and icons after a successful online load. It requests fresh files when connected and uses cached files offline. Deploy all three `bloom-*.js` files alongside `app.js`, and update the cache version when changing the app.
+The service worker caches HTML, CSS, scripts, manifest, and icons after a successful online load. It requests fresh files when connected and uses cached files offline. Deploy all four `bloom-*.js` files alongside `app.js`, and update the cache version when changing the app.
 
 On iPhone, open the published address in Safari and use **Add to Home Screen**. Browser and installed-app storage can be separate; use backups when moving entries.
 
@@ -88,9 +107,10 @@ On iPhone, open the published address in Safari and use **Add to Home Screen**. 
 - `bloom-data.js`: dates, validation, migration, backups, and editing rules.
 - `bloom-insights.js`: dated monthly history and descriptive sleep/mood comparisons.
 - `bloom-appointments.js`: appointment dialogs, agenda, and planned grid entries.
+- `bloom-pages.js`: Home, Grocery, Ideas, and introductory section pages.
 - `styles.css`: responsive layout, focus states, and dialogs.
 - `service-worker.js`: offline assets.
-- `tests/*.test.cjs`: regression checks for saved data, recurrence, and monthly comparisons.
+- `tests/*.test.cjs`: regression checks for saved data, recurrence, monthly comparisons, grocery items, and Ideas notes.
 
 The app needs no build step or package installation. Developers with Node.js can run:
 

@@ -95,13 +95,13 @@ test('v2 migration keeps hourly moods and activities and preserves both earlier 
   assert.equal(loaded.migrated, true);
   assert.equal(loaded.readOnly, false);
   assert.equal(loaded.sourceKey, Data.PREVIOUS_KEY);
-  assert.equal(loaded.data.version, 3);
+  assert.equal(loaded.data.version, 4);
   assert.deepEqual(loaded.data.records, current.records);
   assert.deepEqual(loaded.data.activities, current.activities);
   assert.deepEqual(loaded.data.appointments, []);
   assert.equal(storage.getItem(Data.PREVIOUS_KEY), previousText);
   assert.equal(storage.getItem(Data.LEGACY_KEY), legacyText);
-  assert.deepEqual(Data.STORAGE_KEYS, [Data.STORAGE_KEY, Data.PREVIOUS_KEY, Data.LEGACY_KEY]);
+  assert.deepEqual(Data.STORAGE_KEYS, [Data.STORAGE_KEY, Data.V3_KEY, Data.PREVIOUS_KEY, Data.LEGACY_KEY]);
   assert.deepEqual(storage.writes, [Data.STORAGE_KEY]);
   assert.deepEqual(Data.loadData(storage).data, loaded.data);
 });
@@ -117,7 +117,7 @@ test('an empty v2 is migrated as empty rather than falling through to populated 
   assert.equal(loaded.sourceKey, Data.PREVIOUS_KEY);
 });
 
-test('a valid empty v3 never resurrects v2 entries; a corrupt v2 never falls through to v1', () => {
+test('a valid empty v4 never resurrects v2 entries; a corrupt v2 never falls through to v1', () => {
   const empty = Data.normalizeData({ records: {} });
   const storage = storageWith({
     [Data.STORAGE_KEY]: JSON.stringify(empty),
@@ -144,11 +144,11 @@ test('failed v2 migration writes leave the original exportable and never claim a
   assert.deepEqual(Data.parseBackup(JSON.stringify(Data.makeBackup(loaded.data))), loaded.data);
 });
 
-test('v3 backups include repeating appointment rules and exceptions; v2 backups still import', () => {
+test('v4 backups include repeating appointment rules and exceptions; v2 backups still import', () => {
   const original = freeze(dataWith([raw({ recurrence: { frequency: 'weekly', weekdays: [3, 5], until: '2027-03-31' }, excludedDates: ['2026-11-11'] })]));
   const backup = Data.makeBackup(original, new Date('2026-11-04T14:00:00Z'));
   assert.equal(backup.app, 'Life in Bloom');
-  assert.equal(backup.version, 3);
+  assert.equal(backup.version, 4);
   assert.deepEqual(Data.parseBackup(JSON.stringify(backup)), original);
   const old = Data.parseBackup(JSON.stringify({ app: 'Sleep in Bloom', version: 2, records: original.records, activities: original.activities }));
   assert.deepEqual(old.records, original.records);

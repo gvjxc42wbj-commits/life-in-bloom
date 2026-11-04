@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#fff1f6" />
-  <meta name="description" content="Life in Bloom brings your sleep, feelings, daily activities, and weekly appointments together." />
+  <meta name="description" content="Life in Bloom is a personal space for your days, sleep, feelings, appointments, shopping list, and ideas." />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Life in Bloom" />
@@ -20,27 +20,27 @@
       <button class="menu-toggle" id="menu-btn" type="button" aria-label="Open Life in Bloom menu" aria-haspopup="dialog" aria-controls="app-menu" aria-expanded="false">
         <span class="hamburger-lines" aria-hidden="true"><span></span><span></span><span></span></span>
       </button>
-      <div class="brand-text">
-        <div class="brand-name">LIFE IN BLOOM</div>
-        <div class="brand-caption">Your personal journal &amp; planner</div>
-      </div>
-      <button class="icon-button" id="help-btn" type="button" title="How to use this tracker" aria-label="How to use this tracker">?</button>
+      <button class="brand-text home-brand" id="home-brand" data-page="home" type="button" aria-label="Life in Bloom home">
+        <span class="brand-name">LIFE IN BLOOM</span>
+        <span class="brand-caption">Your personal journal &amp; planner</span>
+      </button>
+      <button class="icon-button" id="help-btn" type="button" title="How to use Life in Bloom" aria-label="How to use Life in Bloom">?</button>
     </header>
 
     <main>
-      <div class="welcome-banner">
+      <div class="welcome-banner" id="page-banner">
         <div class="banner-stars" aria-hidden="true">✧ &nbsp; ✦ &nbsp; ✧</div>
-        <h1>Welcome to Life in Bloom.</h1>
-        <p>A little space for your days, your plans, and how you feel.</p>
+        <h1 id="page-heading" tabindex="-1">Welcome to Life in Bloom.</h1>
+        <p id="page-subtitle">A little space for your days, your plans, and how you feel.</p>
       </div>
 
-      <nav class="view-tabs" aria-label="Sleep and mood views">
+      <nav class="view-tabs" id="sleep-mood-tabs" aria-label="Sleep and mood views" hidden>
         <button type="button" class="view-tab active" data-view="circle" aria-current="page">◉ &nbsp; Moon Wheel</button>
         <button type="button" class="view-tab" data-view="week">◫ &nbsp; Weekly Mood</button>
         <button type="button" class="view-tab" data-view="day">☾ &nbsp; Daily Log</button>
       </nav>
       <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
-      <section id="content" aria-label="Selected tracker view"></section>
+      <section id="content" aria-label="Home"></section>
     </main>
 
     <footer class="app-footer">
@@ -50,9 +50,31 @@
         <label for="import-file" class="footer-button import-label">↑ Import backup</label>
         <input id="import-file" type="file" accept="application/json,.json" hidden />
       </div>
-      <p>Sleep and activities use 30-minute blocks; moods are recorded by hour. Appointments are plans, separate from your logged time. Entries stay in this browser or installed app and do not automatically sync to other devices.</p>
+      <p>Your logs, appointments, grocery list, and saved ideas stay in this browser or installed app. They do not automatically sync to other devices. Export backup keeps a copy of all these entries.</p>
     </footer>
   </div>
+  <nav class="bottom-nav" id="bottom-nav" aria-label="Main navigation">
+    <button class="bottom-nav-button" type="button" data-page="home" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9" /></svg>
+      <span>Home</span>
+    </button>
+    <button class="bottom-nav-button" type="button" data-page="wellness">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.8 4.7a5.5 5.5 0 0 0-7.8 0L12 5.8l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.5a5.5 5.5 0 0 0 0-7.8Z" /><path d="M5 12h4l2-4 2 8 2-4h4" /></svg>
+      <span>Wellness</span>
+    </button>
+    <button class="bottom-nav-button" type="button" data-page="grocery">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 3h3l3 13h11l3-9H6" /><circle cx="9" cy="20" r="1" /><circle cx="18" cy="20" r="1" /></svg>
+      <span>Grocery</span>
+    </button>
+    <button class="bottom-nav-button" type="button" data-page="dog">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><ellipse cx="5" cy="9" rx="2" ry="2.5" /><ellipse cx="10" cy="5" rx="2" ry="2.5" /><ellipse cx="16" cy="5" rx="2" ry="2.5" /><ellipse cx="21" cy="10" rx="2" ry="2.5" /><path d="M7 17c1-2 2-5 5-5s4 3 5 5c2 4-1 5-5 3-4 2-7 1-5-3Z" /></svg>
+      <span>Dog</span>
+    </button>
+    <button class="bottom-nav-button" type="button" data-page="money">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 7V4H5a3 3 0 0 0 0 6h16v11H5a3 3 0 0 1-3-3V7M21 13h-6v5h6" /><path d="M17.5 15.5h.1" /></svg>
+      <span>Money</span>
+    </button>
+  </nav>
   <dialog id="app-menu" class="app-menu" aria-labelledby="app-menu-title">
     <div class="menu-inner">
       <div class="menu-heading">
@@ -61,9 +83,44 @@
       </div>
       <p class="menu-section-label">Your app</p>
       <nav class="menu-sections" aria-label="Life in Bloom sections">
-        <button class="menu-section-button" id="open-sleep-mood" type="button" aria-current="page">
+        <button class="menu-section-button" id="open-sleep-mood" data-page="sleep-mood" type="button">
           <span class="menu-section-icon" aria-hidden="true">☾</span>
           <span><strong>Sleep &amp; Mood</strong><small>Rest, feelings &amp; weekly plans</small></span>
+          <span class="menu-chevron" aria-hidden="true">›</span>
+        </button>
+        <button class="menu-section-button" data-page="money" type="button">
+          <span class="menu-section-icon" aria-hidden="true">$</span>
+          <span><strong>Money in Bloom</strong><small>Your money ledger</small></span>
+          <span class="menu-chevron" aria-hidden="true">›</span>
+        </button>
+        <button class="menu-section-button" data-page="food" type="button">
+          <span class="menu-section-icon" aria-hidden="true">🥣</span>
+          <span><strong>Food in Bloom</strong><small>Food, recipes &amp; groceries</small></span>
+          <span class="menu-chevron" aria-hidden="true">›</span>
+        </button>
+        <button class="menu-section-button" data-page="skills" type="button">
+          <span class="menu-section-icon" aria-hidden="true">✦</span>
+          <span><strong>Skills in Bloom</strong><small>Learning &amp; practice</small></span>
+          <span class="menu-chevron" aria-hidden="true">›</span>
+        </button>
+        <button class="menu-section-button" data-page="ideas" type="button">
+          <span class="menu-section-icon" aria-hidden="true">✎</span>
+          <span><strong>Idea’s in Bloom</strong><small>A place to save your notes</small></span>
+          <span class="menu-chevron" aria-hidden="true">›</span>
+        </button>
+        <button class="menu-section-button" data-page="housework" type="button">
+          <span class="menu-section-icon" aria-hidden="true">⌂</span>
+          <span><strong>Housework</strong><small>Home routines &amp; chores</small></span>
+          <span class="menu-chevron" aria-hidden="true">›</span>
+        </button>
+        <button class="menu-section-button" data-page="dog" type="button">
+          <span class="menu-section-icon" aria-hidden="true">🐾</span>
+          <span><strong>Dog</strong><small>Care for your companion</small></span>
+          <span class="menu-chevron" aria-hidden="true">›</span>
+        </button>
+        <button class="menu-section-button" data-page="smoking" type="button">
+          <span class="menu-section-icon" aria-hidden="true">◷</span>
+          <span><strong>Smoking Log</strong><small>Your daily smoking record</small></span>
           <span class="menu-chevron" aria-hidden="true">›</span>
         </button>
       </nav>
@@ -77,21 +134,26 @@
   <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title">
     <div class="dialog-inner">
       <div class="dialog-top"><h2 id="help-title">Using Life in Bloom</h2><button type="button" class="icon-button" id="close-help" aria-label="Close help">×</button></div>
-      <p><strong>App menu:</strong> The three-line button at the top opens your app menu. Choose Sleep &amp; Mood to return to this section.</p>
+      <p><strong>Home:</strong> The Home button at the bottom opens your Life in Bloom main page. Tapping the app name at the top also returns Home.</p>
+      <p><strong>Bottom navigation:</strong> Wellness opens Nutrition. Grocery opens your saved things-to-buy list directly. Dog and Money open their sections.</p>
+      <p><strong>App menu:</strong> The three-line button opens Sleep &amp; Mood, Money in Bloom, Food in Bloom, Skills in Bloom, Idea’s in Bloom, Housework, Dog, and Smoking Log. Dog and Money open the same pages from either menu.</p>
       <p><strong>Moon Wheel:</strong> Tap a segment to open that day's log. Month at a glance includes dated sleep and mood history, plus comparisons based on the feelings you recorded. The comparisons describe entries from the same 8 AM–8 AM tracking day; they do not establish that sleep caused a feeling.</p>
       <p><strong>Weekly mood:</strong> See seven tracking days, with one row per hour. Scroll the grid sideways on a small screen, or open a day using the date buttons. Tap an awake hour to record or edit how you felt.</p>
-      <p><strong>Appointments:</strong> Add plans for future dates or make them repeat. Use the appointment's usual calendar date and time. Planned appointments appear beside your hourly records; they do not automatically mark you Awake or add an activity or mood. Open an appointment to edit or remove it.</p>
+      <p><strong>Appointments:</strong> Add plans for future dates or make them repeat. Use the appointment's usual calendar date and time. The same saved appointment appears in the Weekly Mood grid and Daily Log for its date and time. Plans do not automatically mark you Awake or add an activity or mood. Open an appointment to edit or remove it.</p>
       <p><strong>Daily log:</strong> Choose Asleep, Unsure, or Awake, then tap 30-minute blocks. Awake opens your activity choices. Pick Cooking, Piano, Sewing, Math, Language, or add an activity of your own. The time-range shortcut fills several blocks at once.</p>
       <p><strong>Hourly feelings:</strong> Each awake hour can have a feeling and an optional note. Suggested words are shortcuts; you can write your own. Activity labels show what you recorded doing in that hour. Changing a time block keeps any existing mood observation so you can review it.</p>
       <p><strong>Dates:</strong> Each tracking day runs from 8 AM to 8 AM the next morning. The after-midnight hours are labeled with their actual date. Weeks begin on Monday.</p>
       <p><strong>Sleep totals:</strong> Hours come from the time blocks you mark yourself. Partial records can be incomplete. A day with some activities recorded has an unknown sleep total until sleep is added or every block is explicitly marked Awake.</p>
-      <p><strong>Backups:</strong> Export includes sleep, activities, hourly moods, custom activity names, and appointments with their repeat settings. Earlier Sleep in Bloom backups can also be imported. Import replaces the current entries, so export first if you want to keep a copy.</p>
+      <p><strong>Grocery:</strong> Add an item and an optional quantity to your list. Check it when picked up, or edit and remove it. Checked items stay on the list until you remove them. Checking an item does not yet add a purchase to inventory or Money in Bloom.</p>
+      <p><strong>Idea’s in Bloom:</strong> Type a note and choose Save note. Open a saved note to edit it, or remove it when you no longer need it.</p>
+      <p><strong>Backups:</strong> Export includes sleep, activities, hourly moods, custom activity names, appointments with their repeat settings, your grocery list, and saved idea notes. Earlier Sleep in Bloom backups can also be imported. Import replaces the current entries, so export first if you want to keep a copy.</p>
       <button type="button" class="button primary" id="got-it-btn">Got it</button>
     </div>
   </dialog>
   <script src="./bloom-data.js" defer></script>
   <script src="./bloom-insights.js" defer></script>
   <script src="./bloom-appointments.js" defer></script>
+  <script src="./bloom-pages.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 </html>

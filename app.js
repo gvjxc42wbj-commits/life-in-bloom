@@ -1,13 +1,14 @@
-/* Sleep & Mood in Bloom — device-only records, no accounts or analytics. */
+/* Life in Bloom — device-only records, no accounts or analytics. */
 'use strict';
 (() => {
   const D = window.BloomData;
   const I = window.BloomInsights;
   const A = window.BloomAppointments;
+  const P = window.BloomPages;
   const $ = selector => document.querySelector(selector);
   const content = $('#content');
   const noticeEl = $('#notice');
-  if (!D || !I || !A) {
+  if (!D || !I || !A || !P) {
     noticeEl.hidden = false;
     noticeEl.textContent = 'The app could not finish loading. Please refresh this page.';
     return;
@@ -49,12 +50,26 @@
     month: initialParsed.getMonth(),
     date: initialDate,
     week: D.weekStart(initialDate),
+    page: 'home',
     view: 'circle',
     mode: 'sleep',
     activityId: '',
     rangeStart: 0,
     rangeEnd: 1,
     moodTarget: null
+  };
+  const PAGE_DETAILS = {
+    home: ['Welcome to Life in Bloom.', 'A little space for your days, your plans, and how you feel.'],
+    'sleep-mood': ['Sleep & Mood', 'Your rest, your feelings, and your plans, together.'],
+    wellness: ['Wellness', 'Your space for nutrition and everyday care.'],
+    grocery: ['Grocery', 'The things you want to buy, ready in one saved list.'],
+    money: ['Money in Bloom', 'A home for where your money goes.'],
+    food: ['Food in Bloom', 'Your space for food, recipes, and what you have at home.'],
+    skills: ['Skills in Bloom', 'A place for the things you are learning.'],
+    ideas: ['Idea’s in Bloom', 'Save a thought now and come back to it later.'],
+    housework: ['Housework', 'Your space for caring for your home.'],
+    dog: ['Dog', 'A home for your dog’s care and routines.'],
+    smoking: ['Smoking Log', 'Your space for recording your own patterns.']
   };
 
   function escapeText(value) {
@@ -140,17 +155,40 @@
     }
   }
   function changeView(view) {
+    if (state.page !== 'sleep-mood' && !leaveDraft()) return false;
+    state.page = 'sleep-mood';
     state.view = view;
     render();
     window.scrollTo({ top: 0, behavior: 'auto' });
+    return true;
   }
   function openDate(key) {
+    if (Number.isNaN(parseDate(key).getTime()) || !leaveDraft()) return false;
+    state.page = 'sleep-mood';
     state.date = key;
     const date = parseDate(key);
     state.year = date.getFullYear();
     state.month = date.getMonth();
     state.week = D.weekStart(key);
     changeView('day');
+    return true;
+  }
+  function leaveDraft() {
+    if (!pages.hasUnsavedDraft()) return true;
+    if (!window.confirm('Leave this page and discard your unsaved text? Choose Cancel to stay and save it first.')) return false;
+    pages.discardDraft();
+    return true;
+  }
+  function navigate(page) {
+    if (!Object.hasOwn(PAGE_DETAILS, page)) return false;
+    if (state.page === page) return true;
+    if (!leaveDraft()) return false;
+    state.page = page;
+    if (page === 'sleep-mood') state.view = 'circle';
+    render();
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    requestAnimationFrame(() => $('#page-heading')?.focus({ preventScroll: true }));
+    return true;
   }
   function renderKeepScroll(focusSelector) {
     const top = window.scrollY;
@@ -190,27 +228,54 @@
   }
   function hourActivities(record, hour) { return D.awakeActivities(record, hour, state.data.activities); }
 
+  function commitData(candidate, failureMessage) {
+    if (!canEdit()) return false;
+    try {
+      const normalized = D.normalizeData(candidate);
+      D.saveData(storage, normalized);
+      state.data = normalized;
+      state.unsaved = false;
+      noticeEl.hidden = true;
+      updateSaveState();
+      return true;
+    } catch (_) {
+      showNotice(failureMessage || 'This change could not be saved. Your current entries have not been replaced. Keep this page open and try again.', true);
+      return false;
+    }
+  }
+  const pages = P.createController({
+    getData: () => state.data,
+    getToday: trackingToday,
+    canEdit,
+    isReadOnly: () => state.readOnly,
+    notify: showNotice,
+    refresh: focusSelector => {
+      renderKeepScroll(focusSelector);
+      if (focusSelector) requestAnimationFrame(() => content.querySelector(focusSelector)?.scrollIntoView({ block: 'nearest', behavior: 'auto' }));
+    },
+    navigate,
+    openDate,
+    commitData
+  });
   const appointments = A.createController({
     getData: () => state.data,
     getWeekStart: () => state.week,
     canEdit,
     notify: showNotice,
     refresh: () => renderKeepScroll(),
-    commitData(candidate) {
-      if (!canEdit()) return false;
-      try {
-        const normalized = D.normalizeData(candidate);
-        D.saveData(storage, normalized);
-        state.data = normalized;
-        state.unsaved = false;
-        noticeEl.hidden = true;
-        updateSaveState();
-        return true;
-      } catch (_) {
-        showNotice('This appointment could not be saved. Your current entries have not been replaced. Please keep the appointment form open and try again.', true);
-        return false;
-      }
-    }
+    onSaved(occurrence) {
+      let key = dateKey(occurrence.start.getFullYear(), occurrence.start.getMonth(), occurrence.start.getDate());
+      if (occurrence.start.getHours() < 8) key = shiftDate(key, -1);
+      const week = D.weekStart(key);
+      const changedWindow = state.view === 'day' ? key !== state.date : week !== state.week;
+      state.date = key;
+      state.week = week;
+      const date = parseDate(key);
+      state.year = date.getFullYear();
+      state.month = date.getMonth();
+      if (changedWindow) window.scrollTo({ top: 0, behavior: 'auto' });
+    },
+    commitData: candidate => commitData(candidate, 'This appointment could not be saved. Your current entries have not been replaced. Please keep the appointment form open and try again.')
   });
 
   function renderWeek() {
@@ -232,7 +297,7 @@
     }
     html += `</div><p class='caption'>Record your sleep and activities in the daily log. Add a mood to each hour you mark awake.</p></section>`;
     html += appointments.renderAgenda(state.week);
-    html += `<section class='panel'><div class='panel-title-row'><h2>Your weekly mood grid</h2><span class='pill'>One hour per row</span></div><p class='week-grid-caption' id='week-grid-help'>Tap an awake hour to add or edit how you felt. Scroll sideways to see all seven days. After midnight, times belong to the following calendar day.</p><div class='week-scroll' tabindex='0' role='region' aria-label='Scrollable weekly mood grid' aria-describedby='week-grid-help'><table class='week-grid'><caption class='sr-only'>Mood and activities for ${label}. Each column is an 8 AM to 8 AM tracking day.</caption><thead><tr><th scope='col' class='week-time-col'>Time</th>`;
+    html += `<section class='panel' id='weekly-mood-grid'><div class='panel-title-row'><h2>Your weekly mood grid</h2><span class='pill'>${planned.length} planned · One hour per row</span></div><p class='week-grid-caption' id='week-grid-help'>Colored Planned blocks show your appointments at their scheduled times. Tap a block to edit it. Tap an awake hour to add or edit how you felt. Scroll sideways to see all seven days. After midnight, times belong to the following calendar day.</p><div class='week-scroll' tabindex='0' role='region' aria-label='Scrollable weekly mood grid' aria-describedby='week-grid-help'><table class='week-grid'><caption class='sr-only'>Mood, activities, and planned appointments for ${label}. Each column is an 8 AM to 8 AM tracking day.</caption><thead><tr><th scope='col' class='week-time-col'>Time</th>`;
     for (const key of keys) {
       const date = parseDate(key);
       html += `<th scope='col'><span>${date.toLocaleDateString('en-US', { weekday: 'short' })}</span><small>${dateMedium(key)}</small></th>`;
@@ -248,11 +313,11 @@
         const status = hourStatus(record, hour);
         const context = activities.map(activity => activity.name).join(', ');
         const labelText = `${fullHourLabel(key, hour)}. ${status}.${context ? ' Activities: ' + context + '.' : ''}${mood ? ' Mood: ' + mood.feeling + '. Edit entry.' : awake ? ' Add mood.' : ' Open hour details.'}`;
-        html += `<td><button type='button' class='week-cell ${mood ? 'has-mood' : ''} ${awake ? 'is-awake' : ''} ${mood && !awake ? 'has-conflict' : ''}' data-mood-hour='${hour}' data-mood-date='${key}' style='--mood-color:${mood ? moodColor(mood.feeling) : '#f9f6fc'}' aria-label='${escapeText(labelText)}'><span class='week-feeling'>${mood ? escapeText(mood.feeling) : awake ? '+ Add mood' : escapeText(status)}</span>`;
+        html += `<td id='week-cell-${key}-${hour}'>${appointments.renderHour(planned, key, hour)}<button type='button' class='week-cell ${mood ? 'has-mood' : ''} ${awake ? 'is-awake' : ''} ${mood && !awake ? 'has-conflict' : ''}' data-mood-hour='${hour}' data-mood-date='${key}' style='--mood-color:${mood ? moodColor(mood.feeling) : '#fff8fb'}' aria-label='${escapeText(labelText)}'><span class='week-feeling'>${mood ? escapeText(mood.feeling) : awake ? '+ Add mood' : escapeText(status)}</span>`;
         if (mood && !awake) html += `<span class='week-status'>Awake time changed</span>`;
         else if (awake && !activities.length) html += `<span class='week-status'>Awake · no activity</span>`;
         for (const activity of activities) html += `<span class='week-activity' style='--activity-color:${activity.color}'><span aria-hidden='true'>${escapeText(activity.icon)}</span> ${escapeText(activity.name)}</span>`;
-        html += `</button>${appointments.renderHour(planned, key, hour)}</td>`;
+        html += '</button></td>';
       }
       html += '</tr>';
     }
@@ -283,7 +348,12 @@
   function renderDay() {
     const record = recordFor(state.date);
     const selectedActivity = activityFor(state.activityId);
-    let html = `<section class='panel'><div class='detail-head'><div><span class='pill'>MY DAILY LOG</span><h2>${dateLong(state.date)}</h2><p class='sub'>8 AM ${dateMedium(state.date)} → 8 AM ${dateMedium(shiftDate(state.date, 1))}</p></div><div class='detail-actions'><button type='button' class='mini-btn' data-action='back-week'>‹ Week</button></div></div><div class='detail-stats'><div class='detail-stat'><small>Asleep</small><strong>${formatHour(sleepHours(state.date))} hrs</strong></div><div class='detail-stat'><small>Unsure</small><strong>${formatHour(restHours(state.date))} hrs</strong></div><div class='detail-stat'><small>Awake</small><strong>${formatHour(awakeHours(state.date))} hrs</strong></div></div><div class='panel-title-row tracking-mode-heading'><h3>Choose your tracking mode</h3><span class='muted tiny'>Then tap the time squares</span></div><div class='status-picker' role='group' aria-label='Sleep timeline mark type'><button type='button' data-mode='sleep' class='status-btn sleep ${state.mode === 'sleep' ? 'selected' : ''}' aria-pressed='${state.mode === 'sleep'}'>☾ Asleep</button><button type='button' data-mode='rest' class='status-btn rest ${state.mode === 'rest' ? 'selected' : ''}' aria-pressed='${state.mode === 'rest'}'>◇ Unsure</button><button type='button' data-mode='awake' class='status-btn awake ${state.mode === 'awake' ? 'selected' : ''}' aria-pressed='${state.mode === 'awake'}' aria-haspopup='dialog'>☀ Awake ▾</button><button type='button' data-mode='erase' class='status-btn erase ${state.mode === 'erase' ? 'selected' : ''}' aria-pressed='${state.mode === 'erase'}'>⌫ Erase</button></div>`;
+    const from = parseDate(state.date);
+    from.setHours(8, 0, 0, 0);
+    const to = parseDate(shiftDate(state.date, 1));
+    to.setHours(8, 0, 0, 0);
+    const planned = D.appointmentsInWindow(state.data.appointments || [], from, to);
+    let html = `<section class='panel'><div class='detail-head'><div><span class='pill'>MY DAILY LOG</span><h2>${dateLong(state.date)}</h2><p class='sub'>8 AM ${dateMedium(state.date)} → 8 AM ${dateMedium(shiftDate(state.date, 1))}</p></div><div class='detail-actions'><button type='button' class='mini-btn' data-action='back-week'>‹ Week</button></div></div><div class='detail-stats'><div class='detail-stat'><small>Asleep</small><strong>${formatHour(sleepHours(state.date))} hrs</strong></div><div class='detail-stat'><small>Unsure</small><strong>${formatHour(restHours(state.date))} hrs</strong></div><div class='detail-stat'><small>Awake</small><strong>${formatHour(awakeHours(state.date))} hrs</strong></div></div></section>${appointments.renderDayAgenda(state.date, planned)}<section class='panel'><div class='panel-title-row tracking-mode-heading'><h3>Choose your tracking mode</h3><span class='muted tiny'>Then tap the time squares</span></div><div class='status-picker' role='group' aria-label='Sleep timeline mark type'><button type='button' data-mode='sleep' class='status-btn sleep ${state.mode === 'sleep' ? 'selected' : ''}' aria-pressed='${state.mode === 'sleep'}'>☾ Asleep</button><button type='button' data-mode='rest' class='status-btn rest ${state.mode === 'rest' ? 'selected' : ''}' aria-pressed='${state.mode === 'rest'}'>◇ Unsure</button><button type='button' data-mode='awake' class='status-btn awake ${state.mode === 'awake' ? 'selected' : ''}' aria-pressed='${state.mode === 'awake'}' aria-haspopup='dialog'>☀ Awake ▾</button><button type='button' data-mode='erase' class='status-btn erase ${state.mode === 'erase' ? 'selected' : ''}' aria-pressed='${state.mode === 'erase'}'>⌫ Erase</button></div>`;
     if (state.mode === 'awake') html += `<div class='activity-selection'><span>${selectedActivity ? activityChip(selectedActivity) : 'Awake without an activity'}</span><button type='button' class='mini-btn' data-action='choose-activity'>Change activity</button></div>`;
     html += `<p class='timeline-guide'>Each square is <strong>30 minutes</strong>. Tap a square to apply your choice. Use Erase to clear a square. Unmarked time is unknown.</p>`;
     for (let group = 0; group < 8; group++) {
@@ -298,7 +368,7 @@
         const label = `${clockLabel(index)}–${clockLabel(index + 1)}${index >= 32 ? ' next day' : ''}: ${STATUS_LABELS[kind]}${activity ? ', ' + activity.name : ''}`;
         html += `<button type='button' data-slot='${index}' class='time-block ${kind} ${activity ? 'has-activity' : ''}' ${activity ? `style='--activity-color:${activity.color}'` : ''} aria-label='${escapeText(label)}' aria-pressed='${kind !== 'empty'}' title='${escapeText(label)}'>${activity ? `<span class='slot-activity-icon' aria-hidden='true'>${escapeText(activity.icon)}</span>` : `<span class='halfmark' aria-hidden='true'></span>`}</button>`;
       }
-      html += '</div></section>';
+      html += `</div>${appointments.renderDayRange(planned, state.date, first, last)}</section>`;
     }
     html += `<div class='status-key'><span><i class='key-dot' style='background:#9b83cd'></i> Asleep</span><span><i class='key-dot' style='background:#e4b2d3'></i> Unsure</span><span><i class='key-dot' style='background:#b9d5e8'></i> Awake</span><span><i class='key-dot' style='background:#f9f7fa;border:1px solid #dfd5eb'></i> Unknown</span></div></section><section class='panel'><div class='panel-title-row'><h2>Fill a time range</h2><span class='pill'>Faster logging</span></div><div class='form-row'><div class='form-field'><label for='range-start'>From</label><select id='range-start'>${rangeOptions(0, 47, state.rangeStart)}</select></div><div class='form-field'><label for='range-end'>Until</label><select id='range-end'>${rangeOptions(1, 48, state.rangeEnd)}</select></div></div><div class='form-actions'><button type='button' class='button primary' data-action='fill-range'>Apply ${STATUS_LABELS[state.mode]}${state.mode === 'awake' && selectedActivity ? ' · ' + escapeText(selectedActivity.name) : ''}</button></div><p class='caption'>Choose times within this 8 AM–8 AM day. Your selected mode applies to the whole range.</p></section>`;
     html += renderHourlyMoods(record);
@@ -366,13 +436,27 @@ function renderCircle(){
 }
 
   function render() {
-    for (const button of document.querySelectorAll('.view-tab')) {
-      const active = button.dataset.view === state.view || (state.view === 'month' && button.dataset.view === 'circle');
+    const isSleepMood = state.page === 'sleep-mood';
+    const [heading, subtitle] = PAGE_DETAILS[state.page];
+    $('#page-heading').textContent = heading;
+    $('#page-subtitle').textContent = subtitle;
+    $('#sleep-mood-tabs').hidden = !isSleepMood;
+    content.setAttribute('aria-label', isSleepMood ? 'Sleep and mood view' : state.page === 'home' ? 'Life in Bloom home' : heading);
+    document.title = state.page === 'home' ? 'Life in Bloom' : `${heading} · Life in Bloom`;
+    for (const button of document.querySelectorAll('[data-page]')) {
+      const active = button.dataset.page === state.page;
       button.classList.toggle('active', active);
       if (active) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     }
-    if (state.view === 'day') content.innerHTML = renderDay();
+    for (const button of document.querySelectorAll('.view-tab')) {
+      const active = isSleepMood && (button.dataset.view === state.view || (state.view === 'month' && button.dataset.view === 'circle'));
+      button.classList.toggle('active', active);
+      if (active) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    }
+    if (!isSleepMood) content.innerHTML = pages.render(state.page);
+    else if (state.view === 'day') content.innerHTML = renderDay();
     else if (state.view === 'circle') content.innerHTML = renderCircle() + `<div class='panel'><button type='button' class='button' data-action='back-month'>View monthly sleep totals</button></div>`;
     else if (state.view === 'month') content.innerHTML = renderMonth() + `<div class='panel'><button type='button' class='button' data-action='back-wheel'>Back to moon wheel</button></div>`;
     else content.innerHTML = renderWeek();
@@ -551,7 +635,24 @@ function renderCircle(){
   });
 
   content.addEventListener('click', event => {
+    const destination = event.target.closest('[data-page]');
+    if (destination) { navigate(destination.dataset.page); return; }
+    if (pages.handleClick(event)) return;
     if (appointments.handleClick(event)) return;
+    const planned = event.target.closest('[data-show-planned-date]');
+    if (planned) {
+      const key = planned.dataset.showPlannedDate;
+      const hour = Number(planned.dataset.showPlannedHour);
+      if (Number.isNaN(parseDate(key).getTime()) || !Number.isInteger(hour) || hour < 0 || hour > 23 || !leaveDraft()) return;
+      state.week = D.weekStart(key);
+      changeView('week');
+      requestAnimationFrame(() => {
+        const cell = document.getElementById(`week-cell-${key}-${hour}`);
+        cell?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' });
+        cell?.querySelector('.appointment-grid-item')?.focus({ preventScroll: true });
+      });
+      return;
+    }
     const open = event.target.closest('[data-open-date]');
     if (open) { openDate(open.dataset.openDate); return; }
     const hour = event.target.closest('[data-mood-hour]');
@@ -606,12 +707,14 @@ function renderCircle(){
     }
   });
   content.addEventListener('input', event => {
+    if (pages.handleInput(event)) return;
     if (event.target.id === 'notes' && canEdit()) {
       state.data.records[state.date] = { ...recordFor(state.date), notes: event.target.value };
       saveRecords();
     }
   });
   content.addEventListener('change', event => {
+    if (pages.handleChange(event)) return;
     if (event.target.id === 'week-jump-date' && !Number.isNaN(parseDate(event.target.value).getTime())) {
       state.week = D.weekStart(event.target.value);
       renderKeepScroll('#week-jump-date');
@@ -620,6 +723,7 @@ function renderCircle(){
     if (event.target.id === 'range-start') state.rangeStart = Number(event.target.value);
     if (event.target.id === 'range-end') state.rangeEnd = Number(event.target.value);
   });
+  content.addEventListener('submit', event => { pages.handleSubmit(event); });
   for (const button of document.querySelectorAll('.view-tab')) button.addEventListener('click', () => changeView(button.dataset.view));
   const appMenu = $('#app-menu');
   const menuButton = $('#menu-btn');
@@ -629,9 +733,8 @@ function renderCircle(){
   });
   $('#close-menu-btn').addEventListener('click', () => appMenu.close());
   appMenu.addEventListener('close', () => menuButton.setAttribute('aria-expanded', 'false'));
-  $('#open-sleep-mood').addEventListener('click', () => {
-    appMenu.close();
-    changeView('circle');
+  for (const button of document.querySelectorAll('[data-page]')) button.addEventListener('click', () => {
+    if (navigate(button.dataset.page) && appMenu.open) appMenu.close();
   });
   $('#menu-help-btn').addEventListener('click', () => {
     appMenu.close();
@@ -671,7 +774,7 @@ function renderCircle(){
     }
     try {
       downloadText(JSON.stringify(D.makeBackup(state.data), null, 2), `life-in-bloom-backup-${filenameDate}.json`);
-      showNotice(state.unsaved ? 'Your latest changes were included in the downloaded backup. This browser still could not save them.' : 'Your backup includes sleep, activities, hourly moods, notes and appointments. Keep the downloaded JSON file somewhere safe.', state.unsaved);
+      showNotice(state.unsaved ? 'Your latest log changes were included in the downloaded backup. This browser still could not save them.' : 'Your backup includes sleep, moods, activities, appointments, grocery items, and saved Ideas notes. Keep the downloaded JSON file somewhere safe.', state.unsaved);
     } catch (_) {
       showNotice('A backup could not be prepared. Please keep this page open and ask for help.', true);
     }
@@ -687,18 +790,29 @@ function renderCircle(){
     }
     try {
       const data = D.parseBackup(await file.text());
-      if (!window.confirm('Replace the entries on this device with this backup? Your current sleep, moods, activities and appointments will be replaced. Export first if you need to keep them.')) return;
+      if (pages.hasUnsavedDraft()) {
+        showNotice('Save your current Grocery or Ideas draft before importing a backup, or use Discard changes on that page.', true);
+        return;
+      }
+      if (!window.confirm('Replace the entries on this device with this backup? This replaces sleep, moods, activities, appointments, grocery items, and Ideas notes. Export first if you need to keep them.')) return;
       D.saveData(storage, data);
       state.data = data;
       state.unsaved = false;
+      pages.discardDraft();
       if (!activityFor(state.activityId)) state.activityId = '';
       render();
-      showNotice('Your backup was imported. Sleep, moods, activities and appointments are available on this device.');
+      showNotice('Your backup was imported. Its sleep, moods, activities, appointments, grocery list, and Ideas notes are available on this device.');
     } catch (error) {
       showNotice(`The backup could not be imported. Your entries have not been replaced. ${error.message || 'Please choose a valid backup file.'}`, true);
     } finally {
       event.target.value = '';
     }
+  });
+
+  window.addEventListener('beforeunload', event => {
+    if (!state.unsaved && !pages.hasUnsavedDraft()) return;
+    event.preventDefault();
+    event.returnValue = '';
   });
 
   render();

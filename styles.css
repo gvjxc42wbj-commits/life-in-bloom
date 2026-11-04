@@ -400,14 +400,16 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 76px;
-  padding: 13px 12px;
-  border: 1px solid #e9c3d4;
+  min-height: 66px;
+  padding: 10px 12px;
+  border: 1px solid #ecd2de;
   border-radius: 15px;
-  background: #fbe1ec;
+  background: #fff;
   color: #773c56;
   text-align: left;
 }
+.menu-section-button:hover { border-color: #bf7e9a; background: #fff0f6; }
+.menu-section-button[aria-current="page"] { border-color: #bf7e9a; background: #fbe1ec; box-shadow: inset 3px 0 0 #a24c72; }
 .menu-section-button strong { display: block; font-size: 16px; line-height: 1.4; }
 .menu-section-button small { display: block; margin-top: 4px; color: #805969; font-size: 11px; line-height: 1.5; }
 .menu-section-icon { font-size: 29px; text-align: center; }
@@ -487,7 +489,7 @@
 .appointment-repeat-label { grid-column: 3; grid-row: 2; max-width: 140px; color: #81576c; font-size: 11px; line-height: 1.45; }
 .appointment-empty { padding: 15px 16px; margin: 12px 0 0; border: 1px dashed #dcbaca; border-radius: 13px; background: #fff9fb; color: #7a5367; font-size: 13px; line-height: 1.6; }
 .week-cell { height: auto; }
-.week-appointments { display: grid; gap: 4px; padding-top: 4px; }
+.week-appointments { display: grid; gap: 5px; margin-bottom: 5px; }
 .appointment-grid-item { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; width: 100%; min-height: 54px; padding: 8px 7px; border: 1px dashed #cfa7bb; border-left: 4px solid var(--appointment-color, #e3a7bf); border-radius: 9px; background: #fff6fa; color: #77445d; text-align: left; overflow-wrap: anywhere; }
 .appointment-grid-title { display: block; font-size: 11px; line-height: 1.4; font-weight: 750; }
 .appointment-grid-time { display: block; color: #785367; font-size: 10px; line-height: 1.45; font-variant-numeric: tabular-nums; }
@@ -570,4 +572,215 @@
 
 @media (prefers-reduced-motion: reduce) {
   .app-menu, .history-scroll { scroll-behavior: auto; }
+}
+
+/* Home and section navigation share one shell on desktop and iPhone. */
+html { scroll-padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
+.app-shell { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
+.home-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 44px;
+  padding: 3px 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+.home-brand .brand-name, .home-brand .brand-caption { display: block; }
+.home-brand:hover .brand-name { color: #8a3d60; }
+#page-banner { margin-bottom: 20px; }
+#page-heading { max-width: 100%; overflow-wrap: anywhere; }
+#page-heading:focus-visible { outline: 2px solid #b24b77; outline-offset: 4px; border-radius: 4px; }
+.bottom-nav {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+  width: min(100%, 790px);
+  padding: 8px max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  border: 1px solid #e7c6d5;
+  border-bottom: 0;
+  border-radius: 20px 20px 0 0;
+  background: #fff9fc;
+  box-shadow: 0 -5px 25px rgba(92, 44, 64, .08);
+}
+.bottom-nav-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 56px;
+  margin: 0;
+  padding: 6px 2px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  background: transparent;
+  color: #765263;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+}
+.bottom-nav-button svg { width: 23px; height: 23px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.bottom-nav-button:hover { background: #fcebf2; color: #87405f; }
+.bottom-nav-button[aria-current="page"] { border-color: #d8a8bd; background: #f9dde8; color: #813755; }
+.bottom-nav-button:focus-visible { outline-offset: -2px; }
+
+/* Small useful pages: the dashboard, shopping checklist, and saved notes. */
+.bloom-page { min-width: 0; }
+.page-heading { min-width: 0; margin-bottom: 16px; }
+.page-heading h2 { line-height: 1.3; }
+.page-heading p { margin: 7px 0 0; color: #795266; font-size: 13px; line-height: 1.6; }
+.page-kicker { display: block; margin: 0 0 6px; color: #8a4968; font-size: 11px; line-height: 1.45; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.home-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.home-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 148px;
+  margin: 0;
+  padding: 18px;
+  border: 1px solid #ead0dc;
+  border-radius: 18px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.home-card:hover { border-color: #c284a1; background: #fff8fb; }
+.home-card strong, .home-card h3 { font-size: 15px; line-height: 1.4; color: #743e56; }
+.home-card p { margin: 0; color: #79596a; font-size: 12px; line-height: 1.55; }
+.home-card .caption { margin-top: auto; color: #7d596c; }
+.home-card .home-card-value { display: block; color: #8b3d60; font-size: 25px; font-weight: 750; letter-spacing: -.025em; line-height: 1.25; }
+.page-actions, .section-links { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin-top: 15px; }
+.page-actions .button, .section-links .button { min-height: 44px; }
+.page-form { min-width: 0; }
+.page-form .form-row { align-items: flex-end; }
+.page-form .form-field { min-width: 0; }
+.page-form .form-field > label, .page-form label.form-field { color: #794d63; font-size: 13px; font-weight: 700; line-height: 1.5; }
+.page-form label.form-field { display: flex; flex-direction: column; gap: 6px; }
+.page-form input:not([type="checkbox"]), .page-form select, .page-form textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 46px;
+  padding: 11px 12px;
+  border: 1px solid #d9b4c6;
+  border-radius: 11px;
+  background: #fff;
+  color: #563344;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.page-form textarea { min-height: 180px; resize: vertical; }
+.page-form input::placeholder, .page-form textarea::placeholder { color: #806674; opacity: 1; }
+.form-hint { display: block; margin: 8px 0; color: #775567; font-size: 12px; line-height: 1.55; font-weight: 400; }
+.page-form .form-hint { letter-spacing: normal; text-transform: none; }
+.page-form .page-actions { margin-top: 14px; }
+.page-form + .shopping-list, .page-form + .notes-list { margin-top: 20px; }
+.shopping-list, .notes-list { display: grid; gap: 10px; min-width: 0; margin: 16px 0 0; padding: 0; list-style: none; }
+.shopping-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid #ecd4df;
+  border-radius: 13px;
+  background: #fff;
+}
+.shopping-item-main { display: flex; flex: 1 1 180px; align-items: center; gap: 11px; min-width: 0; min-height: 48px; cursor: pointer; }
+.shopping-item-main input[type="checkbox"] { flex: 0 0 21px; width: 21px; height: 21px; margin: 0; accent-color: #a2476b; }
+.shopping-item-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; color: #633d50; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.shopping-item-copy strong { font-weight: 700; }
+.shopping-item-copy small { color: #7a5d6d; font-size: 12px; }
+.shopping-item.is-checked { background: #fcf5f8; border-color: #eadbe2; }
+.shopping-item.is-checked .shopping-item-copy strong { text-decoration: line-through; text-decoration-thickness: 1px; color: #7a606c; }
+.item-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.item-actions .button { min-height: 44px; padding: 9px 11px; font-size: 12px; }
+.button.danger { border-color: #dca3b3; color: #963a59; background: #fff4f7; }
+.idea-card { min-width: 0; padding: 17px; border: 1px solid #ead0dc; border-radius: 15px; background: #fffafc; overflow-wrap: anywhere; }
+.idea-card h3 { margin: 0 0 5px; color: #703c54; font-size: 17px; line-height: 1.45; }
+.idea-card .caption { margin: 5px 0 0; }
+.idea-body { max-width: 100%; margin: 13px 0; color: #624253; font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.idea-card .item-actions { margin-top: 12px; padding-top: 10px; border-top: 1px solid #f0dce5; }
+.idea-details summary { min-height: 44px; padding: 12px 0; color: #743e56; cursor: pointer; font-weight: 650; }
+.idea-details summary:focus-visible { outline: 3px solid #b24b77; outline-offset: 2px; border-radius: 5px; }
+.note-delete-confirm { margin-top: 12px; padding: 12px; border: 1px solid #dca3b3; border-radius: 10px; background: #fff0f4; color: #813755; }
+.note-delete-confirm p { margin: 0; }
+.empty-state { margin: 14px 0; padding: 18px; border: 1px dashed #dcb6c8; border-radius: 14px; background: #fff7fa; color: #765064; font-size: 14px; line-height: 1.6; }
+.empty-state h3, .empty-state strong { color: #743e56; }
+.empty-state p { margin: 7px 0 0; }
+.bloom-page .section-links { align-items: stretch; }
+.bloom-page .section-links .button { display: inline-flex; align-items: center; justify-content: center; text-align: center; }
+
+/* Appointment cards sit above observations and beside daily time groups. */
+.week-appointments .appointment-grid-item { border-style: solid; border-color: #d4a5ba; border-left-color: var(--appointment-color, #e3a7bf); background: #fbe6ef; }
+.week-appointments .appointment-grid-title { color: #66334b; font-size: 12px; }
+.week-appointments .appointment-grid-time { color: #71465c; }
+.week-appointments .appointment-planned-label { background: #fff8fb; color: #7b3c57; }
+.week-grid td:target, .week-grid td.planned-focus { outline: 3px solid #ae567d; outline-offset: 1px; border-radius: 10px; }
+.appointment-agenda-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 7px 3px 2px; }
+.appointment-agenda-actions .button, .appointment-agenda-actions .mini-btn { min-height: 44px; padding: 9px 12px; font-size: 12px; }
+.day-appointments { margin: 18px 0; }
+.day-appointments h3 { color: #744059; font-size: 16px; line-height: 1.45; }
+.time-group-plans { display: grid; gap: 7px; margin: 8px 0 11px; }
+.appointment-day-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 10px;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid #d9b0c3;
+  border-left: 5px solid var(--appointment-color, #e3a7bf);
+  border-radius: 11px;
+  background: #fff0f6;
+  color: #704159;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.appointment-day-item:hover { border-color: #ad6a89; border-left-color: var(--appointment-color, #e3a7bf); background: #fbe2ed; }
+.appointment-day-item .appointment-grid-title { flex: 1 1 120px; font-size: 13px; }
+.appointment-day-item .appointment-grid-time { font-size: 12px; }
+
+@media (max-width: 480px) {
+  .bottom-nav { gap: 3px; border-radius: 16px 16px 0 0; }
+  .bottom-nav-button { font-size: 11px; }
+  .home-grid { gap: 9px; }
+  .home-card { min-height: 144px; padding: 13px 12px; border-radius: 15px; }
+  .home-card strong, .home-card h3 { font-size: 14px; }
+  .home-card .home-card-value { font-size: 23px; }
+  .home-card p { font-size: 11px; }
+  .page-form .form-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .page-actions .button { flex: 1 1 120px; }
+  .shopping-item { padding: 8px 10px; }
+  .shopping-item-main { flex-basis: 100%; }
+  .shopping-item .item-actions { width: 100%; }
+  .idea-card { padding: 14px; }
+  .section-links .button { flex: 1 1 130px; }
+  .appointment-agenda-actions .button, .appointment-agenda-actions .mini-btn { flex: 1 1 115px; }
+}
+
+@media (max-width: 360px) {
+  .bottom-nav { gap: 2px; }
+  .bottom-nav-button { padding-left: 1px; padding-right: 1px; }
+  .home-grid { grid-template-columns: minmax(0, 1fr); }
+  .home-card { min-height: 130px; padding: 16px; }
 }

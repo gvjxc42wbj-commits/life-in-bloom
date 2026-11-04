@@ -83,6 +83,19 @@
       to.setHours(8, 0, 0, 0);
       return { from, to };
     }
+    function dayBounds(dayKey) {
+      const from = D.parseDate(dayKey);
+      from.setHours(8, 0, 0, 0);
+      const to = D.parseDate(D.shiftDate(dayKey, 1));
+      to.setHours(8, 0, 0, 0);
+      return { from, to };
+    }
+    function trackingPosition(occurrence, from) {
+      const visibleStart = occurrence.start < from ? from : occurrence.start;
+      let key = actualDateKey(visibleStart);
+      if (visibleStart.getHours() < 8) key = D.shiftDate(key, -1);
+      return { key, hour: (visibleStart.getHours() + 16) % 24 };
+    }
     function defaultDate(weekKey) {
       const current = calendarToday();
       const end = D.shiftDate(weekKey, 6);
@@ -104,20 +117,39 @@
       const from = D.parseDate(date);
       if (Number.isNaN(from.getTime())) return null;
       const to = D.parseDate(D.shiftDate(date, 1));
+      if (Number.isNaN(to.getTime())) return null;
       return D.appointmentsInWindow([appointment], from, to).find(item => item.occurrenceDate === date) || null;
+    }
+
+    function agendaEntries(occurrences, from, scope) {
+      let html = '';
+      html += `<ul class='appointment-agenda'>`;
+      for (const occurrence of occurrences) {
+        const position = trackingPosition(occurrence, from);
+        const label = `Edit planned appointment: ${occurrence.title}. ${occurrenceTime(occurrence, true)}. ${repeatLabel(occurrence)}.`;
+        html += `<li><button type='button' class='appointment-agenda-item' data-appointment-action='edit' data-appointment-id='${escapeText(occurrence.appointmentId)}' data-appointment-date='${occurrence.occurrenceDate}' style='--appointment-color:${safeColor(occurrence.color)}' aria-label='${escapeText(label)}'><span class='appointment-planned-label'>Planned</span><span class='appointment-agenda-date'>${dateLabel(occurrence.occurrenceDate, true)}</span><span class='appointment-agenda-title'>${escapeText(occurrence.title)}</span><span class='appointment-agenda-time'>${escapeText(occurrenceTime(occurrence))}</span><span class='appointment-repeat-label'>${escapeText(repeatLabel(occurrence))}</span>${occurrence.start < from ? `<span class='appointment-time-note'>Continues into this ${scope}</span>` : ''}${occurrence.timeAdjusted ? `<span class='appointment-time-note'>Clock change: check this time.</span>` : ''}</button><div class='appointment-agenda-actions'>${scope === 'week' ? `<button type='button' class='mini-btn' data-show-planned-date='${position.key}' data-show-planned-hour='${position.hour}'>Show in grid</button><button type='button' class='mini-btn' data-open-date='${position.key}'>Open day</button>` : `<button type='button' class='mini-btn' data-show-planned-date='${position.key}' data-show-planned-hour='${position.hour}'>Show in weekly grid</button>`}</div></li>`;
+      }
+      return html + '</ul>';
     }
 
     function renderAgenda(weekKey) {
       const { from, to } = weekBounds(weekKey);
       const occurrences = D.appointmentsInWindow(getData().appointments || [], from, to);
-      let html = `<section class='panel appointment-panel'><div class='panel-title-row'><h2>Appointments this week</h2><button type='button' class='button primary' data-appointment-action='new' data-appointment-date='${defaultDate(weekKey)}'>+ Add appointment</button></div><p class='caption'>Plan appointments ahead of time. Planned appointments appear beside your mood grid; your actual activities are logged separately.</p>`;
+      let html = `<section class='panel appointment-panel'><div class='panel-title-row'><h2>Appointments this week</h2><button type='button' class='button primary' data-appointment-action='new' data-appointment-date='${defaultDate(weekKey)}'>+ Add appointment</button></div><p class='caption'>Your appointments also appear as colored Planned blocks inside the weekly grid and on the daily log. Tap an appointment to edit it.</p>`;
       if (!occurrences.length) return html + `<p class='appointment-empty'>No appointments planned for this week. Add a one-time or repeating appointment, or use the week arrows to plan ahead.</p></section>`;
-      html += `<ul class='appointment-agenda'>`;
-      for (const occurrence of occurrences) {
-        const label = `Edit planned appointment: ${occurrence.title}. ${occurrenceTime(occurrence, true)}. ${repeatLabel(occurrence)}.`;
-        html += `<li><button type='button' class='appointment-agenda-item' data-appointment-action='edit' data-appointment-id='${escapeText(occurrence.appointmentId)}' data-appointment-date='${occurrence.occurrenceDate}' style='--appointment-color:${safeColor(occurrence.color)}' aria-label='${escapeText(label)}'><span class='appointment-planned-label'>Planned</span><span class='appointment-agenda-date'>${dateLabel(occurrence.occurrenceDate, true)}</span><span class='appointment-agenda-title'>${escapeText(occurrence.title)}</span><span class='appointment-agenda-time'>${escapeText(occurrenceTime(occurrence))}</span><span class='appointment-repeat-label'>${escapeText(repeatLabel(occurrence))}</span>${occurrence.start < from ? `<span class='appointment-time-note'>Continues into this week</span>` : ''}${occurrence.timeAdjusted ? `<span class='appointment-time-note'>Clock change: check this time.</span>` : ''}</button></li>`;
-      }
-      return html + '</ul></section>';
+      return html + agendaEntries(occurrences, from, 'week') + '</section>';
+    }
+
+    function renderDayAgenda(dayKey, occurrences) {
+      const { from, to } = dayBounds(dayKey);
+      const planned = occurrences || D.appointmentsInWindow(getData().appointments || [], from, to);
+      let html = `<section class='panel appointment-panel day-appointments'><div class='panel-title-row'><h2>Appointments for this daily log</h2><button type='button' class='button primary' data-appointment-action='new' data-appointment-date='${dayKey}'>+ Add appointment</button></div><p class='caption'>${dateLabel(dayKey, true)}, 8 AM → ${dateLabel(D.shiftDate(dayKey, 1), true)}, 8 AM. These are the same appointments shown in your weekly grid. Plans do not fill in your sleep, activities, or feelings.</p>`;
+      if (!planned.length) return html + `<p class='appointment-empty'>No appointments planned for this 8 AM–8 AM day.</p></section>`;
+      return html + agendaEntries(planned, from, 'day') + '</section>';
+    }
+
+    function renderPlanButtons(matches, className) {
+      return matches.map(item => `<button type='button' class='${className}' data-appointment-action='edit' data-appointment-id='${escapeText(item.appointmentId)}' data-appointment-date='${item.occurrenceDate}' style='--appointment-color:${safeColor(item.color)}' aria-label='${escapeText('Edit planned appointment: ' + item.title + '. ' + occurrenceTime(item, true))}'><span class='appointment-planned-label'>Planned</span><span class='appointment-grid-title'>${escapeText(item.title)}</span><span class='appointment-grid-time'>${escapeText(occurrenceTime(item))}</span>${item.timeAdjusted ? `<span class='appointment-time-note'>Check clock-change time</span>` : ''}</button>`).join('');
     }
 
     function renderHour(occurrences, dayKey, hour) {
@@ -127,7 +159,18 @@
       if (to <= from) return '';
       const matches = occurrences.filter(item => item.start < to && item.end > from);
       if (!matches.length) return '';
-      return `<div class='week-appointments'>${matches.map(item => `<button type='button' class='appointment-grid-item' data-appointment-action='edit' data-appointment-id='${escapeText(item.appointmentId)}' data-appointment-date='${item.occurrenceDate}' style='--appointment-color:${safeColor(item.color)}' aria-label='${escapeText('Edit planned appointment: ' + item.title + '. ' + occurrenceTime(item, true))}'><span class='appointment-planned-label'>Planned</span><span class='appointment-grid-title'>${escapeText(item.title)}</span><span class='appointment-grid-time'>${escapeText(occurrenceTime(item))}</span>${item.timeAdjusted ? `<span class='appointment-time-note'>Check clock-change time</span>` : ''}</button>`).join('')}</div>`;
+      return `<div class='week-appointments'>${renderPlanButtons(matches, 'appointment-grid-item')}</div>`;
+    }
+
+    function renderDayRange(occurrences, dayKey, firstSlot, lastSlot) {
+      const from = D.parseDate(dayKey);
+      from.setHours(8, firstSlot * 30, 0, 0);
+      const to = D.parseDate(dayKey);
+      to.setHours(8, lastSlot * 30, 0, 0);
+      if (to <= from) return '';
+      const matches = occurrences.filter(item => item.start < to && item.end > from);
+      if (!matches.length) return '';
+      return `<div class='time-group-plans' aria-label='Planned appointments during these hours'>${renderPlanButtons(matches, 'appointment-day-item')}</div>`;
     }
 
     function isRepeatingEdit() {
@@ -229,9 +272,10 @@
       field('appointment-error').hidden = false;
       field('appointment-error').scrollIntoView?.({ block: 'nearest' });
     }
-    function complete(message, focusId, focusDate) {
+    function complete(message, focusId, focusDate, savedOccurrence) {
       dialog.close();
       editor = null;
+      if (savedOccurrence) options.onSaved?.(savedOccurrence);
       refresh();
       notify(message);
       requestAnimationFrame(() => {
@@ -279,9 +323,25 @@
         const raw = readDraft();
         if (single) raw.id = newId();
         const appointment = D.normalizeAppointment(raw);
+        if (appointment.recurrence.frequency === 'weekly' && appointment.recurrence.until) {
+          const offsets = appointment.recurrence.weekdays.map(day => (day + 6) % 7).sort((a, b) => a - b);
+          const firstWeek = D.weekStart(appointment.startDate);
+          const firstDate = offsets.map(offset => D.shiftDate(firstWeek, offset)).find(date => date >= appointment.startDate)
+            || D.shiftDate(firstWeek, appointment.recurrence.interval * 7 + offsets[0]);
+          if (firstDate > appointment.recurrence.until) throw new Error('The last date is before the first selected weekday can occur. Choose a later last date or another repeat day.');
+        }
+        const preferredDate = !single && editor.original && appointment.recurrence.frequency !== 'none' ? editor.occurrenceDate : appointment.startDate;
+        let savedOccurrence = findOccurrence(appointment, preferredDate);
+        if (!savedOccurrence) {
+          const from = D.parseDate(appointment.startDate);
+          const to = D.parseDate(D.shiftDate(appointment.startDate, 370));
+          // A selected weekly weekday can occur after the series' first date.
+          if (!Number.isNaN(to.getTime())) savedOccurrence = D.appointmentsInWindow([appointment], from, to)[0];
+        }
         const candidate = single ? D.updateAppointmentOccurrence(getData(), editor.original.id, editor.occurrenceDate, appointment) : D.upsertAppointment(getData(), appointment);
         if (!commitData(candidate)) { showError('This device could not save the appointment. Your draft is still open.'); return; }
-        complete(single ? 'This occurrence was saved as a one-time appointment.' : appointment.recurrence.frequency === 'none' ? 'Your appointment was saved.' : 'Your repeating appointment was saved.', appointment.id, appointment.startDate);
+        const message = !savedOccurrence ? 'Your appointment settings were saved.' : single ? 'This occurrence was saved as a one-time appointment.' : appointment.recurrence.frequency === 'none' ? 'Your appointment was saved in the weekly grid and daily log.' : 'Your repeating appointment was saved in the weekly grid and daily log.';
+        complete(message, appointment.id, savedOccurrence?.occurrenceDate || appointment.startDate, savedOccurrence);
       } catch (error) { showError(error.message || 'Please check the appointment details.'); }
     });
     dialog.addEventListener('close', () => {
@@ -296,7 +356,7 @@
       if (action === 'edit') { openEdit(button.dataset.appointmentId, button.dataset.appointmentDate); return true; }
       return false;
     }
-    return { renderAgenda, renderHour, handleClick };
+    return { renderAgenda, renderDayAgenda, renderDayRange, renderHour, handleClick };
   }
 
   root.BloomAppointments = { createController };

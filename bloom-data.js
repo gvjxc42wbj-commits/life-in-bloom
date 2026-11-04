@@ -1,12 +1,14 @@
-/* Shared, versioned data rules for the Sleep & Mood section. No network access. */
+/* Shared, versioned data rules for Life in Bloom. No network access. */
 (function (root) {
   'use strict';
 
   const LEGACY_KEY = 'sleep-in-bloom.records.v1';
   const PREVIOUS_KEY = 'life-in-bloom.sleep-mood.v2';
-  const STORAGE_KEY = 'life-in-bloom.sleep-mood.v3';
-  const STORAGE_KEYS = [STORAGE_KEY, PREVIOUS_KEY, LEGACY_KEY];
-  const BACKUP_VERSION = 3;
+  const V3_KEY = 'life-in-bloom.sleep-mood.v3';
+  const STORAGE_KEY = 'life-in-bloom.data.v4';
+  const STORAGE_KEYS = [STORAGE_KEY, V3_KEY, PREVIOUS_KEY, LEGACY_KEY];
+  const BACKUP_VERSION = 4;
+  const STORAGE_VERSIONS = { [STORAGE_KEY]: BACKUP_VERSION, [V3_KEY]: 3, [PREVIOUS_KEY]: 2 };
   const DEFAULT_ACTIVITIES = [
     { id: 'cooking', name: 'Cooking', icon: '👩🏾‍🍳', color: '#f1cfac' },
     { id: 'piano', name: 'Piano', icon: '🎹', color: '#d9c8ed' },
@@ -153,6 +155,105 @@
     });
   }
 
+  function entryText(value, label, maximum, required = false, preserveSpacing = false) {
+    if (value === undefined && !required) return '';
+    if (typeof value !== 'string') throw new Error(`${label} must be text.`);
+    const result = preserveSpacing ? value : value.trim();
+    if (required && !result.trim()) throw new Error(`Enter ${label.toLowerCase()}.`);
+    if (result.length > maximum) throw new Error(`${label} can be up to ${maximum.toLocaleString('en-US')} characters.`);
+    return result;
+  }
+
+  function entryTimestamp(value) {
+    // Missing timestamps in imported records remain unknown, rather than being
+    // assigned today's date each time a backup is opened.
+    if (value === undefined || value === '') return '';
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)) {
+      throw new Error('The saved entry date is not a valid UTC timestamp.');
+    }
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 19) !== value.slice(0, 19)) {
+      throw new Error('The saved entry date is not a valid UTC timestamp.');
+    }
+    return date.toISOString();
+  }
+
+  function normalizeShoppingItem(raw) {
+    if (!object(raw) || !validActivityId(raw.id)) throw new Error('The grocery item needs a valid identifier.');
+    if (raw.checked !== undefined && typeof raw.checked !== 'boolean') throw new Error('The grocery checkmark must be true or false.');
+    return {
+      id: raw.id,
+      name: entryText(raw.name, 'An item name', 160, true),
+      quantity: entryText(raw.quantity, 'The grocery quantity', 120),
+      checked: raw.checked === true,
+      createdAt: entryTimestamp(raw.createdAt),
+      updatedAt: entryTimestamp(raw.updatedAt)
+    };
+  }
+
+  function normalizeIdeaNote(raw) {
+    if (!object(raw) || !validActivityId(raw.id)) throw new Error('The note needs a valid identifier.');
+    const title = entryText(raw.title, 'The note title', 160);
+    const body = entryText(raw.body, 'The note', 20000, false, true);
+    if (!title && !body.trim()) throw new Error('Write a note or give it a title before saving.');
+    return {
+      id: raw.id, title, body,
+      createdAt: entryTimestamp(raw.createdAt),
+      updatedAt: entryTimestamp(raw.updatedAt)
+    };
+  }
+
+  function normalizeEntryList(candidate, label, maximum, normalizeEntry) {
+    if (candidate !== undefined && !Array.isArray(candidate)) throw new Error(`The ${label} list is not valid.`);
+    if ((candidate || []).length > maximum) throw new Error(`This version can keep up to ${maximum.toLocaleString('en-US')} ${label} entries.`);
+    const ids = new Set();
+    return (candidate || []).map(raw => {
+      const entry = normalizeEntry(raw);
+      if (ids.has(entry.id)) throw new Error(`Two ${label} entries have the same identifier.`);
+      ids.add(entry.id);
+      return entry;
+    });
+  }
+
+  function upsertEntry(data, raw, field, normalizeEntry, maximum, label) {
+    if (!object(raw) || !validActivityId(raw.id)) throw new Error(`The ${label} needs a valid identifier.`);
+    const next = normalizeData(data);
+    const index = next[field].findIndex(item => item.id === raw.id);
+    const existing = index < 0 ? null : next[field][index];
+    const entry = normalizeEntry({ ...existing, ...raw });
+    const now = new Date().toISOString();
+    entry.createdAt = existing ? existing.createdAt : entry.createdAt || now;
+    entry.updatedAt = now;
+    if (index < 0) {
+      if (next[field].length >= maximum) throw new Error(`This version can keep up to ${maximum.toLocaleString('en-US')} ${label} entries.`);
+      next[field].push(entry);
+    } else next[field][index] = entry;
+    return next;
+  }
+
+  function removeEntry(data, id, field, label) {
+    const next = normalizeData(data);
+    if (!next[field].some(item => item.id === id)) throw new Error(`This ${label} could not be found.`);
+    next[field] = next[field].filter(item => item.id !== id);
+    return next;
+  }
+
+  function upsertShoppingItem(data, item) {
+    return upsertEntry(data, item, 'shoppingList', normalizeShoppingItem, 2000, 'grocery');
+  }
+
+  function removeShoppingItem(data, id) {
+    return removeEntry(data, id, 'shoppingList', 'grocery item');
+  }
+
+  function upsertIdeaNote(data, note) {
+    return upsertEntry(data, note, 'ideaNotes', normalizeIdeaNote, 500, 'note');
+  }
+
+  function removeIdeaNote(data, id) {
+    return removeEntry(data, id, 'ideaNotes', 'note');
+  }
+
   function calendarOrdinal(key) {
     const local = parseDate(key);
     const utc = new Date(0);
@@ -281,8 +382,13 @@
 
   function normalizeData(candidate) {
     if (!object(candidate) || !object(candidate.records)) throw new Error('The saved records are not valid.');
+    if (candidate.version !== undefined && ![1, 2, 3, BACKUP_VERSION].includes(candidate.version)) {
+      throw new Error('This saved data needs a different app version.');
+    }
     const activities = normalizeActivities(candidate.activities);
     const appointments = normalizeAppointments(candidate.appointments);
+    const shoppingList = normalizeEntryList(candidate.shoppingList, 'grocery', 2000, normalizeShoppingItem);
+    const ideaNotes = normalizeEntryList(candidate.ideaNotes, 'note', 500, normalizeIdeaNote);
     const activityIds = new Set(activities.map(activity => activity.id));
     const records = {};
     const entries = Object.entries(candidate.records);
@@ -322,11 +428,11 @@
       record.notes = text(raw.notes, 3000);
       records[key] = record;
     }
-    return { version: BACKUP_VERSION, records, activities, appointments };
+    return { version: BACKUP_VERSION, records, activities, appointments, shoppingList, ideaNotes };
   }
 
   function loadData(storage) {
-    const empty = () => ({ version: BACKUP_VERSION, records: {}, activities: copyActivities(), appointments: [] });
+    const empty = () => ({ version: BACKUP_VERSION, records: {}, activities: copyActivities(), appointments: [], shoppingList: [], ideaNotes: [] });
     let sourceKey = STORAGE_KEY;
     try {
       for (const key of STORAGE_KEYS) {
@@ -334,7 +440,7 @@
         const saved = storage.getItem(key);
         if (saved === null) continue;
         const parsed = JSON.parse(saved);
-        if (key !== LEGACY_KEY && (!object(parsed) || parsed.version !== (key === PREVIOUS_KEY ? 2 : BACKUP_VERSION))) {
+        if (key !== LEGACY_KEY && (!object(parsed) || parsed.version !== STORAGE_VERSIONS[key])) {
           throw new Error('This saved data needs a different app version.');
         }
         const data = normalizeData(key === LEGACY_KEY ? { records: parsed } : parsed);
@@ -362,15 +468,15 @@
 
   function makeBackup(data, date = new Date()) {
     const normalized = normalizeData(data);
-    return { app: 'Life in Bloom', version: BACKUP_VERSION, exportedAt: date.toISOString(), records: normalized.records, activities: normalized.activities, appointments: normalized.appointments };
+    return { app: 'Life in Bloom', version: BACKUP_VERSION, exportedAt: date.toISOString(), records: normalized.records, activities: normalized.activities, appointments: normalized.appointments, shoppingList: normalized.shoppingList, ideaNotes: normalized.ideaNotes };
   }
 
   function parseBackup(content) {
     const parsed = JSON.parse(content);
-    if (!object(parsed) || !['Sleep in Bloom', 'Life in Bloom'].includes(parsed.app) || ![1, 2, BACKUP_VERSION].includes(parsed.version)) {
+    if (!object(parsed) || !['Sleep in Bloom', 'Life in Bloom'].includes(parsed.app) || ![1, 2, 3, BACKUP_VERSION].includes(parsed.version)) {
       throw new Error('Choose a Sleep in Bloom or Life in Bloom backup file.');
     }
-    return normalizeData({ records: parsed.records, activities: parsed.version === 1 ? undefined : parsed.activities, appointments: parsed.appointments });
+    return normalizeData({ records: parsed.records, activities: parsed.version === 1 ? undefined : parsed.activities, appointments: parsed.appointments, shoppingList: parsed.shoppingList, ideaNotes: parsed.ideaNotes });
   }
 
   function setSlot(record, index, kind, activityId = '') {
@@ -425,7 +531,7 @@
     return next;
   }
 
-  const api = { LEGACY_KEY, PREVIOUS_KEY, STORAGE_KEY, STORAGE_KEYS, BACKUP_VERSION, DEFAULT_ACTIVITIES, ACTIVITY_COLORS, MOOD_OPTIONS, blankRecord, dateKey, parseDate, shiftDate, weekStart, clockLabel, hourDateTime, normalizeData, loadData, saveData, makeBackup, parseBackup, setSlot, setRange, hasAwake, hasSleepTotal, awakeActivities, setMood, normalizeAppointment, appointmentsInWindow, upsertAppointment, removeAppointment, updateAppointmentOccurrence };
+  const api = { LEGACY_KEY, PREVIOUS_KEY, V3_KEY, STORAGE_KEY, STORAGE_KEYS, BACKUP_VERSION, DEFAULT_ACTIVITIES, ACTIVITY_COLORS, MOOD_OPTIONS, blankRecord, dateKey, parseDate, shiftDate, weekStart, clockLabel, hourDateTime, normalizeData, loadData, saveData, makeBackup, parseBackup, setSlot, setRange, hasAwake, hasSleepTotal, awakeActivities, setMood, normalizeAppointment, appointmentsInWindow, upsertAppointment, removeAppointment, updateAppointmentOccurrence, normalizeShoppingItem, normalizeIdeaNote, upsertShoppingItem, removeShoppingItem, upsertIdeaNote, removeIdeaNote };
   root.BloomData = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
