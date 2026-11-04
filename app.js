@@ -307,7 +307,15 @@
   cloud = GS.createStore({ config: window.BloomCloudConfig, onChange: handleCloudChange });
   const sharedOptions = { store:cloud, notify:showNotice, refresh:selector=>renderKeepScroll(selector), navigate,
     confirm:message=>window.confirm(message), draftStore };
-  if (C) commerce = C.createController(sharedOptions);
+  if (C) commerce = C.createController({ ...sharedOptions, updateCatalogResults: result => {
+    const count = content.querySelector('#commerce-catalog-count');
+    const results = content.querySelector('#commerce-catalog-results');
+    if (!count || !results) return;
+    // Keep the search and editor nodes intact while filtering. Recreating an
+    // active search input can reset its caret and reverse subsequent typing.
+    count.textContent = result.summary;
+    results.innerHTML = result.html;
+  }});
   if (F) food = F.createController({ ...sharedOptions, openGrocery:tab=>{
     if(navigate('grocery')) { if(grocery && grocery.selectTab) grocery.selectTab(tab); renderKeepScroll(); }
   }});

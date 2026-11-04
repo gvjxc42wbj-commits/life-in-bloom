@@ -103,7 +103,8 @@
               for (const group of Object.keys(drafts)) if (data.drafts[group] && data.baselines[group]) { drafts[group] = clone(data.drafts[group]); baselines[group] = clone(data.baselines[group]); }
               if (validMonth(data.month)) month = data.month;
               if (data.quickAdds && typeof data.quickAdds === 'object' && !Array.isArray(data.quickAdds)) quickAdds = clone(data.quickAdds);
-              productOpen = Boolean(data.productOpen); recurringOpen = Boolean(data.recurringOpen); receiptOpen = Boolean(data.receiptOpen); billOpen = Boolean(data.billOpen); moneyOpen = Boolean(data.moneyOpen);
+              // Restore the product draft, but let the user choose when to open it.
+              productOpen = false; recurringOpen = Boolean(data.recurringOpen); receiptOpen = Boolean(data.receiptOpen); billOpen = Boolean(data.billOpen); moneyOpen = Boolean(data.moneyOpen);
               draftStatus = 'Your device draft was restored.';
             }
           } catch (_) { draftStatus = 'Your saved device draft could not be opened.'; }
@@ -165,14 +166,15 @@
     }
 
     function renderProductForm(current) {
-      if (!productOpen) return '';
       const value = drafts.product;
-      let html = '<section class="panel commerce-editor"><div class="panel-title-row"><h3>' + (value.id ? 'Edit product' : 'Add a product') + '</h3><span class="pill">Catalog reference</span></div><p class="grocery-help">Save the package and its label once. Prices here are dated estimates; saving a product does not record a purchase.</p>';
+      let html = '<section class="panel commerce-editor"><h3 class="commerce-disclosure-heading"><button id="commerce-product-toggle" type="button" class="commerce-disclosure-toggle" data-commerce-action="toggle-product" aria-expanded="' + productOpen + '" aria-controls="commerce-product-editor"' + disabled() + '><span>' + (value.id ? 'Edit product' : 'Add a product') + '</span><span class="commerce-disclosure-state">' + (productOpen ? 'Open' : 'Closed') + '<span class="commerce-disclosure-chevron" aria-hidden="true">⌄</span></span></button></h3><div id="commerce-product-editor"' + (productOpen ? '' : ' hidden') + '>';
+      if (!productOpen) return html + '</div>' + (dirty('product') ? '<p class="grocery-help commerce-collapsed-draft">Your unfinished product is kept. Open this section to continue.</p>' : '') + '</section>';
+      html += '<div class="panel-title-row"><span class="pill">Catalog reference</span>' + (value.id ? button('new-product', '+ Add a different product') : '') + '</div><p class="grocery-help">Save the package and its label once. Prices here are dated estimates; saving a product does not record a purchase.</p>';
       const contents = '<div class="grocery-form-grid">' + input('product', 'name', 'Product name', 'type="text" required maxlength="160" autocomplete="off"') + input('product', 'brand', 'Brand', 'type="text" maxlength="120" autocomplete="off"') + select('product', 'category', 'Budget category', [['food', 'Food'], ['household', 'Household']]) + select('product', 'aisle', 'Shopping category', AISLE_CHOICES) + input('product', 'package_quantity', 'Amount in one purchased package', 'type="number" min="0" step="any" max="1000000000" required inputmode="decimal"') + select('product', 'package_unit', 'Package unit', UNIT_CHOICES) + input('product', 'item_label', 'Name for one individual item', 'type="text" maxlength="40" placeholder="For example, carton or bottle"') + input('product', 'price', 'Reference price per package (USD)', 'type="text" inputmode="decimal" maxlength="12" placeholder="Leave blank if unknown"') + input('product', 'price_date', 'Date of this reference price', 'type="date" min="1900-01-01" max="2200-12-31"') + input('product', 'store', 'Store', 'type="text" maxlength="160" autocomplete="off"') + '</div>' + input('product', 'source_url', 'Product or price reference link', 'type="url" maxlength="2000" placeholder="https://…"') + '<details class="commerce-details"' + (NUTRIENT_FIELDS.some(([key]) => value[key] !== '') ? ' open' : '') + '><summary>Nutrition label and serving size</summary><p class="grocery-help">Enter values from this product’s label. Blank means unknown; enter 0 only when the label says zero.</p><div class="grocery-form-grid">' + input('product', 'serving_quantity', 'Amount in one nutrition-label serving', 'type="number" min="0" step="any" max="1000000000" inputmode="decimal"') + select('product', 'serving_unit', 'Nutrition serving unit', UNIT_CHOICES) + '</div><div class="commerce-nutrients">' + NUTRIENT_FIELDS.map(([key, label, unit]) => input('product', key, label + ' (' + unit + ')', 'type="number" min="0" step="any" max="1000000000" inputmode="decimal"')).join('') + '</div></details>' + textarea('product', 'allergens', 'Allergens and label cautions', 4000) + textarea('product', 'notes', 'Product notes', 4000);
       html += form('product', contents, value.id ? 'Save product changes' : 'Save product');
       if (value.id) html += renderFiles(current, value.id);
       else html += '<p class="grocery-help">After saving, open this product to attach its photo, nutrition label, or PDF.</p>';
-      return html + '</section>';
+      return html + '</div></section>';
     }
     function renderFiles(current, productId) {
       const files = (current.foodFiles || []).filter(file => file.product_id === productId);
@@ -181,17 +183,27 @@
       if (files.length) html += '<ul class="commerce-file-list">' + files.map(file => '<li><span>' + esc(file.name) + '</span><div class="grocery-actions">' + (fileLinks.has(file.id) && fileLinks.get(file.id).expiresAt > Date.now() ? '<a class="button" href="' + esc(fileLinks.get(file.id).url) + '" target="_blank" rel="noopener noreferrer">Open file ↗</a>' : button('open-file', 'Get file link', ' data-id="' + esc(file.id) + '"')) + button('remove-file', 'Remove', ' data-id="' + esc(file.id) + '"') + '</div></li>').join('') + '</ul>';
       return html + '</div>';
     }
-    function renderCatalog(current) {
+    function catalogResults(current) {
       const all = (current.products || []).filter(product => !product.archived);
       const search = query.trim().toLocaleLowerCase();
       const rows = all.filter(product => (aisle === 'all' || product.aisle === aisle) && (!search || [product.name, product.brand, product.store].some(value => String(value || '').toLocaleLowerCase().includes(search))));
       const pageCount = Math.max(1, Math.ceil(rows.length / 24)); catalogPage = Math.min(catalogPage, pageCount - 1);
       const visible = rows.slice(catalogPage * 24, catalogPage * 24 + 24);
-      let html = '<section class="panel"><div class="panel-title-row"><div><p class="page-kicker">Your product catalog</p><h2>Foods and household favorites</h2></div>' + button('new-product', '+ Add product', '', true) + '</div><p class="grocery-help">Keep every product you use, with its package, dated price, and nutrition label. Your catalog can grow beyond 38 products.</p><div class="grocery-form-grid"><label class="grocery-field" for="commerce-search"><span>Find a product</span><input id="commerce-search" type="search" data-commerce-search value="' + esc(query) + '" placeholder="Name, brand, or store" autocomplete="off"></label><label class="grocery-field" for="commerce-aisle"><span>Category</span><select id="commerce-aisle" data-commerce-aisle><option value="all">All categories</option>' + AISLE_CHOICES.map(([value, label]) => '<option value="' + value + '"' + (aisle === value ? ' selected' : '') + '>' + label + '</option>').join('') + '</select></label></div><p class="grocery-help">' + rows.length + ' matching product' + (rows.length === 1 ? '' : 's') + ' · ' + all.length + ' saved</p></section>' + renderProductForm(current);
-      if (!rows.length) return html + '<section class="panel">' + empty(all.length ? 'No products match this search. Try a different name or category.' : 'Add your first product, then use it in shopping lists, inventory, and recipes.') + '</section>';
-      html += '<div class="commerce-product-grid">' + visible.map(product => '<article class="panel commerce-product"><div class="commerce-product-top"><span class="pill">' + esc(product.category === 'household' ? 'Household' : AISLE_CHOICES.find(([value]) => value === product.aisle)?.[1] || 'Food') + '</span>' + (product.brand ? '<small>' + esc(product.brand) + '</small>' : '') + '</div><h3>' + esc(product.name) + '</h3><p>' + esc(product.package_quantity) + ' ' + esc(product.package_unit) + ' per purchased package</p><strong class="commerce-product-price">' + (product.price_cents == null ? 'Price needed' : money(product.price_cents)) + '</strong><p class="grocery-help">' + esc(product.store || 'Store not recorded') + ' · ' + esc(dateLabel(product.price_date)) + '</p><div class="grocery-actions">' + button('product-to-list', '+ Add 1 package', ' data-id="' + esc(product.id) + '"', true) + button('edit-product', 'Details & edit', ' data-id="' + esc(product.id) + '"') + '</div></article>').join('') + '</div>';
+      const summary = rows.length + ' matching product' + (rows.length === 1 ? '' : 's') + ' · ' + all.length + ' saved';
+      if (!rows.length) return { summary, html: '<section class="panel">' + empty(all.length ? 'No products match this search. Try a different name or category.' : 'Add your first product, then use it in shopping lists, inventory, and recipes.') + '</section>' };
+      let html = '<div class="commerce-product-grid">' + visible.map(product => '<article class="panel commerce-product"><div class="commerce-product-top"><span class="pill">' + esc(product.category === 'household' ? 'Household' : AISLE_CHOICES.find(([value]) => value === product.aisle)?.[1] || 'Food') + '</span>' + (product.brand ? '<small>' + esc(product.brand) + '</small>' : '') + '</div><h3>' + esc(product.name) + '</h3><p>' + esc(product.package_quantity) + ' ' + esc(product.package_unit) + ' per purchased package</p><strong class="commerce-product-price">' + (product.price_cents == null ? 'Price needed' : money(product.price_cents)) + '</strong><p class="grocery-help">' + esc(product.store || 'Store not recorded') + ' · ' + esc(dateLabel(product.price_date)) + '</p><div class="grocery-actions">' + button('product-to-list', '+ Add 1 package', ' data-id="' + esc(product.id) + '"', true) + button('edit-product', 'Details & edit', ' data-id="' + esc(product.id) + '"') + '</div></article>').join('') + '</div>';
       if (pageCount > 1) html += '<div class="commerce-pagination">' + button('catalog-prev', '‹ Previous', catalogPage === 0 ? ' disabled' : '') + '<span>Page ' + (catalogPage + 1) + ' of ' + pageCount + '</span>' + button('catalog-next', 'Next ›', catalogPage >= pageCount - 1 ? ' disabled' : '') + '</div>';
-      return html;
+      return { summary, html };
+    }
+    function refreshCatalogResults(current) {
+      // The app replaces only the results and count, preserving the live input,
+      // native caret, composition, and focus through input and blur/change events.
+      if (options.updateCatalogResults) options.updateCatalogResults(catalogResults(current));
+      else refresh('#commerce-search');
+    }
+    function renderCatalog(current) {
+      const results = catalogResults(current);
+      return '<section class="panel"><div class="panel-title-row"><div><p class="page-kicker">Your product catalog</p><h2>Foods and household favorites</h2></div></div><p class="grocery-help">Keep every product you use, with its package, dated price, and nutrition label. Your catalog can grow beyond 38 products.</p><div class="grocery-form-grid"><label class="grocery-field" for="commerce-search"><span>Find a product</span><input id="commerce-search" type="search" data-commerce-search value="' + esc(query) + '" placeholder="Name, brand, or store" autocomplete="off"></label><label class="grocery-field" for="commerce-aisle"><span>Category</span><select id="commerce-aisle" data-commerce-aisle><option value="all">All categories</option>' + AISLE_CHOICES.map(([value, label]) => '<option value="' + value + '"' + (aisle === value ? ' selected' : '') + '>' + label + '</option>').join('') + '</select></label></div><p id="commerce-catalog-count" class="grocery-help" role="status" aria-atomic="true">' + results.summary + '</p></section>' + renderProductForm(current) + '<div id="commerce-catalog-results">' + results.html + '</div>';
     }
     function recurrenceSignature(current) { return JSON.stringify([month, current.products, current.recurringProducts, current.inventory, current.shoppingItems]); }
     function renderRecurring(current) {
@@ -378,7 +390,13 @@
     function handleInput(event) {
       const field = event.target; if (!field || !field.dataset) return false;
       const current = snapshot();
-      if (Object.hasOwn(field.dataset, 'commerceSearch')) { query = String(field.value || ''); catalogPage = 0; refresh('#commerce-search'); return true; }
+      if (Object.hasOwn(field.dataset, 'commerceSearch')) {
+        const next = String(field.value || '');
+        // Blur emits change after input. Leave the results intact when the text
+        // is unchanged so a click on a result can finish on the same button.
+        if (next === query) return true;
+        query = next; catalogPage = 0; refreshCatalogResults(current); return true;
+      }
       if (field.dataset.commerceLine) {
         const item = drafts.receipt.items.find(row => row.key === field.dataset.commerceLine), key = field.dataset.lineField;
         if (!item || !Object.hasOwn(item, key) || ['key', 'shopping_item_id', 'shopping_revision', 'stock_edited', 'cost_edited'].includes(key)) return false;
@@ -408,7 +426,7 @@
     function handleChange(event) {
       const field = event.target; if (!field || !field.dataset) return false;
       if (Object.hasOwn(field.dataset, 'commerceMonth')) { snapshot(); if (busy || !setMonth(field.value)) field.value = month; else { if (sectionHandler && section !== 'money') sectionHandler(section, month); refresh(); } return true; }
-      if (Object.hasOwn(field.dataset, 'commerceAisle')) { if (field.value === 'all' || AISLE_CHOICES.some(([key]) => key === field.value)) { aisle = field.value; catalogPage = 0; refresh(); } return true; }
+      if (Object.hasOwn(field.dataset, 'commerceAisle')) { const current = snapshot(); if (field.value === 'all' || AISLE_CHOICES.some(([key]) => key === field.value)) { aisle = field.value; catalogPage = 0; refreshCatalogResults(current); } return true; }
       if (field.dataset.commerceUpload) {
         snapshot(); if (busy) return true;
         fileTarget = field.dataset.commerceUpload; fileSelection = field.files && field.files[0] || null;
@@ -425,7 +443,7 @@
       const element = event.target && event.target.closest && event.target.closest('[data-commerce-action]');
       if (!element || !element.dataset || !element.dataset.commerceAction) return false;
       const action = element.dataset.commerceAction;
-      const actions = ['open-grocery', 'open-grocery-budget', 'open-receipts', 'new-product', 'edit-product', 'product-to-list', 'catalog-prev', 'catalog-next', 'new-recurring', 'edit-recurring', 'review-recurring', 'confirm-recurring', 'cancel-recurring', 'new-receipt', 'add-receipt-line', 'remove-receipt-line', 'confirm-receipt', 'cancel-receipt-review', 'void-receipt', 'new-bill', 'edit-bill', 'pay-bill', 'new-money', 'void-money', 'discard', 'upload-file', 'open-file', 'remove-file'];
+      const actions = ['open-grocery', 'open-grocery-budget', 'open-receipts', 'toggle-product', 'new-product', 'edit-product', 'product-to-list', 'catalog-prev', 'catalog-next', 'new-recurring', 'edit-recurring', 'review-recurring', 'confirm-recurring', 'cancel-recurring', 'new-receipt', 'add-receipt-line', 'remove-receipt-line', 'confirm-receipt', 'cancel-receipt-review', 'void-receipt', 'new-bill', 'edit-bill', 'pay-bill', 'new-money', 'void-money', 'discard', 'upload-file', 'open-file', 'remove-file'];
       if (!actions.includes(action)) return false;
       const current = snapshot(); if (busy) return true;
       try {
@@ -433,6 +451,7 @@
         if (!requireReady(current)) return true;
         if (action === 'open-grocery-budget') { if (sectionHandler) sectionHandler('budget', month); navigate('grocery'); }
         else if (action === 'open-receipts') { navigateSection('receipts'); navigate('grocery'); }
+        else if (action === 'toggle-product') { productOpen = !productOpen; persist(); refresh('#commerce-product-toggle'); return true; }
         else if (action === 'new-product') { if (editGroup('product', blankProduct())) productOpen = true; }
         else if (action === 'edit-product') {
           const row = (current.products || []).find(product => product.id === element.dataset.id); if (!row) return true;

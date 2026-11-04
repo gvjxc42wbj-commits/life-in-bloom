@@ -17,12 +17,13 @@ function createRuntime(seed = {}, failWrites = false, options = {}) {
   const elements = new Map();
   const downloads = [];
   const frames = [];
+  const metrics = { fullRenders: 0, focusCalls: 0, catalogWrites: 0 };
   const backing = new Map(Object.entries(seed));
   const classList = () => ({ toggle() {}, add() {}, remove() {} });
   const make = (id = '') => ({
     id, dataset: {}, classList: classList(), listeners: {}, hidden: false, value: '', innerHTML: '', textContent: '', disabled: false,
     addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); },
-    attributes: {}, setAttribute(name,value) { this.attributes[name]=value; }, removeAttribute(name) { delete this.attributes[name]; }, focus() { document.activeElement=this; },
+    attributes: {}, setAttribute(name,value) { this.attributes[name]=value; }, removeAttribute(name) { delete this.attributes[name]; }, focus() { metrics.focusCalls++; document.activeElement=this; },
     querySelector() { return null; }, querySelectorAll() { return []; },
     contains(element) { return element === this || element?.parentNode === this; },
     insertAdjacentHTML(where, value) { this.innerHTML = where === 'afterbegin' ? value + this.innerHTML : this.innerHTML + value; },
@@ -52,22 +53,60 @@ function createRuntime(seed = {}, failWrites = false, options = {}) {
   // removes focus and creates a different input with a new, initially zero caret.
   const content = elements.get('#content');
   let contentHtml = '';
+  const decode = value => value.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+  // Read a nested div from the generated HTML so partial DOM updates can be
+  // checked independently of the last full-page render.
+  function divContent(markup, id) {
+    const opening = new RegExp('<div\\b[^>]*id="' + id + '"[^>]*>').exec(markup);
+    if (!opening) return null;
+    const start = opening.index + opening[0].length, tags = /<\/?div\b[^>]*>/g;
+    tags.lastIndex = start;
+    let depth = 1, tag;
+    while ((tag = tags.exec(markup))) {
+      depth += tag[0].startsWith('</') ? -1 : 1;
+      if (!depth) return markup.slice(start,tag.index);
+    }
+    throw new Error('Unclosed div ' + id);
+  }
   Object.defineProperty(content, 'innerHTML', {
     get() { return contentHtml; },
     set(value) {
+      metrics.fullRenders++;
       if (document.activeElement?.parentNode === content) document.activeElement = document.body;
-      elements.delete('#commerce-search');
+      for (const id of ['commerce-search','commerce-aisle','commerce-catalog-count','commerce-catalog-results','commerce-product-toggle']) elements.delete('#' + id);
       contentHtml = value;
       const search = /<input\b[^>]*id="commerce-search"[^>]*>/.exec(value);
       if (search) {
         const field = make('commerce-search');
         field.parentNode = content; field.type = 'search'; field.dataset.commerceSearch = '';
-        field.value = (/\bvalue="([^"]*)"/.exec(search[0])?.[1] || '').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+        field.value = decode(/\bvalue="([^"]*)"/.exec(search[0])?.[1] || '');
         field.selectionStart = field.selectionEnd = 0; field.selectionDirection = 'none';
         field.setSelectionRange = function(start, end, direction = 'none') {
           this.selectionStart = start; this.selectionEnd = end; this.selectionDirection = direction;
         };
         elements.set('#commerce-search',field);
+      }
+      const count = /<p\b[^>]*id="commerce-catalog-count"[^>]*>([^<]*)<\/p>/.exec(value);
+      if (count) {
+        const node = make('commerce-catalog-count'); node.parentNode = content; node.textContent = decode(count[1]);
+        elements.set('#commerce-catalog-count',node);
+      }
+      const results = divContent(value,'commerce-catalog-results');
+      if (results !== null) {
+        const node = make('commerce-catalog-results'); node.parentNode = content;
+        let resultsHtml = results;
+        Object.defineProperty(node,'innerHTML',{get() { return resultsHtml; },set(html) { metrics.catalogWrites++; resultsHtml=html; }});
+        elements.set('#commerce-catalog-results',node);
+      }
+      const aisle = /<select\b[^>]*id="commerce-aisle"[^>]*>([\s\S]*?)<\/select>/.exec(value);
+      if (aisle) {
+        const node = make('commerce-aisle'); node.parentNode = content; node.dataset.commerceAisle = '';
+        node.value = /<option value="([^"]*)" selected>/.exec(aisle[1])?.[1] || 'all';
+        elements.set('#commerce-aisle',node);
+      }
+      if (value.includes('id="commerce-product-toggle"')) {
+        const node = make('commerce-product-toggle'); node.parentNode = content;
+        elements.set('#commerce-product-toggle',node);
       }
     }
   });
@@ -109,7 +148,7 @@ function createRuntime(seed = {}, failWrites = false, options = {}) {
     const key = attribute[1].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
     return Object.hasOwn(dataset, key) ? this : null;
   } });
-  return { cloud, elements, backing, tabs, navs, windowEvents, confirmations, document, flushFrames() { while(frames.length) frames.shift()(); }, confirm(value) {confirmAnswer=value;}, navigate: async page => navs.find(button=>button.dataset.page===page).fire('click'), D: window.BloomData, downloads, blobs,
+  return { cloud, elements, backing, tabs, navs, windowEvents, confirmations, document, metrics, flushFrames() { while(frames.length) frames.shift()(); }, confirm(value) {confirmAnswer=value;}, navigate: async page => navs.find(button=>button.dataset.page===page).fire('click'), D: window.BloomData, downloads, blobs,
     get: id => elements.get('#' + id),
     click: (id, dataset) => elements.get('#' + id).fire('click', target(dataset)),
     saved: () => JSON.parse(backing.get(window.BloomData.STORAGE_KEY)) };
@@ -220,10 +259,10 @@ test('offline shared routes show a dated saved-copy notice without changing pers
   }
 });
 
-async function openSearch() {
+async function openSearch(products) {
   const rt=createRuntime({},false,{deferFrames:true});
   rt.cloud.set({status:'ready',user:userA,household:{id:'h-a',name:'Household',owner_user_id:userA.id},members:[{user_id:userA.id,household_id:'h-a',role:'owner'}],
-    products:[{id:'product-one',name:'Meat',brand:'',store:'',category:'food',aisle:'meat',package_quantity:1,package_unit:'each',price_cents:null}],
+    products:products || [{id:'product-one',name:'Meat',brand:'',store:'',category:'food',aisle:'meat',package_quantity:1,package_unit:'each',price_cents:null}],
     recipes:[],mealEntries:[],receipts:[],moneyEntries:[],bills:[],foodFiles:[],recurringProducts:[]});
   await rt.navigate('grocery'); await rt.click('content',{groceryAction:'tab',tab:'catalog'}); rt.flushFrames();
   rt.get('commerce-search').focus();
@@ -234,21 +273,28 @@ async function openSearch() {
     field.value=field.value.slice(0,position)+text+field.value.slice(field.selectionEnd);
     field.setSelectionRange(position+text.length,position+text.length);
     await rt.get('content').fire('input',field);
+    assert.equal(rt.get('commerce-search'),field,'filtering must preserve the actual input node');
     return rt.get('commerce-search');
   };
   return rt;
 }
 
-test('catalog search keeps rapid typing, middle edits and selection replacement in order before animation frames', async()=>{
+test('catalog search updates results without replacing the input, restoring focus, or reversing edits', async()=>{
   const rt=await openSearch();
+  const originalSearch=rt.get('commerce-search'), renders=rt.metrics.fullRenders, focusCalls=rt.metrics.focusCalls;
   for(const letter of 'Meat') await rt.insertText(letter);
+  assert.equal(rt.get('commerce-search'),originalSearch);
   assert.equal(rt.get('commerce-search').value,'Meat');
   assert.equal(rt.get('commerce-search').selectionStart,4);
-  assert.match(rt.get('content').innerHTML,/1 matching product/);
+  assert.equal(rt.get('commerce-catalog-count').textContent,'1 matching product · 1 saved');
+  assert.match(rt.get('commerce-catalog-results').innerHTML,/<h3>Meat<\/h3>/);
   rt.get('commerce-search').setSelectionRange(2,2);
   await rt.insertText('X');
   assert.equal(rt.get('commerce-search').value,'MeXat');
   assert.equal(rt.get('commerce-search').selectionStart,3);
+  assert.match(rt.get('commerce-catalog-count').textContent,/0 matching products/);
+  assert.match(rt.get('commerce-catalog-results').innerHTML,/No products match this search/);
+  assert.doesNotMatch(rt.get('commerce-catalog-results').innerHTML,/<article/);
   rt.get('commerce-search').setSelectionRange(2,3,'backward');
   await rt.insertText('');
   assert.equal(rt.get('commerce-search').value,'Meat');
@@ -256,8 +302,52 @@ test('catalog search keeps rapid typing, middle edits and selection replacement 
   await rt.insertText('Rice');
   assert.equal(rt.get('commerce-search').value,'Rice');
   assert.equal(rt.get('commerce-search').selectionStart,4);
-  rt.get('page-heading').focus(); rt.flushFrames();
+  assert.match(rt.get('commerce-catalog-results').innerHTML,/No products match this search/);
+  // The native search clear button dispatches input with an empty value.
+  originalSearch.value=''; originalSearch.setSelectionRange(0,0);
+  await rt.get('content').fire('input',originalSearch);
+  assert.equal(rt.get('commerce-search'),originalSearch);
+  assert.match(rt.get('commerce-catalog-results').innerHTML,/<h3>Meat<\/h3>/);
+  assert.equal(rt.get('commerce-catalog-count').textContent,'1 matching product · 1 saved');
+  assert.equal(rt.metrics.fullRenders,renders,'typing/clearing must not replace the page');
+  assert.equal(rt.metrics.focusCalls,focusCalls,'typing/clearing must use native focus');
+  rt.get('page-heading').focus();
+  const resultWrites=rt.metrics.catalogWrites;
+  await rt.get('content').fire('change',originalSearch); rt.flushFrames();
   assert.equal(rt.document.activeElement,rt.get('page-heading'),'old frames must not steal focus back');
+  assert.equal(rt.metrics.fullRenders,renders,'the blur change must not replace the page');
+  assert.equal(rt.metrics.focusCalls,focusCalls+1,'blur change must not refocus the search');
+  assert.equal(rt.metrics.catalogWrites,resultWrites,'blur must leave result buttons mounted so a click can finish');
+});
+
+test('catalog filters update counts and cards, reset pagination, and keep category controls intact', async()=>{
+  const products=Array.from({length:30},(_,index)=>({id:'product-'+index,name:'Product '+index,brand:index===29?'Find me':'',store:'',category:'food',aisle:index===29?'frozen':'meat',package_quantity:1,package_unit:'each',price_cents:null}));
+  const rt=await openSearch(products);
+  await rt.click('content',{commerceAction:'catalog-next'}); rt.flushFrames();
+  assert.match(rt.get('commerce-catalog-results').innerHTML,/Page 2 of 2/);
+  const search=rt.get('commerce-search'), category=rt.get('commerce-aisle'); search.focus();
+  const renders=rt.metrics.fullRenders;
+  const resultWrites=rt.metrics.catalogWrites;
+  await rt.get('content').fire('change',search);
+  assert.equal(rt.metrics.catalogWrites,resultWrites,'an unchanged search must not rebuild results');
+  assert.match(rt.get('commerce-catalog-results').innerHTML,/Page 2 of 2/,'blur must not reset pagination');
+  await rt.insertText('Find me');
+  assert.equal(rt.get('commerce-catalog-count').textContent,'1 matching product · 30 saved');
+  assert.match(rt.get('commerce-catalog-results').innerHTML,/<h3>Product 29<\/h3>/);
+  assert.doesNotMatch(rt.get('commerce-catalog-results').innerHTML,/commerce-pagination/);
+  search.setSelectionRange(0,search.value.length); await rt.insertText('');
+  assert.match(rt.get('commerce-catalog-results').innerHTML,/Page 1 of 2/);
+  category.focus(); category.value='frozen'; await rt.get('content').fire('change',category);
+  assert.equal(rt.document.activeElement,category);
+  assert.equal(rt.get('commerce-aisle'),category);
+  assert.equal(rt.get('commerce-search'),search);
+  assert.equal(rt.get('commerce-catalog-count').textContent,'1 matching product · 30 saved');
+  assert.match(rt.get('commerce-catalog-results').innerHTML,/<h3>Product 29<\/h3>/);
+  assert.doesNotMatch(rt.get('commerce-catalog-results').innerHTML,/commerce-pagination/);
+  search.focus(); await rt.insertText('Product 1');
+  assert.match(rt.get('commerce-catalog-count').textContent,/0 matching products/);
+  assert.match(rt.get('commerce-catalog-results').innerHTML,/No products match this search/);
+  assert.equal(rt.metrics.fullRenders,renders);
 });
 
 test('background refresh preserves the active search selection instead of dropping its focus', async()=>{

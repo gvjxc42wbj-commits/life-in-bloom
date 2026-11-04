@@ -21,13 +21,13 @@ function memoryDrafts() {
 }
 function harness(initial = ready(), options = {}) {
   let current = initial, confirmation = true;
-  const calls = [], notices = [], methods = {}, refreshes = [];
+  const calls = [], notices = [], methods = {}, refreshes = [], confirmations = [];
   const store = { snapshot: () => current };
   for (const name of ['saveProduct', 'saveRecurringProduct', 'saveShoppingItem', 'saveShoppingItems', 'recordReceipt', 'voidReceipt', 'saveBill', 'recordMoneyEntry', 'voidMoneyEntry', 'saveBudget', 'uploadFoodFile', 'getFoodFileUrl', 'deleteFoodFile']) store[name] = async (...args) => {
     calls.push({ name, args: structuredClone(args) });
     return methods[name] ? methods[name](...args) : {};
   };
-  const controller = Commerce.createController({ store, model: Model, getNow: () => new Date(2026, 10, 4, 12), confirm: () => confirmation, refresh: selector => refreshes.push(selector), notify: (message, error) => notices.push({ message, error }), ...options });
+  const controller = Commerce.createController({ store, model: Model, getNow: () => new Date(2026, 10, 4, 12), confirm: message => { confirmations.push(message); return confirmation; }, refresh: selector => refreshes.push(selector), notify: (message, error) => notices.push({ message, error }), ...options });
   controller.render('catalog');
   const click = (action, data = {}) => {
     const handled = controller.handleClick({ target: { closest: () => ({ dataset: { commerceAction: action, ...data } }) } });
@@ -42,8 +42,105 @@ function harness(initial = ready(), options = {}) {
     assert.equal(result, true); assert.equal(prevented, true); return result;
   };
   const keys = () => Array.from(new Set(Array.from(controller.render('receipts').matchAll(/data-commerce-line="([^"]+)"/g), match => match[1])));
-  return { controller, store, calls, notices, methods, refreshes, click, input, line, submit, keys, idle: () => controller.whenIdle(), get state() { return current; }, set state(value) { current = value; }, set confirmation(value) { confirmation = value; } };
+  return { controller, store, calls, notices, methods, refreshes, confirmations, click, input, line, submit, keys, idle: () => controller.whenIdle(), get state() { return current; }, set state(value) { current = value; }, set confirmation(value) { confirmation = value; } };
 }
+
+function assertProductDisclosure(h, open, label = 'Add a product') {
+  const html = h.controller.render('catalog');
+  const toggle = html.match(/<button\b(?=[^>]*\bdata-commerce-action="toggle-product")[^>]*>[\s\S]*?<\/button>/)?.[0];
+  const body = html.match(/<[^/!][^>]*\bid="commerce-product-editor"[^>]*>/)?.[0];
+  assert.ok(toggle, 'the product editor has an accessible disclosure button');
+  assert.ok(body, 'the controlled product editor region exists even when closed');
+  assert.match(toggle, /aria-controls="commerce-product-editor"/);
+  assert.match(toggle, new RegExp('aria-expanded="' + open + '"'));
+  assert.ok(toggle.includes(label), 'the disclosure describes the current product form');
+  assert.match(toggle, open ? /\bOpen\b/ : /\bClosed\b/);
+  if (open) {
+    assert.doesNotMatch(body, /\shidden(?:\s|=|>)/);
+    assert.match(html, /data-commerce-form="product"/);
+  } else {
+    assert.match(body, /\shidden(?:\s|=|>)/);
+    assert.doesNotMatch(html, /data-commerce-form="product"/);
+  }
+  return html;
+}
+
+test('Add a product starts as a closed disclosure without a mounted form', () => {
+  const h = harness();
+  assertProductDisclosure(h, false);
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.confirmations.length, 0);
+});
+
+test('closing and reopening the product disclosure retains the draft and request ID without asking to discard', async () => {
+  const draftStore = memoryDrafts(), h = harness(ready(), { draftStore });
+  h.confirmation = false;
+  h.click('toggle-product'); assertProductDisclosure(h, true);
+  h.input('product.name', 'Draft <carrots>'); h.input('product.brand', 'My brand');
+  const original = structuredClone(draftStore.read('person-one', 'house-one', 'commerce').data.drafts.product);
+  assert.match(original.request_id, uuidPattern);
+  h.click('toggle-product'); assertProductDisclosure(h, false);
+  assert.deepEqual(draftStore.read('person-one', 'house-one', 'commerce').data.drafts.product, original);
+  h.click('toggle-product');
+  const html = assertProductDisclosure(h, true);
+  assert.match(html, /value="Draft &lt;carrots&gt;"/);
+  assert.match(html, /value="My brand"/);
+  assert.equal(h.confirmations.length, 0);
+  assert.equal(h.calls.length, 0, 'disclosure changes do not save product records');
+  h.submit('product'); await h.idle();
+  assert.equal(h.calls[0].name, 'saveProduct');
+  assert.equal(h.calls[0].args[0].request_id, original.request_id);
+  assert.equal(h.calls[0].args[0].name, 'Draft <carrots>');
+  assertProductDisclosure(h, false);
+});
+
+test('a restored product draft starts closed even if an older saved draft marked it open', () => {
+  const draftStore = memoryDrafts(), h = harness(ready(), { draftStore });
+  h.click('toggle-product'); h.input('product.name', 'Restored product');
+  const saved = draftStore.read('person-one', 'house-one', 'commerce');
+  saved.data.productOpen = true;
+  const original = structuredClone(saved.data.drafts.product);
+  const restored = harness(h.state, { draftStore });
+  assertProductDisclosure(restored, false);
+  restored.confirmation = false;
+  restored.click('toggle-product');
+  assert.match(assertProductDisclosure(restored, true), /value="Restored product"/);
+  assert.deepEqual(draftStore.read('person-one', 'house-one', 'commerce').data.drafts.product, original);
+  assert.equal(restored.confirmations.length, 0);
+});
+
+test('Details and edit opens the existing product, failed saving keeps it open, and successful saving closes it', async () => {
+  const row = product({ revision: 9 }), h = harness(ready({ products: [row] }));
+  assertProductDisclosure(h, false);
+  h.click('edit-product', { id: row.id });
+  assert.match(assertProductDisclosure(h, true, 'Edit product'), /value="Example cartons"/);
+  h.input('product.name', 'Updated cartons');
+  h.confirmation = false; h.click('toggle-product'); assertProductDisclosure(h, false, 'Edit product');
+  h.click('toggle-product'); assert.match(assertProductDisclosure(h, true, 'Edit product'), /value="Updated cartons"/);
+  assert.equal(h.confirmations.length, 0);
+  h.methods.saveProduct = () => { throw new Error('Save connection lost'); };
+  h.submit('product'); await h.idle();
+  assertProductDisclosure(h, true, 'Edit product');
+  const payload = h.calls[0].args[0]; assert.equal(payload.id, row.id); assert.equal(payload.revision, 9);
+  h.methods.saveProduct = () => ({});
+  h.submit('product'); await h.idle();
+  assert.deepEqual(h.calls[1].args[0], payload);
+  assertProductDisclosure(h, false);
+});
+
+test('discarding product changes closes the disclosure and creates a fresh draft only after confirmation', () => {
+  const draftStore = memoryDrafts(), h = harness(ready(), { draftStore });
+  h.click('toggle-product'); h.input('product.name', 'Discard this draft');
+  const originalId = draftStore.read('person-one', 'house-one', 'commerce').data.drafts.product.request_id;
+  h.confirmation = false; h.click('discard', { group: 'product' });
+  assert.match(assertProductDisclosure(h, true), /value="Discard this draft"/);
+  h.confirmation = true; h.click('discard', { group: 'product' }); assertProductDisclosure(h, false);
+  const replacement = draftStore.read('person-one', 'house-one', 'commerce').data.drafts.product;
+  assert.equal(replacement.name, ''); assert.notEqual(replacement.request_id, originalId);
+  h.click('toggle-product'); assertProductDisclosure(h, true);
+  assert.equal(h.confirmations.length, 2, 'only the two explicit discard attempts ask for confirmation');
+  assert.equal(h.calls.length, 0);
+});
 
 test('catalog keeps all products, pages them, escapes user text, and preserves unknown prices', () => {
   const products = Array.from({ length: 45 }, (_, i) => product({ id: 'p' + i, name: 'Product ' + String(i).padStart(2, '0'), price_cents: i === 44 ? null : 0 }));

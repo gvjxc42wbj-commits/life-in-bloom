@@ -12,6 +12,14 @@
 .commerce-draft-status { margin: 0 4px 14px; }
 .commerce-editor { border-color: #dca8bf; background: linear-gradient(140deg, #fff9fc, #fff); }
 .commerce-editor h3 { margin-top: 0; }
+.commerce-editor .commerce-disclosure-heading { margin: 0; }
+.commerce-disclosure-toggle { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-height: 48px; padding: 4px 0; border: 0; background: transparent; color: #753c56; text-align: left; font: inherit; font-size: 18px; font-weight: 750; cursor: pointer; }
+.commerce-disclosure-toggle:focus-visible { outline: 2px solid #a4476b; outline-offset: 6px; border-radius: 4px; }
+.commerce-disclosure-state { display: inline-flex; align-items: center; gap: 12px; flex: 0 0 auto; font-size: 12px; font-weight: 600; }
+.commerce-disclosure-chevron { display: inline-block; font-size: 24px; line-height: 1; }
+.commerce-disclosure-toggle[aria-expanded="true"] .commerce-disclosure-chevron { transform: rotate(180deg); }
+#commerce-product-editor:not([hidden]) { margin-top: 18px; }
+.commerce-collapsed-draft { margin-bottom: 0; }
 .commerce-details { margin-top: 14px; padding: 0 15px 14px; border: 1px solid #efd6e1; border-radius: 13px; background: #fffafd; }
 .commerce-details > summary { color: #7c425c; font-size: 13px; font-weight: 750; padding: 14px 0; min-height: 44px; cursor: pointer; }
 .commerce-nutrients { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; margin-top: 15px; }
