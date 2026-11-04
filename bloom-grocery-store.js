@@ -18,7 +18,7 @@
     products: ['name','brand','category','aisle','package_quantity','package_unit','item_label','price_cents','price_date','store','source_url','serving_quantity','serving_unit','nutrients','allergens','notes','archived'],
     recurringProducts: ['product_id','person_slot','quantity','basis','every_days','active'],
     bills: ['month','name','amount_cents','variable','due_on','notes'],
-    recipes: ['name','servings','ingredients','instructions','source_url','notes','archived'],
+    recipes: ['name','servings','ingredients','ingredient_text','instructions','source_url','notes','archived','nutrition_mode','nutrition_reference','nutrition_source'],
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };

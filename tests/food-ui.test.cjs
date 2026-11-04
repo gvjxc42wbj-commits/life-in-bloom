@@ -20,9 +20,10 @@ function harness(initial = state(), persistence = savedDraftStore()) {
   controller.render();
   const click = (action, extra = {}) => { let prevented = false; const element = { dataset: { foodAction: action, ...extra } }; assert.equal(controller.handleClick({ target: { closest: () => element }, preventDefault() { prevented = true; } }), true); assert.equal(prevented, true); };
   const input = (field, value) => assert.equal(controller.handleInput({ target: { dataset: { foodField: field }, value: String(value) } }), true);
+  const reference = (key, value) => assert.equal(controller.handleInput({ target: { dataset: { foodReference: key }, value: String(value) } }), true);
   const ingredient = (index, part, value) => assert.equal(controller.handleInput({ target: { dataset: { foodIngredient: String(index), foodPart: part }, value: String(value) } }), true);
   const submit = (kind, fields = {}) => { let prevented = false; assert.equal(controller.handleSubmit({ target: { dataset: { foodForm: kind }, elements: { namedItem: name => Object.hasOwn(fields, name) ? { value: String(fields[name]) } : null } }, preventDefault() { prevented = true; } }), true); assert.equal(prevented, true); };
-  return { controller, store, calls, notices, refreshes, links, downloads, methods, persistence, click, input, ingredient, submit, get state() { return current; }, set state(value) { current = value; }, set consent(value) { consent = value; }, idle: () => controller.whenIdle() };
+  return { controller, store, calls, notices, refreshes, links, downloads, methods, persistence, click, input, reference, ingredient, submit, get state() { return current; }, set state(value) { current = value; }, set consent(value) { consent = value; }, idle: () => controller.whenIdle() };
 }
 
 test('Food opens a real saved collection with prominent Grocery shortcuts and escaped content', () => {
@@ -76,6 +77,210 @@ test('recipe validation refuses missing catalog products, bad yields, and execut
   assert.match(h.notices.at(-1).message, /http or https/);
 });
 
+test('written ingredients and whole-recipe estimates save without invented catalog links', async () => {
+  const h = harness(state({ products: [], recipes: [] }));
+  h.methods.saveRecipe = payload => {
+    const row = { ...payload, id: payload.request_id, revision: 1 };
+    h.state = { ...h.state, recipes: [row] };
+    return row;
+  };
+  h.click('new-recipe');
+  h.submit('recipe', {
+    name: 'Example vegetable dish', servings: 5,
+    ingredient_text: '2–4 sample vegetables\nSeasoning to taste\nOptional <garnish>',
+    instructions: 'Prepare and serve.', nutrition_mode: 'reference',
+    nutrition_reference_calories_kcal: '1500', nutrition_reference_protein_g: '50',
+    nutrition_reference_fiber_g: '0', nutrition_reference_sodium_mg: '',
+    nutrition_source: 'Example <recipe card> estimate'
+  });
+  await h.idle();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].method, 'saveRecipe');
+  const payload = h.calls[0].args[0];
+  assert.deepEqual(payload.ingredients, [], 'the untouched blank link row is not saved as an ingredient');
+  assert.equal(payload.ingredient_text, '2–4 sample vegetables\nSeasoning to taste\nOptional <garnish>');
+  assert.equal(payload.nutrition_mode, 'reference');
+  assert.equal(payload.nutrition_reference.calories_kcal, 1500);
+  assert.equal(payload.nutrition_reference.protein_g, 50);
+  assert.equal(payload.nutrition_reference.fiber_g, 0);
+  assert.equal(payload.nutrition_reference.sodium_mg, null);
+  const html = h.controller.render();
+  assert.match(html, /Ingredients as written/);
+  assert.match(html, /2–4 sample vegetables\nSeasoning to taste\nOptional &lt;garnish&gt;/);
+  assert.match(html, /300 kcal/);
+  assert.match(html, /10 g protein/);
+  assert.match(html, /Recipe estimate/);
+  assert.match(html, /Example &lt;recipe card&gt; estimate/);
+  assert.doesNotMatch(html, /<garnish>|<recipe card>|0 ingredients/);
+  assert.equal(h.state.products.length, 0);
+});
+
+test('optional catalog links reject partial or broken entries instead of silently losing them', async () => {
+  const h = harness();
+  h.click('new-recipe');
+  const base = { name: 'Written dish', servings: 2, ingredient_text: 'A written ingredient list' };
+  h.submit('recipe', { ...base, ingredient_0_product_id: 'rice', ingredient_0_quantity: '', ingredient_0_unit: 'g' });
+  await h.idle(); assert.equal(h.calls.length, 0);
+  assert.match(h.notices.at(-1).message, /Ingredient amount/);
+  h.submit('recipe', { ingredient_0_product_id: '', ingredient_0_quantity: '20' });
+  await h.idle(); assert.equal(h.calls.length, 0);
+  h.submit('recipe', { ingredient_0_product_id: 'unavailable' });
+  await h.idle(); assert.equal(h.calls.length, 0);
+  h.submit('recipe', { ingredient_0_product_id: '', ingredient_0_quantity: '', ingredient_0_unit: 'g' });
+  await h.idle(); assert.equal(h.calls.length, 0, 'a changed unit is a partial row, not an untouched row');
+  h.click('remove-ingredient', { index: '0' });
+  h.submit('recipe', { ingredient_text: '' });
+  await h.idle(); assert.equal(h.calls.length, 0);
+  assert.match(h.notices.at(-1).message, /ingredient list or link/);
+  h.submit('recipe', { ingredient_text: 'x'.repeat(12001) });
+  await h.idle(); assert.equal(h.calls.length, 0);
+  h.submit('recipe', { ingredient_text: base.ingredient_text });
+  await h.idle();
+  assert.equal(h.calls.length, 1);
+  assert.deepEqual(h.calls[0].args[0].ingredients, []);
+  assert.equal(h.calls[0].args[0].nutrition_mode, 'ingredients');
+});
+
+test('reference editor validates sources and finite nonnegative values while retaining blanks and zero', async () => {
+  const h = harness();
+  h.click('new-recipe');
+  h.input('recipe.nutrition_mode', 'reference');
+  const html = h.controller.render();
+  assert.match(html, /Nutrition estimates for the whole recipe/);
+  assert.match(html, /Use recipe estimates/);
+  assert.match(html, /Source and assumptions/);
+  assert.match(html, /id="food-recipe-reference-protein_g"/);
+  h.submit('recipe', { name: 'Estimated dish', servings: 3, ingredient_text: 'An ingredient list' });
+  await h.idle(); assert.equal(h.calls.length, 0);
+  assert.match(h.notices.at(-1).message, /source and assumptions/);
+  h.input('recipe.nutrition_source', 'Example estimate');
+  for (const invalid of ['-1', 'Infinity', 'not a number', '1000000001']) {
+    h.reference('protein_g', invalid);
+    h.submit('recipe'); await h.idle();
+    assert.equal(h.calls.length, 0, invalid + ' must not be saved');
+  }
+  h.reference('protein_g', '');
+  h.reference('fiber_g', '0');
+  h.input('recipe.nutrition_source', 'x'.repeat(2001));
+  h.submit('recipe'); await h.idle(); assert.equal(h.calls.length, 0);
+  h.input('recipe.nutrition_source', 'Example estimate');
+  h.input('recipe.nutrition_mode', 'unsupported');
+  h.submit('recipe'); await h.idle(); assert.equal(h.calls.length, 0);
+  h.input('recipe.nutrition_mode', 'reference');
+  h.submit('recipe'); await h.idle();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].args[0].nutrition_reference.protein_g, null);
+  assert.equal(h.calls[0].args[0].nutrition_reference.fiber_g, 0);
+});
+
+test('switching to ingredient labels keeps invalid retained estimates visible and preserves valid values', async () => {
+  const h = harness();
+  h.click('new-recipe');
+  h.input('recipe.name', 'Retained estimates dish');
+  h.input('recipe.servings', '2');
+  h.input('recipe.ingredient_text', 'A written ingredient list');
+  h.input('recipe.nutrition_mode', 'reference');
+  h.input('recipe.nutrition_source', 'Example recipe estimate');
+  h.reference('protein_g', '-1');
+  h.reference('calories_kcal', '600');
+  h.reference('fiber_g', '8');
+  h.input('recipe.nutrition_mode', 'ingredients');
+  const html = h.controller.render();
+  assert.match(html, /value="ingredients" selected/);
+  assert.match(html, /Correct the retained recipe estimates below before saving/);
+  assert.match(html, /Protein for the whole recipe must be a number/);
+  assert.match(html, /id="food-recipe-reference-protein_g"[^>]*value="-1"/);
+  assert.doesNotMatch(html, /<textarea[^>]*id="food-recipe-nutrition_source"[^>]*required/);
+  h.submit('recipe'); await h.idle();
+  assert.equal(h.calls.length, 0, 'retained invalid data must still fail validation');
+  h.reference('protein_g', '');
+  h.submit('recipe'); await h.idle();
+  assert.equal(h.calls.length, 1);
+  const payload = h.calls[0].args[0];
+  assert.equal(payload.nutrition_mode, 'ingredients');
+  assert.equal(payload.nutrition_reference.protein_g, null);
+  assert.equal(payload.nutrition_reference.calories_kcal, 600);
+  assert.equal(payload.nutrition_reference.fiber_g, 8);
+  assert.equal(payload.nutrition_source, 'Example recipe estimate');
+});
+
+test('an overlong retained estimate source remains correctable in ingredient-label mode', async () => {
+  const h = harness();
+  h.click('new-recipe');
+  h.input('recipe.name', 'Source correction dish');
+  h.input('recipe.servings', '2');
+  h.input('recipe.ingredient_text', 'A written ingredient list');
+  h.input('recipe.nutrition_mode', 'reference');
+  h.reference('protein_g', '24');
+  h.input('recipe.nutrition_source', 'x'.repeat(2001));
+  h.input('recipe.nutrition_mode', 'ingredients');
+  const html = h.controller.render();
+  assert.match(html, /Correct the retained recipe estimates below before saving/);
+  assert.match(html, /Estimate source and assumptions is too long/);
+  assert.match(html, /id="food-recipe-nutrition_source"/);
+  assert.match(html, /id="food-recipe-reference-protein_g"[^>]*value="24"/);
+  h.submit('recipe'); await h.idle(); assert.equal(h.calls.length, 0);
+  h.input('recipe.nutrition_source', 'A corrected example source');
+  assert.doesNotMatch(h.controller.render(), /Correct the retained recipe estimates below before saving/);
+  h.submit('recipe'); await h.idle();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].args[0].nutrition_mode, 'ingredients');
+  assert.equal(h.calls[0].args[0].nutrition_reference.protein_g, 24);
+  assert.equal(h.calls[0].args[0].nutrition_source, 'A corrected example source');
+});
+
+test('reference drafts restore their values and older drafts default to ingredient calculation', async () => {
+  const persistence = savedDraftStore(), h = harness(state(), persistence);
+  h.click('new-recipe');
+  h.input('recipe.name', 'Draft example');
+  h.input('recipe.servings', '4');
+  h.input('recipe.ingredient_text', 'A written ingredient list');
+  h.input('recipe.nutrition_mode', 'reference');
+  h.input('recipe.nutrition_source', 'Example estimate');
+  const count = h.refreshes.length;
+  h.reference('protein_g', '64'); h.reference('fiber_g', '0');
+  assert.equal(h.refreshes.length, count, 'reference typing must not replace the active field');
+  const restored = harness(state(), persistence);
+  const html = restored.controller.render();
+  assert.match(html, /value="reference" selected/);
+  assert.match(html, /id="food-recipe-reference-protein_g"[^>]*value="64"/);
+  assert.match(html, /id="food-recipe-reference-fiber_g"[^>]*value="0"/);
+  restored.submit('recipe'); await restored.idle();
+  assert.equal(restored.calls[0].args[0].nutrition_reference.protein_g, 64);
+  assert.equal(restored.calls[0].args[0].nutrition_source, 'Example estimate');
+
+  const oldPersistence = savedDraftStore(), older = harness(state(), oldPersistence);
+  older.click('new-recipe');
+  older.input('recipe.name', 'Older draft'); older.input('recipe.servings', '2');
+  older.ingredient(0, 'product_id', 'rice'); older.ingredient(0, 'quantity', '200');
+  const saved = oldPersistence.read('owner', 'house-one', 'food');
+  for (const target of [saved.data.drafts.recipe, saved.data.baselines.recipe]) {
+    for (const key of ['ingredient_text', 'nutrition_mode', 'nutrition_reference', 'nutrition_source']) delete target[key];
+  }
+  const reopened = harness(state(), oldPersistence);
+  assert.match(reopened.controller.render(), /value="ingredients" selected/);
+  reopened.submit('recipe'); await reopened.idle();
+  assert.equal(reopened.calls[0].args[0].nutrition_mode, 'ingredients');
+  assert.equal(reopened.calls[0].args[0].nutrition_reference.protein_g, null);
+  assert.equal(M.recipeNutrition(reopened.calls[0].args[0], reopened.state.products, 1).values.calories_kcal, 200);
+});
+
+test('editing a reference recipe preserves whole-recipe totals while changed yield changes future portions', async () => {
+  const saved = recipe('estimated', { servings: 4, ingredients: [], ingredient_text: 'A complete written list', nutrition_mode: 'reference', nutrition_reference: { calories_kcal: 1200, protein_g: 80 }, nutrition_source: 'Example estimate', revision: 8 });
+  const before = structuredClone(saved), h = harness(state({ recipes: [saved] }));
+  h.click('edit-recipe', { id: saved.id });
+  assert.match(h.controller.render(), /value="reference" selected/);
+  assert.match(h.controller.render(), /id="food-recipe-reference-protein_g"[^>]*value="80"/);
+  h.submit('recipe', { servings: 8, notes: 'Smaller portions' }); await h.idle();
+  const payload = h.calls[0].args[0];
+  assert.equal(payload.revision, 8);
+  assert.equal(payload.ingredient_text, saved.ingredient_text);
+  assert.equal(payload.nutrition_reference.protein_g, 80);
+  assert.equal(payload.nutrition_source, saved.nutrition_source);
+  assert.equal(M.recipeNutrition(payload, [], 1).values.protein_g, 10);
+  assert.deepEqual(saved, before, 'editing a draft must not mutate the stored recipe object');
+});
+
 test('recipe and food drafts survive subsection changes and restore only for the same account and household', () => {
   const persistence = savedDraftStore();
   const h = harness(state(), persistence);
@@ -115,6 +320,45 @@ test('different portions update one person and preserve unknown nutrients instea
   assert.equal(h.calls.length, 1);
 });
 
+test('recipe estimate portions stay separate by person and planned versus eaten, with labeled totals', async () => {
+  const dish = recipe('estimate-dish', { servings: 4, ingredients: [], ingredient_text: 'An example ingredient list', nutrition_mode: 'reference', nutrition_reference: { calories_kcal: 800, protein_g: 80 }, nutrition_source: 'Example <card> estimate' });
+  const h = harness(state({ recipes: [dish], products: [] }));
+  h.methods.saveMealEntry = payload => {
+    const row = { ...payload, id: 'entry-' + h.calls.length, revision: 1 };
+    h.state = { ...h.state, mealEntries: [...h.state.mealEntries, row] };
+    return row;
+  };
+  h.click('log-recipe', { id: dish.id, person: '1' });
+  h.submit('log', { servings: '1.5', kind: 'planned' }); await h.idle();
+  h.click('log-recipe', { id: dish.id, person: '2' });
+  h.submit('log', { servings: '.5', kind: 'eaten' }); await h.idle();
+  assert.equal(h.calls.length, 2);
+  assert.ok(h.calls.every(call => call.method === 'saveMealEntry'));
+  const [planned, eaten] = h.state.mealEntries;
+  assert.equal(planned.person_slot, 1); assert.equal(planned.kind, 'planned');
+  assert.equal(planned.nutrition_snapshot.values.calories_kcal, 300);
+  assert.equal(planned.nutrition_snapshot.values.protein_g, 30);
+  assert.equal(eaten.person_slot, 2); assert.equal(eaten.kind, 'eaten');
+  assert.equal(eaten.nutrition_snapshot.values.calories_kcal, 100);
+  assert.equal(eaten.nutrition_snapshot.values.protein_g, 10);
+  for (const entry of [planned, eaten]) {
+    assert.equal(entry.nutrition_snapshot.estimated, true);
+    assert.equal(entry.nutrition_snapshot.basis, 'recipe_reference');
+    assert.equal(entry.nutrition_snapshot.source, dish.nutrition_source);
+    assert.equal(entry.nutrition_snapshot.values.fiber_g, null);
+  }
+  const html = h.controller.render('wellness');
+  const pink = html.split('<section class="panel food-person-pink">')[1].split('</section>')[0];
+  const purple = html.split('<section class="panel food-person-purple">')[1].split('</section>')[0];
+  assert.match(pink, /300 kcal/); assert.doesNotMatch(pink, /100 kcal/);
+  assert.match(pink, /No eaten portions logged/);
+  assert.match(purple, /100 kcal/); assert.doesNotMatch(purple, /300 kcal/);
+  assert.match(purple, /No planned portions/);
+  assert.match(pink, /Includes estimates/); assert.match(purple, /Includes estimates/);
+  assert.match(html, /Example &lt;card&gt; estimate/);
+  assert.doesNotMatch(html, /<card>/);
+});
+
 test('nutrition screens keep Person 1, Person 2, planned and eaten portions separate', () => {
   const eaten = M.productNutrition(product(), 1);
   const planned = M.productNutrition(product(), 3);
@@ -150,6 +394,42 @@ test('editing a historical portion scales its saved nutrition instead of recompu
   assert.equal(payload.occurred_on, '2026-11-03');
 });
 
+test('historical estimate edits and eaten portions keep their original provenance after the recipe changes', async () => {
+  const original = recipe('estimated', { servings: 4, ingredients: [], ingredient_text: 'An ingredient list', nutrition_mode: 'reference', nutrition_reference: { calories_kcal: 800, protein_g: 80 }, nutrition_source: 'Earlier example estimate' });
+  const snapshot = M.recipeNutrition(original, [], 1);
+  const row = { id: 'earlier-plan', occurred_on: '2026-11-03', person_slot: 2, kind: 'planned', recipe_id: original.id, product_id: null, label: 'Earlier dish', servings: 1, nutrition_snapshot: snapshot, notes: '', revision: 5 };
+  const before = structuredClone(row);
+  const revised = { ...original, nutrition_reference: { calories_kcal: 4000, protein_g: 400 }, nutrition_source: 'Later replacement estimate' };
+  const h = harness(state({ recipes: [revised], mealEntries: [row] }));
+  h.click('edit-log', { id: row.id });
+  h.submit('log', { servings: '.5' }); await h.idle();
+  let payload = h.calls[0].args[0];
+  assert.equal(payload.nutrition_snapshot.values.calories_kcal, 100);
+  assert.equal(payload.nutrition_snapshot.values.protein_g, 10);
+  assert.equal(payload.nutrition_snapshot.source, original.nutrition_source);
+  assert.equal(payload.nutrition_snapshot.basis, 'recipe_reference');
+  assert.equal(payload.nutrition_snapshot.estimated, true);
+  assert.equal(payload.label, row.label);
+  h.click('eaten-from-plan', { id: row.id });
+  h.submit('log', { servings: '2' }); await h.idle();
+  payload = h.calls[1].args[0];
+  assert.equal(payload.id, '');
+  assert.equal(payload.kind, 'eaten');
+  assert.equal(payload.person_slot, 2);
+  assert.equal(payload.nutrition_snapshot.values.calories_kcal, 400);
+  assert.equal(payload.nutrition_snapshot.values.protein_g, 40);
+  assert.equal(payload.nutrition_snapshot.source, original.nutrition_source);
+  assert.equal(payload.nutrition_snapshot.estimated, true);
+  assert.equal(payload.nutrition_snapshot.values.fiber_g, null);
+  assert.deepEqual(row, before, 'the original plan and its snapshot remain untouched');
+  const total = M.nutritionTotals([snapshot]);
+  const scaled = Food.scaledSnapshot(total, 2);
+  assert.deepEqual(scaled.sources, ['Earlier example estimate']);
+  assert.equal(scaled.basis, 'nutrition_total');
+  scaled.sources.push('Another example');
+  assert.deepEqual(total.sources, ['Earlier example estimate']);
+});
+
 test('logging an eaten portion from a plan creates a separate entry and preserves the plan', async () => {
   const row = { id: 'planned-one', occurred_on: '2026-11-04', person_slot: 2, kind: 'planned', recipe_id: 'rice-dish', product_id: null, label: 'Planned dish', servings: 1, nutrition_snapshot: M.productNutrition(product(), 1), notes: '', revision: 2 };
   const h = harness(state({ mealEntries: [row] }));
@@ -182,6 +462,25 @@ test('use-soon screen visibly distinguishes past dates and suggests only matchin
   assert.match(html, /1 food without a recorded date/);
 });
 
+test('use-soon written recipes show unverified coverage without an empty shortages list', () => {
+  const h = harness(state({
+    inventory: [{ id: 'near', product_id: 'rice', name: 'Rice batch', quantity: 400, unit: 'g', expires_on: '2026-11-05' }],
+    recipes: [recipe('written-dish', { ingredient_text: '200 g rice\n1 portion of vegetables' })]
+  }));
+  h.click('tab', { tab: 'soon' });
+  let html = h.controller.render();
+  assert.match(html, /Check the written ingredient list for any foods not linked yet/);
+  assert.doesNotMatch(html, /Recorded quantities cover this recipe/);
+  assert.doesNotMatch(html, /Also needed or needing review/);
+  assert.doesNotMatch(html, /<ul>\s*<\/ul>/);
+  h.state = { ...h.state, inventory: [{ ...h.state.inventory[0], quantity: 100 }] };
+  html = h.controller.render();
+  assert.match(html, /Check the written ingredient list for any foods not linked yet/);
+  assert.match(html, /Also needed or needing review/);
+  assert.match(html, /Rice — 100 g/);
+  assert.doesNotMatch(html, /Recorded quantities cover this recipe/);
+});
+
 test('recorded allergy matches are shown beside recipes and for the selected person', () => {
   const h = harness(state({ products: [product('rice', { name: 'Milk rice', allergens: 'Contains milk' })], dietProfiles: [{ user_id: 'owner', allergies: 'Dairy' }] }));
   h.click('view-recipe', { id: 'rice-dish' });
@@ -189,6 +488,15 @@ test('recorded allergy matches are shown beside recipes and for the selected per
   assert.match(h.controller.render(), /Person 1 — milk/);
   h.click('log-recipe', { id: 'rice-dish', person: '2' });
   assert.doesNotMatch(h.controller.render(), /Person 1 — milk/);
+});
+
+test('written ingredients can surface recorded allergy matches before any catalog links exist', () => {
+  const dish = recipe('written', { ingredient_text: 'Milk and an egg\nOptional garnish', ingredients: [] });
+  const h = harness(state({ products: [], recipes: [dish], dietProfiles: [{ user_id: 'owner', allergies: 'Milk, eggs' }] }));
+  h.click('view-recipe', { id: dish.id });
+  assert.match(h.controller.render(), /Recorded allergy match/);
+  assert.deepEqual(Food.allergyMatches(dish, [], h.state, 1), [{ person_slot: 1, allergens: ['milk', 'egg'] }]);
+  assert.equal(Food.allergyMatches(dish, [], h.state, 2).length, 0);
 });
 
 test('calendar reminders download on the user action and safely escape text and dates', () => {

@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   const M = root.BloomFoodModel || (typeof require === 'function' ? require('./bloom-food-model.js') : null);
-  const RECIPE_FIELDS = ['name', 'servings', 'instructions', 'source_url', 'notes'];
+  const RECIPE_FIELDS = ['name', 'servings', 'ingredient_text', 'instructions', 'source_url', 'notes', 'nutrition_mode', 'nutrition_source'];
   const LOG_FIELDS = ['occurred_on', 'person_slot', 'kind', 'source_kind', 'recipe_id', 'product_id', 'servings', 'notes'];
   const uuid = () => {
     if (root.crypto && root.crypto.randomUUID) return root.crypto.randomUUID();
@@ -33,17 +33,33 @@
     if (String(value == null ? '' : value).trim() === '' || !Number.isFinite(number) || number <= 0 || number > (maximum || 1000000)) throw new Error(label + ' must be greater than zero and no more than ' + (maximum || 1000000) + '.');
     return number;
   }
+  function referenceNumber(value, label) {
+    if (value == null || (typeof value === 'string' && !value.trim())) return null;
+    const amount = Number(value);
+    if (!['string', 'number'].includes(typeof value) || !Number.isFinite(amount) || amount < 0 || amount > 1000000000) throw new Error(label + ' must be a number from 0 to 1,000,000,000, or left blank when unknown.');
+    return amount;
+  }
+  function referenceDraft(values) {
+    return Object.fromEntries(M.NUTRIENTS.map(({ key }) => [key, values && Object.hasOwn(values, key) && values[key] != null ? values[key] : '']));
+  }
+  function retainedReferenceIssue(value) {
+    try {
+      text(value.nutrition_source, 'Estimate source and assumptions', 2000, false);
+      for (const { key, label } of M.NUTRIENTS) referenceNumber(value.nutrition_reference && value.nutrition_reference[key], label + ' for the whole recipe');
+      return '';
+    } catch (error) { return error.message; }
+  }
   function safeUrl(value) {
     const address = String(value || '').trim();
     if (!address) return '';
     try { const parsed = new URL(address); return ['https:', 'http:'].includes(parsed.protocol) && !parsed.username && !parsed.password ? parsed.href : ''; }
     catch (_) { return ''; }
   }
-  function recipeDraft() { return { id: '', request_id: uuid(), revision: null, name: '', servings: '', ingredients: [{ product_id: '', quantity: '', unit: 'each' }], instructions: '', source_url: '', notes: '', archived: false }; }
+  function recipeDraft() { return { id: '', request_id: uuid(), revision: null, name: '', servings: '', ingredient_text: '', ingredients: [{ product_id: '', quantity: '', unit: 'each' }], instructions: '', source_url: '', notes: '', nutrition_mode: 'ingredients', nutrition_reference: referenceDraft(), nutrition_source: '', archived: false }; }
   function logDraft(date) { return { id: '', request_id: uuid(), revision: null, occurred_on: date, person_slot: '1', kind: 'eaten', source_kind: 'recipe', recipe_id: '', product_id: '', servings: '1', notes: '', nutrition_original: null, original_servings: null, original_recipe_id: null, original_product_id: null, original_label: '' }; }
   function scaledSnapshot(snapshot, multiplier) {
-    if (!snapshot || typeof snapshot.values !== 'object' || !Number.isFinite(multiplier) || multiplier <= 0) return null;
-    return { values: Object.fromEntries(M.NUTRIENTS.map(({ key }) => [key, snapshot.values[key] == null ? null : Number((Number(snapshot.values[key]) * multiplier).toPrecision(13))])), missing: Object.fromEntries(M.NUTRIENTS.map(({ key }) => [key, Number(snapshot.missing && snapshot.missing[key]) || (snapshot.values[key] == null ? 1 : 0)])), complete: snapshot.complete === true };
+    if (!snapshot || !snapshot.values || typeof snapshot.values !== 'object' || !Number.isFinite(multiplier) || multiplier <= 0) return null;
+    return { ...M.nutritionProvenance(snapshot), values: Object.fromEntries(M.NUTRIENTS.map(({ key }) => [key, snapshot.values[key] == null ? null : Number((Number(snapshot.values[key]) * multiplier).toPrecision(13))])), missing: Object.fromEntries(M.NUTRIENTS.map(({ key }) => [key, Number(snapshot.missing && snapshot.missing[key]) || (snapshot.values[key] == null ? 1 : 0)])), complete: snapshot.complete === true };
   }
   function personProfile(current, slot) {
     const member = (current.members || []).find(value => slot === 1 ? value.role === 'owner' : value.role === 'member');
@@ -51,7 +67,7 @@
   }
   function allergyMatches(recipe, products, current, slot) {
     const productMap = new Map((products || []).map(value => [value.id, value]));
-    const ingredientText = (recipe.ingredients || []).map(value => productMap.get(value.product_id)).filter(Boolean).map(value => (value.allergens || '') + ' ' + value.name).join(' ').toLowerCase();
+    const ingredientText = (String(recipe.ingredient_text || '') + ' ' + (recipe.ingredients || []).map(value => productMap.get(value.product_id)).filter(Boolean).map(value => (value.allergens || '') + ' ' + value.name).join(' ')).toLowerCase();
     const aliases = { milk: ['milk', 'dairy'], egg: ['egg', 'eggs'], peanut: ['peanut', 'peanuts'], 'tree nuts': ['tree nuts', 'almond', 'almonds', 'walnut', 'walnuts', 'cashew', 'cashews', 'pecan', 'pecans', 'pistachio', 'pistachios'], wheat: ['wheat'], gluten: ['gluten', 'wheat', 'barley', 'rye'], soy: ['soy', 'soya', 'soybean'], fish: ['fish', 'salmon', 'tuna', 'cod'], shellfish: ['shellfish', 'shrimp', 'crab', 'lobster'], sesame: ['sesame'] };
     const contains = (haystack, needle) => new RegExp('(?:^|[^a-z])' + needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:$|[^a-z])', 'i').test(haystack);
     const matches = [];
@@ -113,6 +129,7 @@
         const restore = source => {
           const result = copy(empty);
           for (const key of Object.keys(empty)) if (source && Object.hasOwn(source, key)) result[key] = copy(source[key]);
+          if (group === 'recipe') result.nutrition_reference = referenceDraft(result.nutrition_reference);
           return result;
         };
         drafts[group] = restore(saved.drafts[group]); baselines[group] = restore(saved.baselines[group]);
@@ -175,15 +192,21 @@
       const value = drafts[group][name];
       return '<label class="food-field" for="food-' + group + '-' + name + '"><span>' + label + '</span><input id="food-' + group + '-' + name + '" name="' + name + '" type="' + (type || 'text') + '" data-food-field="' + group + '.' + name + '" value="' + esc(value) + '"' + (attrs || '') + (busy ? ' disabled' : '') + '></label>';
     }
-    function textarea(group, name, label, limit) {
-      return '<label class="food-field" for="food-' + group + '-' + name + '"><span>' + label + '</span><textarea id="food-' + group + '-' + name + '" name="' + name + '" data-food-field="' + group + '.' + name + '" maxlength="' + limit + '"' + (busy ? ' disabled' : '') + '>' + esc(drafts[group][name]) + '</textarea></label>';
+    function textarea(group, name, label, limit, attrs) {
+      return '<label class="food-field" for="food-' + group + '-' + name + '"><span>' + label + '</span><textarea id="food-' + group + '-' + name + '" name="' + name + '" data-food-field="' + group + '.' + name + '" maxlength="' + limit + '"' + (attrs || '') + (busy ? ' disabled' : '') + '>' + esc(drafts[group][name]) + '</textarea></label>';
+    }
+    function estimateNotice(value) {
+      if (!value || value.estimated !== true) return '';
+      const metadata = M.nutritionProvenance(value);
+      const sources = [...new Set([metadata.source, ...(metadata.sources || [])].filter(Boolean))];
+      return '<p class="food-help food-prose"><strong>' + (metadata.basis === 'recipe_reference' ? 'Recipe estimate.' : 'Includes recipe estimates.') + '</strong>' + (sources.length ? ' ' + sources.map(esc).join('\n') : ' These values are approximate.') + '</p>';
     }
     function nutritionTable(value, headline) {
       const data = value || M.nutritionTotals([]);
-      return '<div class="food-nutrition"><h4>' + esc(headline || 'Nutrition') + '</h4><dl>' + M.NUTRIENTS.map(nutrient => '<div><dt>' + nutrient.label + '</dt><dd>' + (data.values[nutrient.key] == null ? '<span class="food-unknown">Not recorded</span>' : esc(fmt(data.values[nutrient.key])) + ' ' + nutrient.unit + (data.missing[nutrient.key] ? ' <small>known · incomplete</small>' : '')) + '</dd></div>').join('') + '</dl>' + (!data.complete ? '<p class="food-help">Missing label values remain unknown. A shown subtotal may not include every ingredient.</p>' : '') + '</div>';
+      return '<div class="food-nutrition"><h4>' + esc(headline || 'Nutrition') + '</h4>' + estimateNotice(data) + '<dl>' + M.NUTRIENTS.map(nutrient => '<div><dt>' + nutrient.label + '</dt><dd>' + (data.values[nutrient.key] == null ? '<span class="food-unknown">Not recorded</span>' : esc(fmt(data.values[nutrient.key])) + ' ' + nutrient.unit + (data.missing[nutrient.key] ? ' <small>known · incomplete</small>' : '')) + '</dd></div>').join('') + '</dl>' + (!data.complete ? '<p class="food-help">Missing nutrition values remain unknown. A shown subtotal may be incomplete.</p>' : '') + '</div>';
     }
     function briefNutrition(value) {
-      return [['calories_kcal', 'kcal'], ['protein_g', 'g protein']].map(([key, unit]) => value.values[key] == null ? '<span>' + (key === 'calories_kcal' ? 'Calories' : 'Protein') + ': not recorded</span>' : '<span>' + esc(fmt(value.values[key])) + ' ' + unit + (value.missing[key] ? ' known · incomplete' : '') + '</span>').join('');
+      return (value.estimated === true ? '<span>' + (value.basis === 'recipe_reference' ? 'Recipe estimate' : 'Includes estimates') + '</span>' : '') + [['calories_kcal', 'kcal'], ['protein_g', 'g protein']].map(([key, unit]) => value.values[key] == null ? '<span>' + (key === 'calories_kcal' ? 'Calories' : 'Protein') + ': not recorded</span>' : '<span>' + esc(fmt(value.values[key])) + ' ' + unit + (value.missing[key] ? ' known · incomplete' : '') + '</span>').join('');
     }
     function allergyNotice(recipe, current, slot) {
       const matches = allergyMatches(recipe, current.products || [], current, slot);
@@ -205,7 +228,9 @@
     function renderRecipeDetail(current, recipe) {
       const products = new Map((current.products || []).map(product => [product.id, product]));
       let html = '<section class="panel food-recipe-detail"><p class="page-kicker">Saved recipe</p><h2>' + esc(recipe.name) + '</h2><p class="food-help">Makes ' + esc(fmt(recipe.servings)) + ' servings. Ingredient quantities below are for the whole recipe.</p>' + allergyNotice(recipe, current);
-      html += '<ul class="food-ingredients">' + (recipe.ingredients || []).map(item => '<li><strong>' + esc(products.get(item.product_id) && products.get(item.product_id).name || 'Ingredient no longer available') + '</strong><span>' + esc(fmt(item.quantity)) + ' ' + esc(item.unit) + '</span></li>').join('') + '</ul>';
+      if (recipe.ingredient_text) html += '<h3>Ingredients as written</h3><p class="food-prose">' + esc(recipe.ingredient_text) + '</p>';
+      if ((recipe.ingredients || []).length) html += '<h3>Foods linked to your catalog</h3><ul class="food-ingredients">' + recipe.ingredients.map(item => '<li><strong>' + esc(products.get(item.product_id) && products.get(item.product_id).name || 'Ingredient no longer available') + '</strong><span>' + esc(fmt(item.quantity)) + ' ' + esc(item.unit) + '</span></li>').join('') + '</ul>';
+      else html += '<p class="food-help">You can link catalog foods when you want pantry matches or calculations from their nutrition labels.</p>';
       if (recipe.instructions) html += '<h3>Instructions</h3><p class="food-prose">' + esc(recipe.instructions) + '</p>';
       if (recipe.notes) html += '<p class="food-prose food-help">' + esc(recipe.notes) + '</p>';
       if (safeUrl(recipe.source_url)) html += '<p><a href="' + esc(safeUrl(recipe.source_url)) + '" target="_blank" rel="noopener noreferrer">Original recipe ↗</a></p>';
@@ -216,9 +241,17 @@
     function renderRecipeForm(current) {
       const value = drafts.recipe;
       const products = (current.products || []).filter(product => product.category !== 'household' && (!product.archived || value.ingredients.some(item => item.product_id === product.id)));
-      let html = '<section class="panel"><p class="page-kicker">' + (value.id ? 'Edit your recipe' : 'A recipe to keep') + '</p><h2>' + (value.id ? 'Edit recipe' : 'Save a recipe') + '</h2><p class="food-help">Use products from your catalog so their saved label information can calculate recipe nutrition.</p><form id="food-recipe-form" class="food-form" data-food-form="recipe"><div class="food-form-grid">' + field('recipe', 'name', 'Recipe name', 'text', ' maxlength="160" required') + field('recipe', 'servings', 'Servings made by the whole recipe', 'number', ' min="0.01" max="10000" step="any" required') + '</div><fieldset class="food-ingredient-editor"><legend>Ingredients for the whole recipe</legend>';
-      html += value.ingredients.map((ingredient, index) => '<div class="food-ingredient-row"><label class="food-field" for="food-ingredient-' + index + '-product"><span>Ingredient ' + (index + 1) + '</span><select id="food-ingredient-' + index + '-product" name="ingredient_' + index + '_product_id" data-food-ingredient="' + index + '" data-food-part="product_id" required' + (busy ? ' disabled' : '') + '><option value="">Choose a catalog product</option>' + products.map(product => '<option value="' + esc(product.id) + '"' + (product.id === ingredient.product_id ? ' selected' : '') + '>' + esc(product.name + (product.brand ? ' · ' + product.brand : '')) + '</option>').join('') + '</select></label><label class="food-field" for="food-ingredient-' + index + '-quantity"><span>Amount</span><input id="food-ingredient-' + index + '-quantity" name="ingredient_' + index + '_quantity" data-food-ingredient="' + index + '" data-food-part="quantity" type="number" min="0.000001" max="1000000000" step="any" value="' + esc(ingredient.quantity) + '" required' + (busy ? ' disabled' : '') + '></label><label class="food-field" for="food-ingredient-' + index + '-unit"><span>Unit</span><select id="food-ingredient-' + index + '-unit" name="ingredient_' + index + '_unit" data-food-ingredient="' + index + '" data-food-part="unit"' + (busy ? ' disabled' : '') + '>' + M.UNITS.map(unit => '<option value="' + unit.value + '"' + (ingredient.unit === unit.value ? ' selected' : '') + '>' + unit.label + '</option>').join('') + '</select></label>' + button('remove-ingredient', 'Remove', ' data-index="' + index + '"', false, value.ingredients.length < 2) + '</div>').join('');
-      html += '<div class="food-actions">' + button('add-ingredient', '+ Add ingredient', '', false, value.ingredients.length >= 100) + button('grocery', 'Add a product to the catalog ↗', ' data-tab="catalog"') + '</div><p class="food-help">Weight and volume are different. For example, a cup cannot be converted into grams without a food-specific measurement.</p></fieldset>';
+      let html = '<section class="panel"><p class="page-kicker">' + (value.id ? 'Edit your recipe' : 'A recipe to keep') + '</p><h2>' + (value.id ? 'Edit recipe' : 'Save a recipe') + '</h2><p class="food-help">Keep the original ingredient list, including ranges and optional ingredients. Link catalog foods when you want pantry matches or calculations from their labels.</p><form id="food-recipe-form" class="food-form" data-food-form="recipe"><div class="food-form-grid">' + field('recipe', 'name', 'Recipe name', 'text', ' maxlength="160" required') + field('recipe', 'servings', 'Servings made by the whole recipe', 'number', ' min="0.01" max="10000" step="any" required') + '</div>' + textarea('recipe', 'ingredient_text', 'Ingredients as written', 12000) + '<fieldset class="food-ingredient-editor"><legend>Optional catalog links for the whole recipe</legend>';
+      html += value.ingredients.map((ingredient, index) => '<div class="food-ingredient-row"><label class="food-field" for="food-ingredient-' + index + '-product"><span>Ingredient ' + (index + 1) + '</span><select id="food-ingredient-' + index + '-product" name="ingredient_' + index + '_product_id" data-food-ingredient="' + index + '" data-food-part="product_id"' + (busy ? ' disabled' : '') + '><option value="">Choose a catalog product</option>' + products.map(product => '<option value="' + esc(product.id) + '"' + (product.id === ingredient.product_id ? ' selected' : '') + '>' + esc(product.name + (product.brand ? ' · ' + product.brand : '')) + '</option>').join('') + '</select></label><label class="food-field" for="food-ingredient-' + index + '-quantity"><span>Amount</span><input id="food-ingredient-' + index + '-quantity" name="ingredient_' + index + '_quantity" data-food-ingredient="' + index + '" data-food-part="quantity" type="number" min="0.000001" max="1000000000" step="any" value="' + esc(ingredient.quantity) + '"' + (busy ? ' disabled' : '') + '></label><label class="food-field" for="food-ingredient-' + index + '-unit"><span>Unit</span><select id="food-ingredient-' + index + '-unit" name="ingredient_' + index + '_unit" data-food-ingredient="' + index + '" data-food-part="unit"' + (busy ? ' disabled' : '') + '>' + M.UNITS.map(unit => '<option value="' + unit.value + '"' + (ingredient.unit === unit.value ? ' selected' : '') + '>' + unit.label + '</option>').join('') + '</select></label>' + button('remove-ingredient', 'Remove', ' data-index="' + index + '"') + '</div>').join('');
+      html += '<div class="food-actions">' + button('add-ingredient', '+ Link an ingredient', '', false, value.ingredients.length >= 100) + button('grocery', 'Add a product to the catalog ↗', ' data-tab="catalog"') + '</div><p class="food-help">Use a definite quantity for each catalog link. Keep ranges, alternatives, and “to taste” amounts in Ingredients as written. A cup cannot be converted into grams without a food-specific measurement.</p></fieldset>';
+      html += '<label class="food-field" for="food-recipe-nutrition_mode"><span>Nutrition calculation</span><select id="food-recipe-nutrition_mode" name="nutrition_mode" data-food-field="recipe.nutrition_mode"' + (busy ? ' disabled' : '') + '><option value="ingredients"' + (value.nutrition_mode !== 'reference' ? ' selected' : '') + '>Calculate from ingredient labels</option><option value="reference"' + (value.nutrition_mode === 'reference' ? ' selected' : '') + '>Use recipe estimates</option></select></label>';
+      const referenceMode = value.nutrition_mode === 'reference';
+      const retainedIssue = referenceMode ? '' : retainedReferenceIssue(value);
+      if (!referenceMode) html += '<p class="food-help">Nutrition is calculated from the catalog foods you link. Unlinked foods and missing label values keep the calculation incomplete.</p>';
+      if (retainedIssue) html += '<p class="food-alert" role="alert"><strong>Correct the retained recipe estimates below before saving.</strong> Ingredient-label mode keeps these values for later. ' + esc(retainedIssue) + '</p>';
+      if (referenceMode || retainedIssue) {
+        html += '<fieldset class="food-ingredient-editor"><legend>Nutrition estimates for the whole recipe</legend><p class="food-help">Enter totals for the entire recipe. The app divides them by the number of servings, then uses each person’s portion. Leave unknown values blank; use 0 only when the source says zero. Update these estimates if you change the ingredients.</p><div class="food-form-grid">' + M.NUTRIENTS.map(({ key, label, unit }) => '<label class="food-field" for="food-recipe-reference-' + key + '"><span>' + esc(label) + ' (' + esc(unit) + ')</span><input id="food-recipe-reference-' + key + '" name="nutrition_reference_' + key + '" data-food-reference="' + key + '" type="number" min="0" max="1000000000" step="any" inputmode="decimal" placeholder="Unknown" value="' + esc(value.nutrition_reference && value.nutrition_reference[key]) + '"' + (busy ? ' disabled' : '') + '></label>').join('') + '</div>' + textarea('recipe', 'nutrition_source', 'Source and assumptions for these estimates', 2000, referenceMode ? ' required' : '') + '</fieldset>';
+      }
       html += textarea('recipe', 'instructions', 'Instructions', 20000) + field('recipe', 'source_url', 'Recipe link (optional)', 'url', ' maxlength="2048"') + textarea('recipe', 'notes', 'Notes (optional)', 4000);
       html += '<div class="food-actions"><button type="submit" class="button primary"' + (busy || current.offline ? ' disabled' : '') + '>Save recipe</button>' + button('discard-recipe', 'Discard recipe draft') + '</div>' + draftStatus('recipe') + '</form></section>';
       return html;
@@ -231,7 +264,7 @@
       let html = '<section class="panel"><div class="food-heading"><div><p class="page-kicker">Your recipe collection</p><h2>Recipes you come back to</h2></div>' + button('new-recipe', '+ Save a recipe', '', true) + '</div><label class="food-field food-search" for="food-recipe-search"><span>Find a saved recipe</span><input id="food-recipe-search" type="search" data-food-search value="' + esc(search) + '" placeholder="Search your recipes"></label>';
       if (dirty('recipe') && !editor) html += '<p class="food-help">You have a recipe draft.</p>' + button('resume-recipe', 'Resume recipe draft');
       if (!recipes.length) html += '<div class="food-empty"><span aria-hidden="true">📖</span><h3>' + (search ? 'No matching recipes' : 'Start with a recipe you know') + '</h3><p>Save its ingredients and the number of servings. Then you can log a different portion for each person and find it when an ingredient needs using.</p></div>';
-      else html += '<div class="food-recipe-grid">' + recipes.map(recipe => '<article class="food-recipe-card"><h3>' + esc(recipe.name) + '</h3><p>' + esc(fmt(recipe.servings)) + ' servings · ' + (recipe.ingredients || []).length + ' ingredients</p><div class="food-nutrition-brief">' + briefNutrition(M.recipeNutrition(recipe, current.products || [], 1)) + '</div>' + allergyNotice(recipe, current) + '<div class="food-actions">' + button('view-recipe', 'Open recipe', ' data-id="' + esc(recipe.id) + '"') + button('log-recipe', 'Log a portion', ' data-id="' + esc(recipe.id) + '" data-person="1"') + '</div></article>').join('') + '</div>';
+      else html += '<div class="food-recipe-grid">' + recipes.map(recipe => '<article class="food-recipe-card"><h3>' + esc(recipe.name) + '</h3><p>' + esc(fmt(recipe.servings)) + ' servings' + ((recipe.ingredients || []).length ? ' · ' + recipe.ingredients.length + ' linked food' + (recipe.ingredients.length === 1 ? '' : 's') : '') + '</p><div class="food-nutrition-brief">' + briefNutrition(M.recipeNutrition(recipe, current.products || [], 1)) + '</div>' + allergyNotice(recipe, current) + '<div class="food-actions">' + button('view-recipe', 'Open recipe', ' data-id="' + esc(recipe.id) + '"') + button('log-recipe', 'Log a portion', ' data-id="' + esc(recipe.id) + '" data-person="1"') + '</div></article>').join('') + '</div>';
       html += '</section>';
       if (editor) html += renderRecipeForm(current);
       else {
@@ -251,7 +284,12 @@
       if (unknown.length) html += '<details class="food-date-unknown"><summary>' + unknown.length + ' food' + (unknown.length === 1 ? '' : 's') + ' without a recorded date</summary><ul>' + unknown.map(item => '<li>' + esc(item.name) + ' · ' + esc(fmt(item.quantity)) + ' ' + esc(item.unit) + '</li>').join('') + '</ul>' + button('grocery', 'Add missing dates', ' data-tab="inventory"') + '</details>';
       html += '<p class="food-help">Calendar reminder downloads are imported into your own calendar. Notification delivery depends on that calendar’s settings.</p></section><section class="panel"><p class="page-kicker">From your saved recipes</p><h2>Ideas for the food coming up</h2><p class="food-help">These matches use linked catalog ingredients and current quantities. They do not reserve stock, confirm food safety, or replace checking allergies and restrictions.</p>';
       if (!suggestions.length) html += '<div class="food-empty"><h3>No saved recipe matches yet</h3><p>Link foods to catalog products and add those products to a saved recipe. Foods already past their recorded date are excluded from these suggestions.</p>' + button('tab', 'Open saved recipes', ' data-tab="recipes"') + '</div>';
-      else html += '<div class="food-recipe-grid">' + suggestions.map(suggestion => '<article class="food-recipe-card"><h3>' + esc(suggestion.name) + '</h3><p><strong>Uses soon:</strong> ' + [...new Set(suggestion.matching_items.map(item => item.name))].map(esc).join(', ') + '</p>' + allergyNotice(suggestion.recipe, current) + (suggestion.complete_stock ? '<p>Recorded quantities cover this recipe. Check the actual food before cooking.</p>' : '<p><strong>Also needed or needing review:</strong></p><ul>' + suggestion.missing_ingredients.map(item => '<li>' + esc(item.name) + ' — ' + esc(fmt(item.quantity)) + ' ' + esc(item.unit) + (item.reason ? ' · ' + esc(item.reason) : '') + '</li>').join('') + '</ul>') + '<div class="food-actions">' + button('view-recipe', 'Open recipe', ' data-id="' + esc(suggestion.recipe_id) + '"') + '</div></article>').join('') + '</div>';
+      else html += '<div class="food-recipe-grid">' + suggestions.map(suggestion => {
+        let review = suggestion.written_ingredients_unverified ? '<p class="food-help">Check the written ingredient list for any foods not linked yet.</p>' : '';
+        if (suggestion.complete_stock) review += '<p>Recorded quantities cover this recipe. Check the actual food before cooking.</p>';
+        else if (suggestion.missing_ingredients.length) review += '<p><strong>Also needed or needing review:</strong></p><ul>' + suggestion.missing_ingredients.map(item => '<li>' + esc(item.name) + ' — ' + esc(fmt(item.quantity)) + ' ' + esc(item.unit) + (item.reason ? ' · ' + esc(item.reason) : '') + '</li>').join('') + '</ul>';
+        return '<article class="food-recipe-card"><h3>' + esc(suggestion.name) + '</h3><p><strong>Uses soon:</strong> ' + [...new Set(suggestion.matching_items.map(item => item.name))].map(esc).join(', ') + '</p>' + allergyNotice(suggestion.recipe, current) + review + '<div class="food-actions">' + button('view-recipe', 'Open recipe', ' data-id="' + esc(suggestion.recipe_id) + '"') + '</div></article>';
+      }).join('') + '</div>';
       return html + '</section>';
     }
     function logNutrition(current) {
@@ -293,7 +331,7 @@
       html += '</div>';
       if (dirty('log') && !logging) html += '<section class="panel"><p>You have a food entry draft.</p>' + button('resume-log', 'Resume food draft') + '</section>';
       if (logging) html += renderLogForm(current);
-      return html + renderEntries(current) + '<p class="food-help food-footnote">Nutrition comes from saved label values and recipe calculations. Missing values and logged portions affect completeness. These are records and estimates, not prescribed intake.</p>';
+      return html + renderEntries(current) + '<p class="food-help food-footnote">Nutrition comes from saved labels or clearly marked recipe estimates. Missing values and logged portions affect completeness. These are records and estimates, not prescribed intake.</p>';
     }
     function render(page) {
       currentPage = page === 'wellness' ? 'wellness' : 'food';
@@ -317,21 +355,36 @@
     function readForm(form, group) {
       const get = name => form.elements && typeof form.elements.namedItem === 'function' ? form.elements.namedItem(name) : null;
       for (const key of group === 'recipe' ? RECIPE_FIELDS : LOG_FIELDS) { const element = get(key); if (element && typeof element.value === 'string') drafts[group][key] = element.value; }
-      if (group === 'recipe') for (let index = 0; index < drafts.recipe.ingredients.length; index++) for (const part of ['product_id', 'quantity', 'unit']) { const element = get('ingredient_' + index + '_' + part); if (element && typeof element.value === 'string') drafts.recipe.ingredients[index][part] = element.value; }
+      if (group === 'recipe') {
+        for (let index = 0; index < drafts.recipe.ingredients.length; index++) for (const part of ['product_id', 'quantity', 'unit']) { const element = get('ingredient_' + index + '_' + part); if (element && typeof element.value === 'string') drafts.recipe.ingredients[index][part] = element.value; }
+        drafts.recipe.nutrition_reference = referenceDraft(drafts.recipe.nutrition_reference);
+        for (const { key } of M.NUTRIENTS) {
+          const element = get('nutrition_reference_' + key);
+          if (element && typeof element.value === 'string') drafts.recipe.nutrition_reference[key] = element.value;
+        }
+      }
     }
     function recipePayload(current) {
       const value = drafts.recipe;
       const name = text(value.name, 'Recipe name', 160, true), servings = quantity(value.servings, 'Recipe servings', 10000);
-      if (!Array.isArray(value.ingredients) || !value.ingredients.length || value.ingredients.length > 100) throw new Error('Add between 1 and 100 recipe ingredients.');
-      const ingredients = value.ingredients.map((item, index) => {
+      const ingredientText = text(value.ingredient_text, 'Ingredients as written', 12000, false);
+      if (!Array.isArray(value.ingredients) || value.ingredients.length > 100) throw new Error('Link up to 100 catalog ingredients.');
+      const ingredients = value.ingredients.flatMap((item, index) => {
+        if (!item || typeof item !== 'object') throw new Error('Review catalog ingredient ' + (index + 1) + '.');
+        if (!String(item.product_id || '').trim() && !String(item.quantity == null ? '' : item.quantity).trim() && item.unit === 'each') return [];
         const product = (current.products || []).find(row => row.id === item.product_id && row.category !== 'household');
         if (!product) throw new Error('Choose a catalog food for ingredient ' + (index + 1) + '.');
         if (!M.UNITS.some(unit => unit.value === item.unit)) throw new Error('Choose a supported unit for ingredient ' + (index + 1) + '.');
-        return { product_id: product.id, quantity: quantity(item.quantity, 'Ingredient amount', 1000000000), unit: item.unit };
+        return [{ product_id: product.id, quantity: quantity(item.quantity, 'Ingredient amount', 1000000000), unit: item.unit }];
       });
+      if (!ingredientText && !ingredients.length) throw new Error('Write the ingredient list or link at least one catalog food.');
+      const nutritionMode = value.nutrition_mode == null ? 'ingredients' : value.nutrition_mode;
+      if (!['ingredients', 'reference'].includes(nutritionMode)) throw new Error('Choose how this recipe’s nutrition is calculated.');
+      const nutritionSource = text(value.nutrition_source, 'Estimate source and assumptions', 2000, nutritionMode === 'reference');
+      const nutritionReference = Object.fromEntries(M.NUTRIENTS.map(({ key, label }) => [key, referenceNumber(value.nutrition_reference && value.nutrition_reference[key], label + ' for the whole recipe')]));
       const link = text(value.source_url, 'Recipe link', 2048, false);
       if (link && !safeUrl(link)) throw new Error('Use a full http or https recipe link.');
-      return { id: value.id, request_id: value.request_id, revision: value.revision, name, servings, ingredients, instructions: text(value.instructions, 'Instructions', 20000, false), source_url: link, notes: text(value.notes, 'Notes', 4000, false), archived: false };
+      return { id: value.id, request_id: value.request_id, revision: value.revision, name, servings, ingredient_text: ingredientText, ingredients, instructions: text(value.instructions, 'Instructions', 20000, false), source_url: link, notes: text(value.notes, 'Notes', 4000, false), nutrition_mode: nutritionMode, nutrition_reference: nutritionReference, nutrition_source: nutritionSource, archived: false };
     }
     function logPayload(current) {
       const value = drafts.log;
@@ -370,6 +423,11 @@
       if (!data) return false;
       const current = snapshot();
       if (Object.hasOwn(data, 'foodSearch')) { search = String(element.value || ''); refresh('#food-recipe-search'); return true; }
+      if (Object.hasOwn(data, 'foodReference')) {
+        if (!M.NUTRIENTS.some(({ key }) => key === data.foodReference)) return false;
+        if (!busy) { drafts.recipe.nutrition_reference[data.foodReference] = element.value; persist(); }
+        return true;
+      }
       if (Object.hasOwn(data, 'foodIngredient')) {
         const index = Number(data.foodIngredient), part = data.foodPart;
         if (!Number.isInteger(index) || index < 0 || !drafts.recipe.ingredients[index] || !['product_id', 'quantity', 'unit'].includes(part)) return false;
@@ -393,6 +451,7 @@
           if (preview) preview.innerHTML = nutritionTable(logNutrition(current), 'This person’s portion');
         }
         if (group === 'log' && previous !== element.value && ['source_kind', 'recipe_id', 'product_id', 'kind'].includes(name)) refresh('#food-log-' + name);
+        if (group === 'recipe' && name === 'nutrition_mode' && previous !== element.value) refresh('#food-recipe-nutrition_mode');
       }
       return true;
     }
@@ -446,14 +505,14 @@
         else if (action === 'edit-recipe') {
           const recipe = (current.recipes || []).find(row => row.id === data.id); if (!recipe) throw new Error('Refresh to open this recipe.');
           if (drafts.recipe.id !== recipe.id && dirty('recipe') && !confirm('Edit this recipe and discard your current recipe draft?')) return true;
-          if (drafts.recipe.id !== recipe.id || !dirty('recipe')) { const value = recipeDraft(); for (const key of Object.keys(value)) if (Object.hasOwn(recipe, key)) value[key] = copy(recipe[key]); value.request_id = ''; resetGroup('recipe', value); }
+          if (drafts.recipe.id !== recipe.id || !dirty('recipe')) { const value = recipeDraft(); for (const key of Object.keys(value)) if (Object.hasOwn(recipe, key)) value[key] = copy(recipe[key]); value.nutrition_reference = referenceDraft(value.nutrition_reference); value.request_id = ''; resetGroup('recipe', value); }
           editor = true; tab = 'recipes'; openedRecipeId = recipe.id;
         } else if (action === 'discard-recipe') { if (dirty('recipe') && !confirm('Discard this recipe draft? The last saved recipe will remain.')) return true; resetGroup('recipe', recipeDraft()); editor = false; }
         else if (action === 'archive-recipe') {
           ready(current); const recipe = (current.recipes || []).find(row => row.id === data.id); if (!recipe || !confirm('Archive ' + recipe.name + '? Earlier food entries keep their saved nutrition.')) return true;
           run('Archiving the recipe…', () => store.saveRecipe({ ...recipe, archived: true }), () => { if (drafts.recipe.id === recipe.id) resetGroup('recipe', recipeDraft()); openedRecipeId = ''; editor = false; notify('The recipe was archived. Earlier food entries were kept.'); }); return true;
         } else if (action === 'add-ingredient') { if (drafts.recipe.ingredients.length < 100) drafts.recipe.ingredients.push({ product_id: '', quantity: '', unit: 'each' }); }
-        else if (action === 'remove-ingredient') { const index = Number(data.index); if (drafts.recipe.ingredients.length > 1 && Number.isInteger(index) && index >= 0 && index < drafts.recipe.ingredients.length) drafts.recipe.ingredients.splice(index, 1); }
+        else if (action === 'remove-ingredient') { const index = Number(data.index); if (Number.isInteger(index) && index >= 0 && index < drafts.recipe.ingredients.length) drafts.recipe.ingredients.splice(index, 1); }
         else if (action === 'new-log') { openLog(current, null, { person_slot: String(data.person || 1), kind: data.kind === 'planned' ? 'planned' : 'eaten' }); return true; }
         else if (action === 'resume-log') { logging = true; if (currentPage === 'food') tab = 'log'; }
         else if (action === 'log-recipe') { const recipe = (current.recipes || []).find(row => row.id === data.id); if (!recipe) throw new Error('Refresh to find this recipe.'); openLog(current, null, { recipe_id: recipe.id, person_slot: String(data.person || 1), source_kind: 'recipe' }); return true; }

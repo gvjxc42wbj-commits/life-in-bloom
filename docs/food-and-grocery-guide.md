@@ -15,7 +15,7 @@ The Windows preview address works on that computer. A permanent HTTPS host and d
 | Grocery → Recurring | Review monthly quantities, available compatible stock, whole packages, and estimated cost before adding the plan. |
 | Grocery → Receipts | Review every purchased line, actual paid amounts, and food to add to inventory. |
 | Grocery → Food at home | Enter Pantry/Refrigerator/Freezer stock, printed dates, opened/frozen dates, and reminder settings. |
-| Food in Bloom → Saved recipes | Save ingredients, measured amounts, instructions, yield, and attachments. |
+| Food in Bloom → Saved recipes | Save written ingredients, optional catalog links, instructions, yield, recipe nutrition estimates, and attachments. |
 | Food in Bloom → Use soon | Review food dates and saved recipes that use matching ingredients. |
 | Wellness / Food → Nutrition | Log planned or eaten portions separately for Person 1 and Person 2. |
 | Money | View actual ledger entries, Food/Household allocations, monthly bills, and bill payments. |
@@ -51,15 +51,23 @@ Inventory is stored in batches so two purchases of the same food can retain diff
 
 Moving food to the freezer does not reset or invent a safety date. The reminder is based on entered information. Past-date items are flagged for review; they are not silently recommended as safe food. Date labels and visual reminders cannot determine whether food has been handled safely.
 
-Use-soon suggestions search the household's saved recipes for matching linked catalog ingredients. They show relevant stock and shortages. An ingredient typed into a note alone cannot be matched reliably. Suggestions are not a validated allergy screen: review labels and substitutions for the person eating the meal.
+Use-soon suggestions search the household's saved recipes for matching linked catalog ingredients. They show relevant stock and shortages. Written ingredients without catalog links cannot be matched reliably. If a recipe also has a written list, review it for foods not linked yet; the linked quantities alone cannot confirm that the whole recipe is covered. Suggestions are not a validated allergy screen: review labels and substitutions for the person eating the meal.
 
 **Download calendar reminder** produces an `.ics` file for the selected food. Import it into the desired calendar and check its alert settings. The current app's in-app reminders are not automatic phone push notifications while closed.
+
+## Saving a written recipe
+
+Paste the original ingredient list into **Ingredients as written**. This preserves ranges, optional ingredients, alternatives, and amounts such as “to taste.” Save the number of servings and the instructions with it. You can keep a recipe before you know the products' brands or package sizes.
+
+Optional catalog links connect measured ingredients to your household products. Add these links when you want ingredient-label calculations and Use soon matching. Written ingredients alone do not create inventory or shopping entries. If a written list has only some linked products, ingredient-based nutrition is marked as a subtotal because the remaining ingredients may be missing.
+
+For nutrition, choose one calculation basis: ingredient labels or supplied recipe estimates. Enter reference values for the **whole recipe**, with a source and assumptions. The app divides those values by the recipe's yield and scales them to the logged portion. Estimates stay labeled as estimates, and missing values remain unknown. Do not enter a range as an invented midpoint; preserve it in Notes until you have a single estimate you choose to use. Save variations with different ingredients as separate recipes when their nutrition estimates differ.
 
 ## Nutrition for each person
 
 Person 1 is pink; Person 2 is purple. A recipe records its full yield. The log multiplies per-serving nutrients by the number of portions recorded for that person. One person can have a different portion from the other.
 
-**Planned** and **Eaten** are separate records and totals. Choosing a recipe, buying its ingredients, or marking a plan does not claim that either person ate it. Logging an eaten portion from a plan retains the plan and creates the eaten entry. Historical nutrition snapshots preserve the source values used at the time; later edits to a product or recipe do not rewrite that history.
+**Planned** and **Eaten** are separate records and totals. Choosing a recipe, buying its ingredients, or marking a plan does not claim that either person ate it. Logging an eaten portion from a plan retains the plan and creates the eaten entry. Historical nutrition snapshots preserve the source values and estimate provenance used at the time; later edits to a product or recipe do not rewrite that history.
 
 Missing nutrients are identified, with known subtotals shown. A partial total is not a complete nutritional assessment. Goals are manually supplied in Profiles. No intake is prescribed, and no validated monthly diet is generated.
 

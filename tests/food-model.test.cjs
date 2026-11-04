@@ -56,6 +56,85 @@ test('partial recipe totals show known subtotals while unidentified ingredients 
   assert.equal(volumeToWeight.missing.calories_kcal, 1);
 });
 
+test('reference nutrition scales whole-recipe values by yield and portion without mixing catalog labels', () => {
+  const recipe = {
+    servings: 5, nutrition_mode: 'reference', ingredient_text: 'A written ingredient list',
+    nutrition_reference: { protein_g: 100, carbs_g: 250, fat_g: 50, fiber_g: 0, calories_kcal: null },
+    nutrition_source: '  Example cookbook estimate  ',
+    ingredients: [{ product_id: 'linked', quantity: 5, unit: 'each' }]
+  };
+  const before = JSON.stringify(recipe), products = [product('linked')];
+  const portion = M.recipeNutrition(recipe, products, 1.5);
+  assert.equal(portion.values.protein_g, 30);
+  assert.equal(portion.values.carbs_g, 75);
+  assert.equal(portion.values.fat_g, 15);
+  assert.equal(portion.values.fiber_g, 0);
+  assert.equal(portion.missing.fiber_g, 0);
+  assert.equal(portion.values.calories_kcal, null, 'linked label calories must not fill a missing recipe estimate');
+  assert.equal(portion.missing.calories_kcal, 1);
+  assert.equal(portion.complete, false);
+  assert.equal(portion.estimated, true);
+  assert.equal(portion.basis, 'recipe_reference');
+  assert.equal(portion.source, 'Example cookbook estimate');
+  assert.equal(M.recipeNutrition({ ...recipe, ingredients: [] }, [], 1).values.protein_g, 20, 'references do not require catalog links');
+  assert.equal(M.recipeNutrition({ ...recipe, servings: 10 }, products, 1).values.protein_g, 10, 'changing the yield repartitions the same whole-recipe amount');
+  assert.equal(JSON.stringify(recipe), before);
+});
+
+test('reference nutrition keeps malformed or unavailable values unknown and explicit zero known', () => {
+  const result = M.recipeNutrition({
+    servings: 2, nutrition_mode: 'reference', nutrition_source: 'Example source',
+    nutrition_reference: { calories_kcal: Infinity, protein_g: NaN, carbs_g: -3, fat_g: '8', fiber_g: 0, sodium_mg: null, unsupported: 99 },
+    ingredients: [{ product_id: 'linked', quantity: 2, unit: 'each' }]
+  }, [product('linked')], 1);
+  for (const key of ['calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'sodium_mg']) {
+    assert.equal(result.values[key], null);
+    assert.equal(result.missing[key], 1);
+  }
+  assert.equal(result.values.fiber_g, 0);
+  assert.equal(Object.hasOwn(result.values, 'unsupported'), false);
+  assert.equal(result.complete, false);
+  assert.equal(M.recipeNutrition({ servings: 2, nutrition_mode: 'reference', nutrition_reference: {} }, [], 0).values.protein_g, null);
+});
+
+test('ingredient mode ignores stored references and written lists keep uncertain link coverage incomplete', () => {
+  const recipe = { servings: 2, nutrition_mode: 'ingredients', nutrition_reference: { calories_kcal: 9000 }, ingredients: [{ product_id: 'linked', quantity: 2, unit: 'each' }] };
+  const labels = M.recipeNutrition(recipe, [product('linked')], 1);
+  assert.equal(labels.values.calories_kcal, 100);
+  assert.equal(labels.complete, true);
+  assert.notEqual(labels.estimated, true);
+  const partial = M.recipeNutrition({ ...recipe, ingredient_text: 'A linked food and another unlinked ingredient' }, [product('linked')], 1);
+  assert.equal(partial.values.calories_kcal, 100);
+  assert.equal(partial.missing.calories_kcal, 1);
+  assert.equal(partial.complete, false);
+  const unlinked = M.recipeNutrition({ servings: 2, ingredient_text: 'Ingredients without catalog links', ingredients: [] }, [], 1);
+  assert.equal(unlinked.values.calories_kcal, null);
+  assert.equal(unlinked.complete, false);
+  assert.equal(M.recipeNutrition({ ...recipe, nutrition_mode: 'unsupported' }, [product('linked')], 1).values.calories_kcal, null);
+});
+
+test('nutrition totals retain estimate provenance across mixed and combined snapshots', () => {
+  const reference = source => M.recipeNutrition({ servings: 2, nutrition_mode: 'reference', nutrition_reference: { protein_g: 20 }, nutrition_source: source, ingredients: [] }, [], 1);
+  const first = reference('Example source A'), second = reference('Example source B');
+  const label = M.productNutrition(product('known'), 1);
+  const before = JSON.stringify([first, second, label]);
+  const partial = M.nutritionTotals([{ nutrition_snapshot: first }, { nutrition_snapshot: label }, { nutrition_snapshot: first }]);
+  assert.equal(partial.values.protein_g, 30);
+  assert.equal(partial.values.calories_kcal, 100);
+  assert.equal(partial.missing.calories_kcal, 2);
+  assert.equal(partial.estimated, true);
+  assert.equal(partial.basis, 'nutrition_total');
+  assert.equal(partial.source, 'Example source A');
+  assert.deepEqual(partial.sources, ['Example source A']);
+  const combined = M.nutritionTotals([partial, second]);
+  assert.equal(combined.values.protein_g, 40);
+  assert.equal(combined.missing.calories_kcal, 3);
+  assert.deepEqual(combined.sources, ['Example source A', 'Example source B']);
+  assert.equal(combined.estimated, true);
+  assert.equal(combined.complete, false);
+  assert.equal(JSON.stringify([first, second, label]), before);
+});
+
 test('daily totals use saved snapshots and preserve missing contributions without inventing an empty-day zero', () => {
   const first = M.productNutrition(product('first'), 1);
   const partial = M.productNutrition(product('second', { nutrients: { calories_kcal: null, protein_g: 5 } }), 2);
@@ -103,6 +182,29 @@ test('recipe suggestions match due ingredients and allocate each stock batch onc
   assert.equal(result[0].missing_ingredients[0].quantity, 1);
   assert.equal(result[0].complete_stock, false);
   assert.deepEqual(result[0].known_allergens, ['Eggs']);
+  assert.equal(inventory[0].quantity, 3);
+});
+
+test('written recipe lists keep stock coverage unverified even when linked foods are covered', () => {
+  const linked = { product_id: 'rice', quantity: 2, unit: 'each' };
+  const written = '2 portions of rice\n1 portion of vegetables';
+  const recipes = [
+    { id: 'linked-only', name: 'Linked dish', ingredients: [linked] },
+    { id: 'partial-links', name: 'Written dish', ingredient_text: written, ingredients: [linked] },
+    { id: 'short-linked-food', name: 'Larger written dish', ingredient_text: written, ingredients: [{ ...linked, quantity: 4 }] },
+    { id: 'no-links', name: 'Unlinked written dish', ingredient_text: written, ingredients: [] }
+  ];
+  const inventory = [{ id: 'rice-batch', product_id: 'rice', name: 'Rice', quantity: 3, unit: 'each', expires_on: '2026-11-05' }];
+  const results = new Map(M.recipeSuggestions(recipes, [product('rice')], inventory, '2026-11-04').map(value => [value.recipe_id, value]));
+  assert.equal(results.size, 3, 'written text alone cannot establish a product match');
+  assert.equal(results.get('linked-only').written_ingredients_unverified, false);
+  assert.equal(results.get('linked-only').complete_stock, true);
+  assert.equal(results.get('partial-links').written_ingredients_unverified, true);
+  assert.equal(results.get('partial-links').complete_stock, false);
+  assert.deepEqual(results.get('partial-links').missing_ingredients, []);
+  assert.equal(results.get('short-linked-food').written_ingredients_unverified, true);
+  assert.equal(results.get('short-linked-food').complete_stock, false);
+  assert.equal(results.get('short-linked-food').missing_ingredients[0].quantity, 1);
   assert.equal(inventory[0].quantity, 3);
 });
 

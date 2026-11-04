@@ -517,6 +517,63 @@ test('product insertion retry compares nested JSON by value rather than database
   h.store.destroy();
 });
 
+test('recipe reference nutrition saves with household scope, preserves unknowns and retries once', async () => {
+  const h = harness(); await h.store.init();
+  const recipe = {
+    request_id: '66666666-6666-4666-8666-666666666666', name: 'Reference recipe', servings: 4,
+    ingredients: [], ingredient_text: '2–3 cloves garlic\nSalt to taste', instructions: 'Cook and divide.',
+    nutrition_mode: 'reference', nutrition_reference: { protein_g: 48, calories_kcal: null, sodium_mg: 0 },
+    nutrition_source: 'Approximate values supplied with the recipe, for the whole batch.',
+    household_id: 'foreign-house', privateJournal: 'must not be transmitted'
+  };
+  const saved = await h.store.saveRecipe(recipe);
+  const write = h.calls.find(call => call.table === 'bloom_recipes' && call.operation === 'upsert');
+  assert.equal(write.payload.household_id, 'house-one');
+  assert.equal(write.payload.nutrition_mode, 'reference');
+  assert.deepEqual(write.payload.ingredients, []);
+  assert.equal(write.payload.ingredient_text, recipe.ingredient_text);
+  assert.deepEqual(write.payload.nutrition_reference, recipe.nutrition_reference);
+  assert.equal(write.payload.nutrition_source, recipe.nutrition_source);
+  assert.equal(Object.hasOwn(write.payload, 'privateJournal'), false);
+  assert.equal(saved.nutrition_reference.calories_kcal, null);
+  assert.equal(saved.nutrition_reference.sodium_mg, 0);
+  h.rows.bloom_recipes[0].nutrition_reference = { sodium_mg: 0, calories_kcal: null, protein_g: 48 };
+  await h.store.saveRecipe(recipe);
+  assert.equal(h.rows.bloom_recipes.length, 1, 'retrying the same reference never duplicates a recipe');
+  assert.deepEqual(h.store.exportHousehold().data.recipes[0].nutrition_reference, h.rows.bloom_recipes[0].nutrition_reference);
+  assert.equal(h.store.exportHousehold().data.recipes[0].nutrition_source, recipe.nutrition_source);
+  assert.equal(h.store.exportHousehold().data.recipes[0].ingredient_text, recipe.ingredient_text);
+  h.store.destroy();
+});
+
+test('partial recipe edits retain reference nutrition and meal provenance without rewriting past entries', async () => {
+  const reference = { protein_g: 48, calories_kcal: null };
+  const snapshot = { values: { protein_g: 12, calories_kcal: null }, missing: { protein_g: 0, calories_kcal: 1 }, complete: false,
+    estimated: true, basis: 'recipe_reference', source: 'Original recipe estimate' };
+  const h = harness({ rows: {
+    bloom_recipes: [{ id: 'recipe-one', household_id: 'house-one', revision: 1, name: 'Original recipe', servings: 4,
+      ingredients: [], nutrition_mode: 'reference', nutrition_reference: reference, nutrition_source: 'Original recipe estimate' }],
+    bloom_meal_entries: [{ id: 'meal-one', household_id: 'house-one', revision: 1, occurred_on: '2026-11-04', person_slot: 1,
+      kind: 'eaten', recipe_id: 'recipe-one', servings: 1, label: 'Original recipe', nutrition_snapshot: snapshot }]
+  } });
+  await h.store.init();
+  await h.store.saveRecipe({ id: 'recipe-one', revision: 1, name: 'Renamed recipe' });
+  const update = h.calls.find(call => call.table === 'bloom_recipes' && call.operation === 'update');
+  assert.deepEqual(update.payload, { name: 'Renamed recipe' });
+  assert.ok(update.filters.some(([key,value]) => key === 'household_id' && value === 'house-one'));
+  assert.ok(update.filters.some(([key,value]) => key === 'revision' && value === 1));
+  assert.deepEqual(h.rows.bloom_recipes[0].nutrition_reference, reference);
+  assert.deepEqual(h.rows.bloom_meal_entries[0].nutrition_snapshot, snapshot);
+  assert.equal(h.calls.filter(call => call.table === 'bloom_meal_entries' && call.operation !== 'select').length, 0);
+  const backup = h.store.exportHousehold();
+  assert.deepEqual(backup.data.mealEntries[0].nutrition_snapshot, snapshot);
+  await h.store.importHouseholdBackup(backup);
+  const restore = h.calls.find(call => call.rpc === 'bloom_restore_household_backup');
+  assert.deepEqual(restore.args.p_backup.data.recipes[0].nutrition_reference, reference);
+  assert.deepEqual(restore.args.p_backup.data.mealEntries[0].nutrition_snapshot, snapshot);
+  h.store.destroy();
+});
+
 test('private attachment links are limited to current saved household files', async () => {
   const h = harness({ rows: { bloom_food_files: [{ id: 'file-one', household_id: 'house-one', path: 'foreign-house/file.jpg', revision: 1 }] } });
   await h.store.init();

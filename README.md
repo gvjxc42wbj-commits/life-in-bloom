@@ -13,7 +13,7 @@ This development version has Sleep & Mood tools, appointments, saved Ideas notes
 ### Grocery and Ideas
 
 - **Grocery:** sign in, create or join a two-person household, and maintain a monthly shopping list. Catalog products carry package quantities, reference prices, optional label nutrients, and private photo/PDF attachments. Review recurring monthly needs before adding them to the list. A confirmed receipt records every purchased line, food stock, and Food/Household spending together. Shopping checkmarks alone do not create purchases.
-- **Food in Bloom:** save recipes with measured catalog ingredients and a recipe yield. Open **Use soon** for recorded food dates and matching saved recipes. Log planned or eaten portions for pink Person 1 and purple Person 2. Nutrition uses product-label values and preserves unknown fields; these are estimates, not prescribed targets or a validated meal plan.
+- **Food in Bloom:** save written recipes with a recipe yield and optional measured catalog ingredients. Open **Use soon** for recorded food dates and recipes with matching linked foods. Log planned or eaten portions for pink Person 1 and purple Person 2. Choose nutrition calculated from product labels or supplied whole-recipe estimates with a source. Missing values remain unknown, and estimates stay labeled; these are not prescribed targets or a validated meal plan.
 - **Money in Bloom:** review actual income and expenses, including Grocery receipt expenses. Set Food and Household allocations and monthly bill plans. Recording a bill payment creates its actual expense once. Unknown variable bills remain blank. Income less expenses is a ledger calculation, not a bank balance.
 - **Idea’s in Bloom:** type a title and/or a note, then choose **Save note**. Open saved notes to edit them. Unsaved form text is kept while editing; navigation asks before discarding it. Save notes before closing the app.
 
@@ -134,6 +134,8 @@ On iPhone, open the published address in Safari and use **Add to Home Screen**. 
 - `db/grocery-foundation-tests.sql`: rollback-only database access and behavior checks.
 - `db/food-expansion.sql`: additive Food/Money tables, private storage policies, atomic transaction functions, and constrained backup restore.
 - `db/food-expansion-tests.sql`: rollback-only checks for receipt totals, stock, retries, household access, nutrition history, and restore boundaries.
+- `db/recipe-reference-nutrition.sql`: additive written-ingredient and reference-nutrition fields; apply after the Food expansion and its fix.
+- `db/recipe-reference-nutrition-tests.sql`: rollback-only checks for reference values, history, backup restore, and household access.
 - `styles.css`: responsive layout, focus states, and dialogs.
 - `service-worker.js`: offline assets.
 - `tests/*.test.cjs`: regression checks for saved data, recurrence, monthly comparisons, grocery items, and Ideas notes.

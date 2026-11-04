@@ -105,13 +105,33 @@
     }
     return result;
   }
+  function nutritionProvenance(snapshot) {
+    if (!snapshot || snapshot.estimated !== true) return {};
+    const result = { estimated: true };
+    if (typeof snapshot.basis === 'string' && snapshot.basis.trim()) result.basis = snapshot.basis.trim();
+    if (typeof snapshot.source === 'string' && snapshot.source.trim()) result.source = snapshot.source.trim();
+    if (Array.isArray(snapshot.sources)) {
+      const sources = [...new Set(snapshot.sources.filter(value => typeof value === 'string' && value.trim()).map(value => value.trim()))];
+      if (sources.length) result.sources = sources;
+    }
+    return result;
+  }
   function nutritionTotals(entries) {
-    const sources = Array.isArray(entries) ? entries : [];
+    const sources = Array.isArray(entries) ? entries.map(entry => entry && (entry.nutrition_snapshot || entry)) : [];
     const result = { values: {}, missing: {}, complete: sources.length > 0 };
+    const estimates = sources.filter(snapshot => snapshot && snapshot.estimated === true);
+    if (estimates.length) {
+      result.estimated = true;
+      result.basis = 'nutrition_total';
+      result.sources = [...new Set(estimates.flatMap(snapshot => {
+        const metadata = nutritionProvenance(snapshot);
+        return [metadata.source, ...(metadata.sources || [])].filter(Boolean);
+      }))];
+      if (result.sources.length === 1) result.source = result.sources[0];
+    }
     for (const key of KEYS) {
       let sum = 0, known = 0, missing = 0;
-      for (const entry of sources) {
-        const snapshot = entry && (entry.nutrition_snapshot || entry);
+      for (const snapshot of sources) {
         const value = number(snapshot && snapshot.values && snapshot.values[key]);
         const absent = number(snapshot && snapshot.missing && snapshot.missing[key]);
         if (value != null) { sum += value; known++; }
@@ -126,15 +146,35 @@
   function recipeNutrition(recipe, products, servings) {
     const count = servings == null ? 1 : positive(servings);
     const yieldCount = positive(recipe && recipe.servings);
-    if (!recipe || !yieldCount || count == null || !Array.isArray(recipe.ingredients) || !recipe.ingredients.length) return unknownNutrition();
+    if (!recipe || !yieldCount || count == null) return unknownNutrition();
+    if (recipe.nutrition_mode === 'reference') {
+      const result = { values: {}, missing: {}, complete: true, estimated: true, basis: 'recipe_reference', source: typeof recipe.nutrition_source === 'string' ? recipe.nutrition_source.trim() : '' };
+      for (const key of KEYS) {
+        const raw = recipe.nutrition_reference && recipe.nutrition_reference[key];
+        const value = typeof raw === 'number' ? number(raw) : null;
+        result.values[key] = value == null ? null : tidy(value * count / yieldCount);
+        result.missing[key] = result.values[key] == null ? 1 : 0;
+        if (result.missing[key]) result.complete = false;
+      }
+      return result;
+    }
+    if (recipe.nutrition_mode != null && recipe.nutrition_mode !== 'ingredients') return unknownNutrition();
+    if (!Array.isArray(recipe.ingredients) || !recipe.ingredients.length) return unknownNutrition();
     const catalog = indexProducts(products);
-    return nutritionTotals(recipe.ingredients.map(ingredient => {
+    const result = nutritionTotals(recipe.ingredients.map(ingredient => {
       const product = ingredient && catalog.get(ingredient.product_id);
       const amount = ingredient && positive(ingredient.quantity);
       if (!product || amount == null || !positive(product.serving_quantity)) return unknownNutrition();
       const converted = convertQuantity(amount * count / yieldCount, ingredient.unit, product.serving_unit);
       return converted == null ? unknownNutrition() : productNutrition(product, converted / Number(product.serving_quantity));
     }));
+    // A free-form list can include foods that have not been linked. Without a
+    // verified mapping, label totals are known subtotals, not a complete recipe.
+    if (typeof recipe.ingredient_text === 'string' && recipe.ingredient_text.trim()) {
+      for (const key of KEYS) result.missing[key]++;
+      result.complete = false;
+    }
+    return result;
   }
   function effectiveDate(item) {
     if (!item) return null;
@@ -213,7 +253,8 @@
         if (needed > 1e-9) missing.push({ product_id: ingredient.product_id, name: product ? product.name : 'Unknown ingredient', quantity: tidy(needed), unit: ingredient.unit, reason: incompatible ? 'Some recorded stock uses an incompatible unit.' : 'More is needed for the full recipe.' });
         else available++;
       }
-      result.push({ recipe_id: recipe.id, name: recipe.name, recipe, matching_items: matches, missing_ingredients: missing, ingredient_count: recipe.ingredients.length, available_count: available, complete_stock: missing.length === 0, known_allergens: [...allergens], days_until: Math.min(...matches.map(item => item.days_until)), soonest_date: matches[0].due_on });
+      const writtenIngredientsUnverified = typeof recipe.ingredient_text === 'string' && !!recipe.ingredient_text.trim();
+      result.push({ recipe_id: recipe.id, name: recipe.name, recipe, matching_items: matches, missing_ingredients: missing, ingredient_count: recipe.ingredients.length, available_count: available, written_ingredients_unverified: writtenIngredientsUnverified, complete_stock: missing.length === 0 && !writtenIngredientsUnverified, known_allergens: [...allergens], days_until: Math.min(...matches.map(item => item.days_until)), soonest_date: matches[0].due_on });
     }
     return result.sort((a, b) => a.days_until - b.days_until || b.matching_items.length - a.matching_items.length || a.missing_ingredients.length - b.missing_ingredients.length || String(a.name).localeCompare(String(b.name)));
   }
@@ -307,7 +348,7 @@
     return { month: period.month, ...amounts, total_income_cents: income, total_expense_cents: expense, net_cents: income - expense, bills_planned_cents: billsPlanned, bills_pending_cents: billsPending, bills_missing_amounts: billsMissing, paid_bill_ids: [...paidBills] };
   }
 
-  const api = { NUTRIENTS, UNITS, AISLES, convertQuantity, recipeNutrition, productNutrition, nutritionTotals, dueItems, recipeSuggestions, recurringPlan, monthlyMoney, dateNumber, monthDetails, effectiveDate };
+  const api = { NUTRIENTS, UNITS, AISLES, convertQuantity, recipeNutrition, productNutrition, nutritionTotals, nutritionProvenance, dueItems, recipeSuggestions, recurringPlan, monthlyMoney, dateNumber, monthDetails, effectiveDate };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.BloomFoodModel = api;
 })(typeof window !== 'undefined' ? window : globalThis);
