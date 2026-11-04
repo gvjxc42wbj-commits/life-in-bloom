@@ -133,7 +133,7 @@ select public.bloom_record_money_entry(current_setting('bloom_food_test.payment'
 select public.bloom_record_money_entry(current_setting('bloom_food_test.payment')::jsonb);
 do $$ begin
   if (select count(*) from public.bloom_money_entries where bill_id is not null)<>1 then raise exception 'FAIL: repeated bill payment'; end if;
-  if (select amount_cents from public.bloom_bills) is not null then raise exception 'FAIL: variable estimate invented'; end if;
+  if (select amount_cents from public.bloom_bills)<>345 then raise exception 'FAIL: entered variable bill payment amount not saved'; end if;
   begin
     perform public.bloom_record_money_entry(jsonb_set(current_setting('bloom_food_test.payment')::jsonb,'{id}','"f4000000-0000-4000-8000-000000000002"'));
     raise exception 'FAIL: bill paid twice with new identifier';

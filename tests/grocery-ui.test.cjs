@@ -4,6 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Grocery = require('../bloom-grocery.js');
+const Commerce = require('../bloom-commerce.js');
 const Model = require('../bloom-food-model.js');
 
 function readyState(overrides = {}) {
@@ -110,17 +111,224 @@ test('a failed asynchronous save retains the draft and duplicate submits are blo
   assert.match(h.controller.render(), /Bread &lt;whole wheat&gt;/);
 });
 
-test('checkbox updates carry the saved revision and do not claim a failed change succeeded', async () => {
+test('checkbox cannot claim a purchase when the purchase tools are unavailable', async () => {
   const row = { id: 'item-one', name: 'Tea', quantity: '', checked: false, revision: 7 };
   const h = harness(readyState({ shoppingItems: [row] }));
-  h.methods.toggleShoppingItem = () => { throw new Error('Another person changed this item. Refresh and try again.'); };
   const field = { dataset: { groceryShoppingToggle: row.id }, checked: true };
   assert.equal(h.controller.handleChange({ target: field }), true);
   assert.equal(field.checked, false);
   await h.idle();
-  assert.deepEqual(h.calls[0], { name: 'toggleShoppingItem', args: [row, true] });
+  assert.equal(h.calls.length, 0);
   assert.equal(h.state.shoppingItems[0].checked, false);
-  assert.match(h.notices.at(-1).message, /Another person changed/);
+  assert.match(h.notices.at(-1).message, /purchase tools did not finish loading/);
+});
+
+function purchaseTools() {
+  const calls = [];
+  let pending = null;
+  const commerce = {
+    calls, busy: false, isBusy() { return this.busy; }, whenIdle: () => Promise.resolve(),
+    hasUnsavedDraft: () => false, hasUnpersistedChanges: () => false,
+    handleClick: () => false, handleInput: () => false, handleSubmit: () => false, handleChange: () => false,
+    setSectionHandler(handler) { this.sectionHandler = handler; }, setMonth: () => true,
+    renderPurchase: () => '<section id="inline-purchase">Purchase panel</section>',
+    render: () => '<section>Saved receipts</section>',
+    getPendingPurchaseId: () => pending,
+    startPurchase(row, month) { calls.push(['purchase', row, month]); pending = row.id; return true; },
+    startReceipt(rows, month) { calls.push(['trip', rows, month]); return true; },
+    openReceipt(id) { calls.push(['receipt', id]); this.sectionHandler('receipts', '2026-11'); return true; }
+  };
+  return commerce;
+}
+
+// Use both real controllers for routing: a stub cannot exercise their shared
+// month guard or distinguish a completed purchase from a partial purchase.
+function integratedPurchaseHarness(overrides = {}) {
+  const current = readyState({
+    products: [], recurringProducts: [], receipts: [], moneyEntries: [], bills: [],
+    billRules: [], foodFiles: [], ...overrides
+  });
+  let confirmation = true;
+  const calls = [], confirmations = [], refreshes = [], navigations = [], notices = [];
+  const store = { snapshot: () => current };
+  for (const name of ['recordReceipt', 'toggleShoppingItem', 'saveBudget', 'refresh']) {
+    store[name] = async (...args) => { calls.push({ name, args: structuredClone(args) }); return {}; };
+  }
+  const options = source => ({
+    store, model: Model, getNow: () => new Date(2026, 10, 4, 12),
+    confirm: message => { confirmations.push({ source, message }); return confirmation; },
+    refresh: selector => refreshes.push({ source, selector }),
+    navigate: page => navigations.push({ source, page }),
+    notify: (message, error) => notices.push({ source, message, error })
+  });
+  const commerce = Commerce.createController(options('commerce'));
+  const controller = Grocery.createController({ ...options('grocery'), commerce });
+  controller.render();
+  function click(action, data = {}, source = 'grocery') {
+    const element = { dataset: { [source + 'Action']: action, ...data } };
+    assert.equal(controller.handleClick({ target: { closest: () => element } }), true);
+  }
+  function toggle(id, checked = true) {
+    const field = { dataset: { groceryShoppingToggle: id }, checked };
+    assert.equal(controller.handleChange({ target: field }), true);
+    return field;
+  }
+  function input(key, value) {
+    assert.equal(controller.handleInput({ target: { dataset: { groceryField: key }, value } }), true);
+  }
+  function tab(value) {
+    assert.equal(controller.selectTab(value), true);
+    return controller.render();
+  }
+  return { controller, commerce, state: current, calls, confirmations, refreshes, navigations, notices,
+    click, toggle, input, tab, set confirmation(value) { confirmation = value; } };
+}
+
+function renderedInputValue(html, id) {
+  const tag = html.match(new RegExp('<input\\b[^>]*\\bid="' + id + '"[^>]*>'));
+  assert.ok(tag, id + ' is present');
+  return tag[0].match(/\bvalue="([^"]*)"/)?.[1];
+}
+
+function laterPurchaseState() {
+  return {
+    budgets: [
+      { month: '2026-11-01', amount_cents: 10000, revision: 1 },
+      { month: '2026-12-01', amount_cents: 24000, revision: 1 }
+    ],
+    shoppingItems: [{ id: 'bought-later', name: 'Example tea', month: '2026-11-01', checked: true, revision: 3, packs: 1, estimate_cents: 400 }],
+    receipts: [{ id: 'december-purchase', purchased_on: '2026-12-02', store: 'Example shop', total_cents: 400,
+      items: [{ shopping_item_id: 'bought-later', name: 'Example tea', packs: 1, line_total_cents: 400, category: 'food' }],
+      shopping_effects: [{ id: 'bought-later', after: { checked: true } }] }]
+  };
+}
+
+test('opening a saved purchase in another month protects the budget draft and asks only once when accepted', () => {
+  const h = integratedPurchaseHarness(laterPurchaseState());
+  const saved = structuredClone(h.state);
+  h.tab('budget');
+  h.input('budget.amount', '123.45');
+  h.tab('list');
+  h.confirmation = false;
+  h.click('view-shopping-receipt', { id: 'december-purchase' });
+  assert.equal(h.commerce.getMonth(), '2026-11');
+  assert.equal(renderedInputValue(h.controller.render(), 'grocery-month'), '2026-11');
+  assert.equal(renderedInputValue(h.tab('budget'), 'grocery-budget-amount'), '123.45');
+  assert.equal(h.navigations.length, 0, 'cancelling does not navigate away');
+  assert.deepEqual(h.confirmations.map(item => item.source), ['grocery']);
+  assert.match(h.confirmations[0].message, /discard the budget amount/);
+
+  h.tab('list');
+  h.confirmations.length = 0;
+  h.confirmation = true;
+  h.click('view-shopping-receipt', { id: 'december-purchase' });
+  assert.deepEqual(h.confirmations.map(item => item.source), ['grocery'], 'one approval covers both controllers');
+  assert.equal(h.commerce.getMonth(), '2026-12');
+  const receiptHtml = h.controller.render();
+  assert.equal(renderedInputValue(receiptHtml, 'commerce-month'), '2026-12');
+  assert.match(receiptHtml, /<details id="commerce-receipt-december-purchase"[^>]* open>/);
+  assert.deepEqual(h.refreshes.at(-1), { source: 'commerce', selector: '#commerce-receipt-december-purchase' });
+  assert.deepEqual(h.navigations, [{ source: 'commerce', page: 'grocery' }]);
+  assert.equal(renderedInputValue(h.tab('list'), 'grocery-month'), '2026-12');
+  assert.equal(renderedInputValue(h.tab('budget'), 'grocery-budget-amount'), '240.00');
+  assert.deepEqual(h.state, saved, 'navigation cannot change saved monthly values or purchase records');
+  assert.equal(h.calls.length, 0, 'opening a recorded receipt makes no purchase or budget writes');
+});
+
+test('the saved-purchase destination link uses one budget confirmation when opening another month', () => {
+  const h = integratedPurchaseHarness(laterPurchaseState());
+  h.tab('budget');
+  h.input('budget.amount', '123.45');
+  h.tab('list');
+  h.click('purchase-destination', { destination: 'receipts', month: '2026-12', receiptId: 'december-purchase' }, 'commerce');
+  assert.deepEqual(h.confirmations.map(item => item.source), ['grocery']);
+  assert.equal(h.commerce.getMonth(), '2026-12');
+  assert.match(h.controller.render(), /<details id="commerce-receipt-december-purchase"[^>]* open>/);
+  assert.equal(renderedInputValue(h.tab('list'), 'grocery-month'), '2026-12');
+  assert.equal(h.calls.length, 0);
+});
+
+test('a stale unchecked completed item opens its receipt while a partially purchased item can still be bought', () => {
+  const h = integratedPurchaseHarness({
+    shoppingItems: [
+      { id: 'fulfilled', name: 'Example rice', month: '2026-11-01', checked: false, revision: 4, packs: 1, estimate_cents: 400 },
+      { id: 'partial', name: 'Example milk', month: '2026-11-01', checked: false, revision: 2, packs: 1, estimate_cents: 200 }
+    ],
+    receipts: [
+      { id: 'saved-trip', purchased_on: '2026-11-04', total_cents: 600,
+        items: [{ shopping_item_id: 'fulfilled', name: 'Example rice', packs: 1, line_total_cents: 400 }, { shopping_item_id: 'partial', name: 'Example milk', packs: 1, line_total_cents: 200 }],
+        shopping_effects: [{ id: 'fulfilled', after: { checked: true } }, { id: 'partial', after: { checked: false } }] },
+      { id: 'reversed-trip', purchased_on: '2026-11-04', total_cents: 200, voided_at: '2026-11-04T13:00:00Z',
+        items: [{ shopping_item_id: 'partial', name: 'Example milk', packs: 1, line_total_cents: 200 }],
+        shopping_effects: [{ id: 'partial', after: { checked: true } }] }
+    ]
+  });
+  const html = h.controller.render();
+  const fullRow = html.match(/<li class="grocery-item[^>]*>[\s\S]*?id="grocery-check-fulfilled"[\s\S]*?<\/li>/)?.[0];
+  assert.ok(fullRow);
+  assert.match(fullRow, /aria-label="View saved purchase for Example rice" checked/);
+  assert.match(fullRow, /Purchase saved/);
+  assert.doesNotMatch(fullRow, /data-grocery-action="edit-shopping"/);
+  assert.match(html, /Known shopping estimate <strong>\$2\.00<\/strong>/);
+  assert.equal(h.controller.getHomeSummary().count, 1, 'fulfilled rows do not inflate the items still needed');
+
+  assert.equal(h.toggle('fulfilled', false).checked, true);
+  assert.equal(h.commerce.getPendingPurchaseId(), null);
+  assert.match(h.controller.render(), /<details id="commerce-receipt-saved-trip"[^>]* open>/);
+  assert.equal(h.calls.length, 0, 'a stale checkbox cannot charge again');
+
+  h.tab('list');
+  assert.equal(h.toggle('partial').checked, false);
+  assert.equal(h.commerce.getPendingPurchaseId(), 'partial');
+  const purchaseHtml = h.controller.render();
+  assert.match(purchaseHtml, /data-commerce-form="purchase"/);
+  assert.equal(renderedInputValue(purchaseHtml, 'commerce-purchase-packs'), '1');
+  assert.equal(renderedInputValue(purchaseHtml, 'commerce-purchase-line-total'), '2.00');
+  assert.match(purchaseHtml, /Finish purchase above/);
+  assert.equal(h.calls.length, 0, 'a partial item opens details before any new purchase is recorded');
+  assert.equal(h.confirmations.length, 0);
+});
+
+test('checking a grocery item opens one inline purchase with its revision, without a separate check write', async () => {
+  const row = { id: 'pending-food', name: 'Tea', month: '2026-11-01', checked: false, revision: 7 };
+  const commerce = purchaseTools();
+  const h = harness(readyState({ shoppingItems: [row] }), [], { commerce });
+  const field = { dataset: { groceryShoppingToggle: row.id }, checked: true };
+  h.controller.handleChange({ target: field });
+  assert.equal(field.checked, false);
+  assert.deepEqual(commerce.calls, [['purchase', row, '2026-11']]);
+  assert.equal(h.calls.length, 0);
+  assert.match(h.controller.render(), /inline-purchase/);
+  assert.match(h.controller.render(), /Finish purchase above/);
+  assert.equal(h.refreshes.at(-1), '#commerce-purchase-line-total');
+  commerce.busy = true;
+  field.checked = true;
+  h.controller.handleChange({ target: field });
+  assert.equal(field.checked, false);
+  assert.equal(commerce.calls.length, 1, 'a second checkbox event cannot open a concurrent purchase while saving');
+});
+
+test('purchased rows open their saved receipt while partial and legacy checkmarks still need purchase details', () => {
+  const bought = { id: 'bought', name: 'Rice', checked: true, revision: 3 };
+  const partial = { id: 'partial', name: 'Milk', checked: false, packs: 1, revision: 2 };
+  const legacy = { id: 'legacy', name: 'Eggs', checked: true, revision: 5 };
+  const receipt = { id: 'receipt-one', purchased_on: '2026-11-04', items: [{ shopping_item_id: bought.id, line_total_cents: 400 }, { shopping_item_id: partial.id, line_total_cents: 200 }], shopping_effects: [{ id: bought.id, after: { checked: true } }, { id: partial.id, after: { checked: false } }] };
+  const commerce = purchaseTools();
+  const h = harness(readyState({ shoppingItems: [bought, partial, legacy], receipts: [receipt] }), [], { commerce });
+  const html = h.controller.render();
+  assert.match(html, /1 previously checked item need purchase details/);
+  assert.match(html, /\$4\.00 paid/);
+  const field = { dataset: { groceryShoppingToggle: bought.id }, checked: false };
+  h.controller.handleChange({ target: field });
+  assert.equal(field.checked, true);
+  assert.deepEqual(commerce.calls[0], ['receipt', receipt.id]);
+  h.controller.selectTab('list');
+  h.controller.handleChange({ target: { dataset: { groceryShoppingToggle: partial.id }, checked: true } });
+  h.controller.handleChange({ target: { dataset: { groceryShoppingToggle: legacy.id }, checked: true } });
+  assert.deepEqual(commerce.calls.slice(1).map(call => call[1].id), [partial.id, legacy.id]);
+  assert.equal(h.calls.length, 0);
+  h.click('record-checked-trip');
+  assert.deepEqual(commerce.calls.at(-1), ['trip', [legacy], '2026-11']);
 });
 
 test('inventory saves exact fields, preserves its revision, and rejects invalid dates', async () => {

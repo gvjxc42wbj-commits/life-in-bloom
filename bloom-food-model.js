@@ -310,11 +310,11 @@
     const data = snapshot || {};
     const budget = (data.budgets || []).find(row => row.month === period.first);
     const amounts = { food: { budget_cents: budget ? cents(budget.amount_cents) : null, spent_cents: 0, planned_cents: 0, missing_prices: 0 }, household: { budget_cents: budget ? cents(budget.household_amount_cents) : null, spent_cents: 0, planned_cents: 0, missing_prices: 0 } };
-    let income = 0, expense = 0;
-    const paidBills = new Set(), seenEntries = new Set(), seenReceipts = new Set();
+    let income = 0, expense = 0, billExpense = 0;
+    const billPayments = new Map(), seenEntries = new Set(), seenReceipts = new Set();
     const voidReceipts = new Set((data.receipts || []).filter(row => row.voided_at).map(row => row.id));
     for (const entry of data.moneyEntries || []) {
-      if (!entry || entry.voided_at || voidReceipts.has(entry.receipt_id) || String(entry.occurred_on || '').slice(0, 7) !== period.month) continue;
+      if (!entry || entry.voided_at || voidReceipts.has(entry.receipt_id)) continue;
       const value = cents(entry.amount_cents);
       if (value == null || !['income', 'expense'].includes(entry.direction)) continue;
       if (entry.id && seenEntries.has(entry.id)) continue;
@@ -324,12 +324,17 @@
         if (seenReceipts.has(key)) continue;
         seenReceipts.add(key);
       }
+      // A bill can be paid before or after its billing month. Its paid status
+      // follows that saved payment, while cash spending follows occurred_on.
+      if (entry.bill_id && entry.direction === 'expense' && entry.category === 'bill' && !billPayments.has(entry.bill_id)) billPayments.set(entry.bill_id, { id: entry.id, amount_cents: value });
+      if (String(entry.occurred_on || '').slice(0, 7) !== period.month) continue;
       if (entry.direction === 'income') income += value; else expense += value;
       if (amounts[entry.category]) amounts[entry.category].spent_cents += entry.direction === 'income' ? -value : value;
-      if (entry.bill_id && entry.direction === 'expense') paidBills.add(entry.bill_id);
+      if (entry.category === 'bill' && entry.direction === 'expense') billExpense += value;
     }
+    const fulfilledShopping = new Set((data.receipts || []).filter(receipt => !receipt.voided_at).flatMap(receipt => (receipt.shopping_effects || []).filter(effect => effect.after && effect.after.checked === true).map(effect => effect.id)));
     for (const item of uniqueRows(data.shoppingItems)) {
-      if (item.checked || String(item.month || '').slice(0, 7) !== period.month) continue;
+      if (item.checked || fulfilledShopping.has(item.id) || String(item.month || '').slice(0, 7) !== period.month) continue;
       const category = item.category === 'household' ? amounts.household : amounts.food;
       const estimate = cents(item.estimate_cents);
       if (estimate == null) category.missing_prices++; else category.planned_cents += estimate;
@@ -339,16 +344,40 @@
       category.known_available_cents = category.budget_cents == null ? null : category.budget_cents - category.spent_cents - category.planned_cents;
       category.available_cents = category.missing_prices ? null : category.known_available_cents;
     }
-    let billsPlanned = 0, billsMissing = 0, billsPending = 0;
+    let billsPlanned = 0, billsMissing = 0, billsPending = 0, billsPaid = 0, billsPaidCount = 0, billsUnpaidCount = 0, billsUnpaidMissing = 0;
+    const billGroups = { fixed: { planned_cents: 0, missing_amounts: 0 }, variable: { planned_cents: 0, missing_amounts: 0 } };
+    const paidBills = [];
     for (const bill of uniqueRows(data.bills)) {
       if (bill.month !== period.first) continue;
-      const value = cents(bill.amount_cents);
-      if (value == null) billsMissing++; else { billsPlanned += value; if (!paidBills.has(bill.id)) billsPending += value; }
+      const payment = billPayments.get(bill.id);
+      if (payment) { billsPaid += payment.amount_cents; billsPaidCount++; paidBills.push(bill.id); }
+      // Stopped future plans remain in history, but are no longer obligations.
+      // Any real payment stays visible independently of the plan's status.
+      if (bill.cancelled === true) continue;
+      const value = cents(bill.amount_cents), group = bill.variable === true ? billGroups.variable : billGroups.fixed;
+      if (!payment) billsUnpaidCount++;
+      if (value == null) {
+        billsMissing++; group.missing_amounts++;
+        if (!payment) billsUnpaidMissing++;
+      } else {
+        billsPlanned += value; group.planned_cents += value;
+        if (!payment) billsPending += value;
+      }
     }
-    return { month: period.month, ...amounts, total_income_cents: income, total_expense_cents: expense, net_cents: income - expense, bills_planned_cents: billsPlanned, bills_pending_cents: billsPending, bills_missing_amounts: billsMissing, paid_bill_ids: [...paidBills] };
+    return { month: period.month, ...amounts, total_income_cents: income, total_expense_cents: expense, net_cents: income - expense, bill_expense_cents: billExpense, bills_planned_cents: billsPlanned, bills_pending_cents: billsPending, bills_missing_amounts: billsMissing, bills_fixed_planned_cents: billGroups.fixed.planned_cents, bills_variable_planned_cents: billGroups.variable.planned_cents, bills_fixed_missing_amounts: billGroups.fixed.missing_amounts, bills_variable_missing_amounts: billGroups.variable.missing_amounts, bills_paid_cents: billsPaid, bills_paid_count: billsPaidCount, bills_unpaid_count: billsUnpaidCount, bills_unpaid_missing_amounts: billsUnpaidMissing, paid_bill_ids: paidBills };
   }
 
-  const api = { NUTRIENTS, UNITS, AISLES, convertQuantity, recipeNutrition, productNutrition, nutritionTotals, nutritionProvenance, dueItems, recipeSuggestions, recurringPlan, monthlyMoney, dateNumber, monthDetails, effectiveDate };
+  function monthlyBillHistory(snapshot) {
+    const data = snapshot || {}, months = new Set();
+    function remember(value) { if (dateNumber(value) != null) months.add(String(value).slice(0, 7)); }
+    for (const bill of uniqueRows(data.bills)) remember(bill.month);
+    // Keep months with reversed payments visible so their history still has a
+    // place to open, even when the current actual total has returned to zero.
+    for (const entry of uniqueRows(data.moneyEntries)) if (entry.category === 'bill') remember(entry.occurred_on);
+    return [...months].sort().reverse().map(month => monthlyMoney(data, month));
+  }
+
+  const api = { NUTRIENTS, UNITS, AISLES, convertQuantity, recipeNutrition, productNutrition, nutritionTotals, nutritionProvenance, dueItems, recipeSuggestions, recurringPlan, monthlyMoney, monthlyBillHistory, dateNumber, monthDetails, effectiveDate };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.BloomFoodModel = api;
 })(typeof window !== 'undefined' ? window : globalThis);

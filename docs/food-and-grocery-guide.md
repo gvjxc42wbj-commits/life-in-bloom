@@ -10,7 +10,7 @@ The Windows preview address works on that computer. A permanent HTTPS host and d
 
 | Destination | What to do there |
 |---|---|
-| Grocery → Shopping list | Keep this month's quantities and estimated package costs; start a shopping-trip receipt. |
+| Grocery → Shopping list | Check a purchased item, confirm its actual cost and quantity once, and save its receipt, food stock, and spending together. |
 | Grocery → Catalog | Add or edit products, package sizes, reference prices, label nutrients, and photos/PDFs. |
 | Grocery → Recurring | Review monthly quantities, available compatible stock, whole packages, and estimated cost before adding the plan. |
 | Grocery → Receipts | Review every purchased line, actual paid amounts, and food to add to inventory. |
@@ -37,13 +37,27 @@ After saving a product or recipe, attach JPG, PNG, WebP, or PDF references up to
 
 1. Choose the calendar month and set Food and Household allocations.
 2. Add products to the list or review recurring quantities. Existing compatible stock is considered once; quantities are combined before package rounding. Unknown prices stay incomplete. Items already added by that monthly recurring source are not added again, including items already checked off.
-3. Choose **Record a shopping trip** when a purchase actually happens.
-4. Review each line's purchased packages, actual total paid, Food/Household category, and whether/how much food to add to stock. Include discounts, taxes, and deposits in the reviewed amounts; the app does not calculate them automatically.
-5. Confirm the receipt. One database transaction records the receipt, category expenses, inventory batches, and linked shopping progress. A partial purchase leaves the remaining packages on the list. Retrying the same saved request does not duplicate it.
+3. Check an item when you buy it. An inline purchase panel opens with the list's known package details and reference cost. Confirm or change the actual amount paid, quantity, and storage location. Food linked to the list needs a positive inventory quantity. Keep expiration and frozen dates blank when unknown.
+4. Choose **Save purchase** once. One database transaction records the receipt, category expenses, inventory batches, and linked shopping progress. Food at home, Shopping trips, Money, Spent, and Budget history use those saved records. A partial purchase leaves the remaining packages on the list. Retrying the same saved request does not duplicate it.
+5. For several items on one receipt, use **Record a shopping trip** instead. Review its included lines, then confirm the trip together. Include discounts, taxes, and deposits in the actual line totals; the app does not calculate them automatically.
+
+Items checked in the earlier version may say **Purchase details needed** because they have no receipt yet. Choose **Finish saving checked items** to review them together. This recovery never assumes their old reference prices are actual spending.
+
+A confirmed checkmark opens its saved purchase. Use that receipt's reversal action for corrections. A network interruption keeps the exact pending purchase for a safe retry; a stale offline copy is not presented as freshly updated totals.
 
 The ledger uses the receipt-generated expenses once. Merely adding a shopping item, setting a recurring quantity, saving a bill, or entering a meal plan does not spend money.
 
 Receipts are preserved as historical records. The explicit reversal action reverses the expenses and stock/list effects together only if those affected records have not since been changed or used. It stops with an explanation if a correction needs review. Manual money entries have their own reversal; receipt-generated entries must be reversed through their receipt.
+
+## Monthly bills and actual payments
+
+Money shows fixed and variable monthly bills separately. Choose **Add bill** and leave **Repeat this bill each month** selected to create a recurring plan. Fixed bills repeat the saved amount; variable bills start each new month with their amount blank. Historical ranges can be saved in Notes without being counted as an actual bill or payment.
+
+Opening a month prepares its missing recurring bills online. Earlier months remain saved. Editing a recurring bill changes the selected month; choose **Also use these settings for future monthly bills** when you want future automatic bills to use those settings too. Existing edited or paid months keep their saved records. **Stop future repeats** stops automatic bills from the month after the one shown, while retaining history and any explicitly edited or paid records.
+
+Choose **Record payment** when a bill has actually been paid. Enter the full amount and the real payment date. If that month's bill amount is still blank, this same action fills it in. Future variable months still start blank. Paying an older bill today records the cash expense in today's month while showing the payment against the older bill. Reversing a payment reverses its cash expense; it keeps the bill amount you supplied.
+
+Planned bills are not automatically marked paid. Food and Household spending comes from saved grocery receipts, so those purchases do not need a second money entry. Use the monthly history to reopen saved bills, spending, and allocations.
 
 ## Printed dates, freezing, and use-soon recipes
 
@@ -85,7 +99,7 @@ After a successful online load, the last household copy can be viewed offline. T
 
 Shopping lists, allocations, bills, purchases, and money entries are filtered by calendar month. New months do not delete the prior ones. Recurring product settings can be used to review another month's plan; adding that plan remains an explicit action.
 
-Export household backups from Grocery's Household tab. They contain shared food/money records and attachment metadata, not passwords, tokens, private profile measurements, personal journals, or image/PDF bytes. Keep original files separately.
+Export household backups from Grocery's Household tab. They contain shared food/money records, monthly bill rules and snapshots, and attachment metadata, not passwords, tokens, private profile measurements, personal journals, or image/PDF bytes. Older backups without recurring bill rules remain accepted. Keep original files separately.
 
 The household owner can preview **Restore missing records** from a backup of the same household. It adds missing records in one transaction and preserves existing matching records. A conflict aborts the entire restore. It does not replay receipt stock or spending effects. Editable records begin a fresh technical revision while keeping business dates; historical receipt/ledger timestamps remain. Missing storage objects are reported as skipped attachments and need re-uploading.
 

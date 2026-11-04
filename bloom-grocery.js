@@ -155,6 +155,7 @@
     let tab = 'list';
     let authMode = 'signin';
     let selectedMonth = monthKey(getNow());
+    let approvedCommerceMonth = null;
     let inventoryFilter = 'all';
     let context = null;
     let generation = 0;
@@ -170,6 +171,7 @@
     let backupReview = null;
 
     function resetDrafts() {
+      approvedCommerceMonth = null;
       drafts = {
         auth: { email: '', password: '', confirmation: '' },
         household: { name: '', code: '' },
@@ -309,9 +311,10 @@
     function chooseMonth(value) {
       if (!validMonth(value)) { announce('Choose a month between January 1900 and December 2200.', true); return false; }
       if (value === selectedMonth) return true;
-      if (dirty('budget') && confirm('Change month and discard the budget amount you have not saved?') !== true) return false;
-      if (commerce && !commerce.setMonth(value)) return false;
+      if (!(commerce && commerce.setMonthGuard) && dirty('budget') && confirm('Change month and discard the budget amount you have not saved?') !== true) return false;
+      if (commerce && !commerce.setMonth(value)) { approvedCommerceMonth = null; return false; }
       selectedMonth = value;
+      approvedCommerceMonth = null;
       resetGroup('budget', { amount: '', household_amount: '', revision: null });
       profileVersions.budget = null;
       persistDrafts();
@@ -389,17 +392,32 @@
     function productChoices(current) {
       return [['', 'Enter an item manually'], ...(current.products || []).filter(row => !row.archived).map(row => [row.id, row.name + (row.brand ? ' · ' + row.brand : '')])];
     }
+    function purchaseReceipt(current, item) {
+      if (!item) return null;
+      return (current.receipts || []).filter(receipt => !receipt.voided_at).slice().reverse().find(receipt =>
+        (receipt.shopping_effects || []).some(effect => effect.id === item.id && effect.after && effect.after.checked === true)) || null;
+    }
     function renderList(current) {
       const items = monthItems(current).slice().sort((a, b) => Number(a.checked) - Number(b.checked));
-      const remaining = items.filter(item => !item.checked).length;
+      const remaining = items.filter(item => !item.checked && !purchaseReceipt(current, item)).length;
       const editing = Boolean(drafts.shopping.id);
-      const known = items.filter(item => !item.checked && item.estimate_cents != null).reduce((sum, item) => sum + Number(item.estimate_cents), 0);
-      const missing = items.filter(item => !item.checked && item.estimate_cents == null).length;
+      const known = items.filter(item => !item.checked && !purchaseReceipt(current, item) && item.estimate_cents != null).reduce((sum, item) => sum + Number(item.estimate_cents), 0);
+      const missing = items.filter(item => !item.checked && !purchaseReceipt(current, item) && item.estimate_cents == null).length;
       let html = '<section class="panel"><div class="grocery-month-heading"><div><p class="page-kicker">' + monthLabel(selectedMonth) + '</p><h2>Your grocery list</h2><span class="pill">' + remaining + ' to buy</span></div>' + monthControl() + '</div><p class="grocery-help">Add what your household needs. Both people see the same saved monthly list. Earlier lists remain in their own months.</p><div class="grocery-list-summary"><span>Known shopping estimate <strong>' + money(known) + '</strong>' + (missing ? '<small>' + missing + ' price(s) needed — estimate incomplete</small>' : '') + '</span><div class="grocery-actions">' + button('record-trip', 'Record a shopping trip', '', true) + button('tab', 'Browse products', ' data-tab="catalog"') + '</div></div>';
-      html += form('shopping', '<div class="grocery-form-grid">' + select('shopping', 'product_id', 'Saved product <small>(optional)</small>', productChoices(current)) + input('shopping', 'name', editing ? 'Edit item' : 'Item to buy', 'type="text" required maxlength="160" autocomplete="off"') + input('shopping', 'quantity', 'Quantity or size <small>(optional)</small>', 'type="text" maxlength="120" autocomplete="off" placeholder="For example, 2 cartons"') + input('shopping', 'packs', 'Purchased packages planned <small>(optional)</small>', 'type="number" min="0" step="any" max="1000000000" inputmode="decimal"') + select('shopping', 'category', 'Budget category', [['food', 'Food'], ['household', 'Household']]) + input('shopping', 'estimate', 'Estimated total for this item (USD)', 'type="text" inputmode="decimal" maxlength="12" placeholder="Leave blank if unknown"') + '</div><div class="grocery-actions">' + submit(editing ? 'Save item changes' : '+ Add to shared list') + button('clear-shopping', editing ? 'Discard changes' : 'Clear form') + '</div>');
+      const needsPurchase = items.filter(item => item.checked && !purchaseReceipt(current, item));
+      if (needsPurchase.length) html += '<div class="grocery-purchase-notice"><strong>' + needsPurchase.length + ' previously checked item' + (needsPurchase.length === 1 ? '' : 's') + ' need purchase details.</strong><p>Confirm the amount paid and food quantities to save them in inventory, shopping trips, and your budget.</p>' + button('record-checked-trip', 'Finish saving checked items', '', true) + '</div>';
+      html += '</section>' + (commerce && commerce.renderPurchase ? commerce.renderPurchase() : '') + '<section class="panel">';
+      html += form('shopping', '<div class="grocery-form-grid">' + select('shopping', 'product_id', 'Saved product <small>(optional)</small>', productChoices(current)) + input('shopping', 'name', editing ? 'Edit item' : 'Item to buy', 'type="text" required maxlength="160" autocomplete="off"') + input('shopping', 'quantity', 'Quantity or size <small>(optional)</small>', 'type="text" maxlength="120" autocomplete="off" placeholder="For example, 2 cartons"') + input('shopping', 'packs', 'Packages planned <small>(optional)</small>', 'type="number" min="0" step="any" max="1000000000" inputmode="decimal"') + select('shopping', 'category', 'Budget category', [['food', 'Food'], ['household', 'Household']]) + input('shopping', 'estimate', 'Estimated total for this item (USD)', 'type="text" inputmode="decimal" maxlength="12" placeholder="Leave blank if unknown"') + '</div><div class="grocery-actions">' + submit(editing ? 'Save item changes' : '+ Add to shared list') + button('clear-shopping', editing ? 'Discard changes' : 'Clear form') + '</div>');
       if (!items.length) html += '<div class="grocery-empty"><span aria-hidden="true">✦</span><h3>A little room for your next shop</h3><p>This month’s household list is empty. Add an item above, browse products, or review your recurring monthly quantities.</p></div>';
-      else html += '<ul class="grocery-items">' + items.map(item => '<li class="grocery-item' + (item.checked ? ' is-checked' : '') + '"><label class="grocery-item-check" for="grocery-check-' + escapeText(item.id) + '"><input id="grocery-check-' + escapeText(item.id) + '" type="checkbox" data-grocery-shopping-toggle="' + escapeText(item.id) + '"' + (item.checked ? ' checked' : '') + disabled() + '><span><strong>' + escapeText(item.name) + '</strong>' + (item.quantity ? '<small>' + escapeText(item.quantity) + '</small>' : '') + '<small>' + (item.checked ? 'Picked up' : 'To buy') + ' · ' + (item.category === 'household' ? 'Household' : 'Food') + ' · ' + (item.estimate_cents == null ? 'Price needed' : money(Number(item.estimate_cents)) + ' estimated') + '</small></span></label>' + deleteControls('shopping', item) + '</li>').join('') + '</ul>';
-      return html + '<p class="grocery-help grocery-footnote">Checking an item marks it picked up. Use Record a shopping trip to confirm actual costs, update inventory, and add the expense to Money in Bloom once.</p></section>' + renderImport(current);
+      else html += '<ul class="grocery-items">' + items.map(item => {
+        const receipt = purchaseReceipt(current, item);
+        const line = receipt && (receipt.items || []).find(value => value.shopping_item_id === item.id);
+        const pending = commerce && commerce.getPendingPurchaseId && commerce.getPendingPurchaseId() === item.id;
+        const status = receipt ? 'Purchase saved' : pending ? 'Finish purchase above' : item.checked ? 'Purchase details needed' : 'To buy';
+        const cost = receipt && line ? money(Number(line.line_total_cents)) + ' paid' : item.estimate_cents == null ? 'Price needed' : money(Number(item.estimate_cents)) + ' estimated';
+        return '<li class="grocery-item' + (receipt ? ' is-checked' : '') + '"><label class="grocery-item-check" for="grocery-check-' + escapeText(item.id) + '"><input id="grocery-check-' + escapeText(item.id) + '" type="checkbox" data-grocery-shopping-toggle="' + escapeText(item.id) + '" aria-label="' + escapeText((receipt ? 'View saved purchase for ' : 'Record purchase for ') + item.name) + '"' + (receipt ? ' checked' : '') + (busy || (commerce && commerce.isBusy()) ? ' disabled' : '') + '><span><strong>' + escapeText(item.name) + '</strong>' + (item.quantity ? '<small>' + escapeText(item.quantity) + '</small>' : '') + '<small>' + status + ' · ' + (item.category === 'household' ? 'Household' : 'Food') + ' · ' + cost + '</small></span></label>' + (receipt ? button('view-shopping-receipt', 'View purchase', ' data-id="' + escapeText(receipt.id) + '"') : deleteControls('shopping', item)) + '</li>';
+      }).join('') + '</ul>';
+      return html + '<p class="grocery-help grocery-footnote">Check an item when you buy it, then confirm its actual cost and food quantity once. Saving updates food inventory, shopping trips, Money in Bloom, and this month’s budget together. Household supplies stay in their own spending category.</p></section>' + renderImport(current);
     }
 
     function renderBudget(current) {
@@ -407,6 +425,8 @@
       const summary = model && model.monthlyMoney ? model.monthlyMoney(current, selectedMonth) : null;
       const format = value => value == null ? 'Not calculated yet' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value / 100);
       let html = '<section class="panel"><div class="grocery-month-heading"><div><p class="page-kicker">Monthly grocery budget</p><h2>' + monthLabel(selectedMonth) + '</h2></div>' + monthControl() + '</div>';
+      const unfinished = monthItems(current).filter(item => item.checked && !purchaseReceipt(current, item));
+      if (unfinished.length) html += '<div class="grocery-purchase-notice"><strong>' + unfinished.length + ' checked item' + (unfinished.length === 1 ? ' still needs' : 's still need') + ' purchase details.</strong><p>Spent includes saved purchases. Finish recording these items to add their actual costs and food quantities.</p>' + button('record-checked-trip', 'Finish saving checked items') + '</div>';
       for (const [key, label, budgetAmount] of [['food', 'Food', row && row.amount_cents], ['household', 'Household', row && row.household_amount_cents]]) {
         const totals = summary && summary[key];
         html += '<h3 class="grocery-budget-category">' + label + '</h3><div class="grocery-budget-grid"><div class="grocery-budget-card is-main"><span>Your chosen amount</span><strong>' + money(budgetAmount) + '</strong><small>' + label + ' allocation</small></div><div class="grocery-budget-card"><span>Spent</span><strong>' + format(totals && totals.spent_cents) + '</strong><small>Recorded actual expenses</small></div><div class="grocery-budget-card"><span>Planned</span><strong>' + format(totals && totals.planned_cents) + '</strong><small>' + (totals && totals.missing_prices ? totals.missing_prices + ' price(s) needed; incomplete' : 'Outstanding shopping estimates') + '</small></div><div class="grocery-budget-card"><span>Available after plan</span><strong class="' + (totals && totals.available_cents < 0 ? 'is-over-budget' : '') + '">' + format(totals && totals.available_cents) + '</strong><small>' + (totals && totals.missing_prices ? 'Needs the missing prices' : 'Budget − spent − planned') + '</small></div></div>';
@@ -695,6 +715,7 @@
         run('Reading the household backup for review…', async () => JSON.parse(await file.text()), payload => {
           const keys = ['products', 'recurringProducts', 'budgets', 'inventory', 'shoppingItems', 'bills', 'recipes', 'mealEntries', 'receipts', 'moneyEntries', 'foodFiles'];
           if (!payload || payload.app !== 'Life in Bloom Household' || payload.version !== 1 || payload.household_id !== current.household.id || !payload.data || !keys.every(key => Array.isArray(payload.data[key]))) throw new Error('Choose a Life in Bloom Household backup for this same household. No records were changed.');
+          if (payload.data.billRules != null && !Array.isArray(payload.data.billRules)) throw new Error('The recurring bills in this backup are invalid. No records were changed.');
           backupReview = { name: file.name, payload, userId: current.user.id, householdId: current.household.id };
           announce('Review the backup details before restoring missing records.');
         });
@@ -707,10 +728,16 @@
       if (field.dataset.groceryShoppingToggle) {
         const row = (current.shoppingItems || []).find(item => item.id === field.dataset.groceryShoppingToggle);
         if (!row) return true;
-        const checked = Boolean(field.checked);
-        field.checked = Boolean(row.checked);
-        if (busy || !requireReady(current)) return true;
-        run('Updating your shared list…', () => store.toggleShoppingItem(row, checked), () => announce(checked ? row.name + ' marked picked up.' : row.name + ' moved back to things to buy.'), '#grocery-check-' + row.id);
+        const receipt = purchaseReceipt(current, row);
+        field.checked = Boolean(receipt);
+        if (busy || (commerce && commerce.isBusy()) || !requireReady(current)) return true;
+        try {
+          if (!commerce || !commerce.startPurchase) throw new Error('The purchase tools did not finish loading. Refresh the app before checking off an item.');
+          if (receipt) {
+            if (!commerce.openReceipt) throw new Error('Open Grocery receipts to review this saved purchase.');
+            commerce.openReceipt(receipt.id);
+          } else if (commerce.startPurchase(row, selectedMonth)) refresh('#commerce-purchase-line-total');
+        } catch (error) { announce(errorMessage(error), true); refresh(); }
         return true;
       }
       return handleInput(event);
@@ -720,7 +747,7 @@
       const element = event.target && event.target.closest && event.target.closest('[data-grocery-action]');
       if (!element || !element.dataset || !element.dataset.groceryAction) return false;
       const action = element.dataset.groceryAction;
-      const actions = ['tab', 'auth-mode', 'retry', 'refresh', 'signout', 'filter-location', 'open-budget', 'edit-shopping', 'edit-inventory', 'clear-shopping', 'clear-inventory', 'clear-private', 'clear-diet', 'delete-shopping', 'delete-inventory', 'confirm-delete', 'keep-item', 'review-import', 'confirm-import', 'cancel-import', 'create-invite', 'record-trip', 'open-money', 'use-soon', 'freeze-inventory', 'export-household', 'restore-household', 'cancel-household-import'];
+      const actions = ['tab', 'auth-mode', 'retry', 'refresh', 'signout', 'filter-location', 'open-budget', 'edit-shopping', 'edit-inventory', 'clear-shopping', 'clear-inventory', 'clear-private', 'clear-diet', 'delete-shopping', 'delete-inventory', 'confirm-delete', 'keep-item', 'review-import', 'confirm-import', 'cancel-import', 'create-invite', 'record-trip', 'record-checked-trip', 'view-shopping-receipt', 'open-money', 'use-soon', 'freeze-inventory', 'export-household', 'restore-household', 'cancel-household-import'];
       if (!actions.includes(action)) return false;
       const current = snapshot();
       if (busy || (commerce && commerce.isBusy())) return true;
@@ -746,12 +773,17 @@
         if (!requireReady(current)) return true;
         if (action === 'tab') {
           selectTab(element.dataset.tab);
-        } else if (action === 'record-trip') {
+        } else if (action === 'record-trip' || action === 'record-checked-trip') {
           if (!commerce) throw new Error('The receipt tools did not finish loading. Refresh the app.');
-          const purchased = new Set((current.receipts || []).filter(row => !row.voided_at).flatMap(row => (row.items || []).map(item => item.shopping_item_id).filter(Boolean)));
-          const items = monthItems(current).filter(row => !row.checked || !purchased.has(row.id));
+          const items = monthItems(current).filter(row => !purchaseReceipt(current, row) && (action !== 'record-checked-trip' || row.checked));
           commerce.startReceipt(items, selectedMonth);
-        } else if (action === 'open-money') { if (commerce) commerce.setMonth(selectedMonth); navigate('money'); }
+        } else if (action === 'view-shopping-receipt') {
+          if (!commerce || !commerce.openReceipt) throw new Error('Open Grocery receipts to review this saved purchase.');
+          commerce.openReceipt(element.dataset.id);
+        } else if (action === 'open-money') {
+          if (commerce && commerce.openMoneyMonth) commerce.openMoneyMonth(selectedMonth);
+          else if (!commerce || commerce.setMonth(selectedMonth)) navigate('money');
+        }
         else if (action === 'use-soon') { if (options.openFood) options.openFood('soon'); else navigate('food'); }
         else if (action === 'export-household') {
           run('Preparing the household backup…', () => store.exportHousehold(), payload => {
@@ -857,16 +889,28 @@
       const current = snapshot();
       if (current.status === 'ready' && current.household) {
         const thisMonth = monthKey(getNow());
-        const count = (current.shoppingItems || []).filter(item => !item.checked && (!item.month || item.month.slice(0, 7) === thisMonth)).length;
+        const count = (current.shoppingItems || []).filter(item => !item.checked && !purchaseReceipt(current, item) && (!item.month || item.month.slice(0, 7) === thisMonth)).length;
         return { count, title: count + ' item' + (count === 1 ? '' : 's') + ' to buy', description: 'Shared with ' + (current.household.name || 'your household'), status: current.status };
       }
       return { count: null, title: current.status === 'loading' ? 'Opening Grocery…' : current.user ? 'Open your household' : 'Sign in to Grocery', description: 'Your shared shopping list', status: current.status };
     }
+    if (commerce && commerce.setMonthGuard) commerce.setMonthGuard(next => {
+      const allowed = next === selectedMonth || !dirty('budget') || confirm('Change month and discard the budget amount you have not saved?') === true;
+      approvedCommerceMonth = allowed ? next : null;
+      return allowed;
+    });
     if (commerce && commerce.setSectionHandler) commerce.setSectionHandler((value, month) => {
       snapshot();
-      if (validMonth(month) && month !== selectedMonth) { selectedMonth = month; resetGroup('budget', { amount: '', household_amount: '', revision: null }); profileVersions.budget = null; }
+      if (validMonth(month) && month !== selectedMonth) {
+        if (approvedCommerceMonth === month) {
+          selectedMonth = month;
+          approvedCommerceMonth = null;
+          resetGroup('budget', { amount: '', household_amount: '', revision: null });
+          profileVersions.budget = null;
+        } else if (!chooseMonth(month)) return false;
+      }
       if (TABS.some(([key]) => key === value)) tab = value;
-      persistDrafts(); refresh();
+      persistDrafts(); refresh(); return true;
     });
     return { render, handleClick, handleSubmit, handleInput, handleChange, hasUnsavedDraft, hasUnpersistedChanges: () => draftWriteFailed || (!draftStore && hasUnsavedDraft()) || Boolean(commerce && commerce.hasUnpersistedChanges && commerce.hasUnpersistedChanges()), discardDraft, getHomeSummary, selectTab, isBusy: () => Boolean(busy) || Boolean(commerce && commerce.isBusy()), whenIdle: () => commerce ? Promise.all([pendingTask, commerce.whenIdle()]) : pendingTask };
   }

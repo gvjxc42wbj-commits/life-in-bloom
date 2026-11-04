@@ -60,6 +60,18 @@
 .commerce-receipt-line.is-excluded { background: #faf6f8; border-style: dashed; }
 .commerce-line-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 13px; }
 .commerce-line-top .button { font-size: 11px; }
+.commerce-inline-purchase { margin: 18px 0; border-color: #ce91ac; background: linear-gradient(135deg, #fff5fa, #fff); }
+.commerce-inline-purchase h3 { margin-top: 0; line-height: 1.5; overflow-wrap: anywhere; }
+.commerce-inline-purchase .page-kicker { margin-top: 0; }
+.commerce-price-hint { color: #7a5064; font-size: 12px; line-height: 1.7; padding: 11px 14px; background: #fbe8f1; border-radius: 11px; }
+.commerce-purchase-stock { min-width: 0; margin: 15px 0 0; padding: 15px; border: 1px solid #e6c3d5; border-radius: 13px; }
+.commerce-purchase-stock legend { padding: 0 7px; color: #78415a; font-size: 13px; font-weight: 750; }
+.commerce-purchase-alert { padding: 13px 15px; border: 1px solid #d3a87e; border-radius: 12px; background: #fff8ed; color: #6f4f30; font-size: 13px; line-height: 1.65; }
+.commerce-purchase-success { border-color: #a7c5ad; background: #f5fcf7; margin: 18px 0; }
+.commerce-purchase-success h3 { margin-top: 0; color: #436f50; }
+.commerce-purchase-success p { font-size: 14px; }
+.commerce-purchase-links { flex-wrap: wrap; }
+.commerce-purchase-links .button { font-size: 12px; }
 .commerce-receipt-history { display: grid; gap: 12px; margin-top: 18px; }
 .commerce-receipt-record { padding: 0 16px 15px; border: 1px solid #e9cddb; border-radius: 14px; background: #fffbfd; }
 .commerce-receipt-record summary { display: flex; gap: 12px; justify-content: space-between; align-items: center; min-height: 70px; padding: 15px 0; cursor: pointer; color: #75445c; font-size: 15px; font-weight: 700; }
@@ -77,6 +89,19 @@
 .commerce-budget-link > span { font-size: 12px; font-weight: 750; }
 .commerce-budget-link > strong { font-size: 25px; }
 .commerce-budget-link > small { color: #795b6b; font-size: 11px; line-height: 1.55; }
+.commerce-bill-subtotals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
+.commerce-bill-subtotals > div { display: flex; flex-direction: column; gap: 7px; min-width: 0; padding: 16px; border: 1px solid #ead0dd; border-radius: 14px; background: #fff8fb; }
+.commerce-bill-subtotals span { color: #795269; font-size: 12px; font-weight: 700; }
+.commerce-bill-subtotals strong { color: #8a4160; font-size: 23px; }
+.commerce-bill-subtotals small { color: #795b6b; font-size: 11px; line-height: 1.6; }
+.commerce-history-scroll { overflow-x: auto; border: 1px solid #ead0dd; border-radius: 12px; margin-top: 17px; }
+.commerce-history-scroll:focus-visible { outline: 2px solid #a4476b; outline-offset: 4px; }
+.commerce-bill-history { width: 100%; min-width: 580px; border-collapse: collapse; font-size: 12px; color: #75445c; }
+.commerce-bill-history th, .commerce-bill-history td { text-align: left; padding: 12px; border-bottom: 1px solid #efdce6; vertical-align: middle; }
+.commerce-bill-history thead th { background: #fff3f8; font-weight: 750; }
+.commerce-bill-history tbody th { width: 25%; }
+.commerce-bill-history tbody tr:last-child th, .commerce-bill-history tbody tr:last-child td { border-bottom: 0; }
+.commerce-bill-history .button { width: 100%; font-size: 12px; padding-inline: 12px; white-space: nowrap; }
 .commerce-ledger > li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid #efdce6; font-size: 13px; }
 .commerce-ledger > li > div { min-width: 0; }
 .commerce-ledger > li > div > strong { color: #724459; }
@@ -88,7 +113,7 @@
 .commerce-page .is-voided { opacity: .7; }
 .commerce-page .is-voided > strong, .commerce-page .is-voided summary > strong { text-decoration: line-through; }
 @media (max-width: 650px) {
-  .commerce-product-grid, .commerce-budget-links { grid-template-columns: minmax(0, 1fr); }
+  .commerce-product-grid, .commerce-budget-links, .commerce-bill-subtotals { grid-template-columns: minmax(0, 1fr); }
   .commerce-nutrients { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .commerce-money-totals { grid-template-columns: minmax(0, 1fr); }
   .commerce-money-totals > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }

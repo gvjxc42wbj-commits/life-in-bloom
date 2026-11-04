@@ -273,6 +273,29 @@ test('unknown budgets and item prices stay incomplete while negative availabilit
   assert.equal(overspent.household.budget_cents, null);
 });
 
+test('a fulfilled receipt removes stale unchecked estimates while partial purchases keep the remainder planned', () => {
+  const snapshot = {
+    budgets: [{ month: '2026-11-01', amount_cents: 5000 }],
+    shoppingItems: [
+      { id: 'already-bought', month: '2026-11-01', checked: false, category: 'food', estimate_cents: 400 },
+      { id: 'remaining', month: '2026-11-01', checked: false, category: 'food', estimate_cents: 250 }
+    ],
+    receipts: [{ id: 'purchase', purchased_on: '2026-11-04', shopping_effects: [
+      { id: 'already-bought', after: { checked: true } },
+      { id: 'remaining', after: { checked: false } }
+    ] }],
+    moneyEntries: [{ id: 'cost', receipt_id: 'purchase', occurred_on: '2026-11-04', direction: 'expense', category: 'food', amount_cents: 600 }]
+  };
+  const current = M.monthlyMoney(snapshot, '2026-11');
+  assert.equal(current.food.spent_cents, 600);
+  assert.equal(current.food.planned_cents, 250);
+  assert.equal(current.food.available_cents, 4150);
+  snapshot.receipts[0].voided_at = '2026-11-04T14:00:00Z';
+  const reversed = M.monthlyMoney(snapshot, '2026-11');
+  assert.equal(reversed.food.spent_cents, 0);
+  assert.equal(reversed.food.planned_cents, 650);
+});
+
 test('bill plans remain separate from actual payments and preserve unknown variable bills', () => {
   const result = M.monthlyMoney({ bills: [{ id: 'paid', month: '2026-11-01', amount_cents: 1000 }, { id: 'unpaid', month: '2026-11-01', amount_cents: 500 }, { id: 'variable', month: '2026-11-01', amount_cents: null }], moneyEntries: [{ id: 'payment', bill_id: 'paid', occurred_on: '2026-11-02', direction: 'expense', category: 'bill', amount_cents: 1000 }] }, '2026-11');
   assert.equal(result.bills_planned_cents, 1500);
@@ -280,4 +303,114 @@ test('bill plans remain separate from actual payments and preserve unknown varia
   assert.equal(result.bills_missing_amounts, 1);
   assert.equal(result.total_expense_cents, 1000);
   assert.deepEqual(result.paid_bill_ids, ['paid']);
+});
+
+test('monthly bill summaries separate fixed and variable plans from actual payments and unknown amounts', () => {
+  const fixed = { id: 'fixed', month: '2026-11-01', amount_cents: 4000, variable: false };
+  const payment = { id: 'paid-once', bill_id: 'fixed', occurred_on: '2026-11-02', direction: 'expense', category: 'bill', amount_cents: 3900 };
+  const result = M.monthlyMoney({
+    bills: [fixed, fixed, { id: 'fixed-unknown', month: '2026-11-01', amount_cents: null, variable: false }, { id: 'variable-known', month: '2026-11-01', amount_cents: 1500, variable: true }, { id: 'variable-unknown', month: '2026-11-01', amount_cents: null, variable: true }],
+    moneyEntries: [payment, payment, { id: 'food', occurred_on: '2026-11-04', direction: 'expense', category: 'food', amount_cents: 700 }, { id: 'reversed', bill_id: 'variable-known', occurred_on: '2026-11-03', direction: 'expense', category: 'bill', amount_cents: 1400, voided_at: '2026-11-04' }]
+  }, '2026-11');
+  assert.equal(result.bills_fixed_planned_cents, 4000);
+  assert.equal(result.bills_variable_planned_cents, 1500);
+  assert.equal(result.bills_planned_cents, 5500);
+  assert.equal(result.bills_fixed_missing_amounts, 1);
+  assert.equal(result.bills_variable_missing_amounts, 1);
+  assert.equal(result.bills_missing_amounts, 2);
+  assert.equal(result.bills_pending_cents, 1500);
+  assert.equal(result.bills_unpaid_missing_amounts, 2);
+  assert.equal(result.bills_paid_cents, 3900);
+  assert.equal(result.bills_paid_count, 1);
+  assert.equal(result.bills_unpaid_count, 3);
+  assert.equal(result.bill_expense_cents, 3900);
+  assert.equal(result.total_expense_cents, 4600);
+  assert.equal(result.food.spent_cents, 700);
+});
+
+test('a late bill payment clears its billing month while spending stays in its actual payment month', () => {
+  const bills = [{ id: 'late-bill', month: '2026-11-01', amount_cents: 1200, variable: false }];
+  const payment = { id: 'later-payment', bill_id: 'late-bill', occurred_on: '2026-12-02', direction: 'expense', category: 'bill', amount_cents: 1350 };
+  const november = M.monthlyMoney({ bills, moneyEntries: [payment] }, '2026-11');
+  const december = M.monthlyMoney({ bills, moneyEntries: [payment] }, '2026-12');
+  assert.deepEqual(november.paid_bill_ids, ['late-bill']);
+  assert.equal(november.bills_pending_cents, 0);
+  assert.equal(november.bills_unpaid_count, 0);
+  assert.equal(november.bills_paid_cents, 1350);
+  assert.equal(november.bill_expense_cents, 0);
+  assert.equal(november.total_expense_cents, 0);
+  assert.equal(december.bill_expense_cents, 1350);
+  assert.equal(december.total_expense_cents, 1350);
+  assert.equal(december.bills_paid_cents, 0, 'there is no December bill row to mark paid');
+  assert.equal(M.monthlyMoney({ bills, moneyEntries: [{ ...payment, voided_at: '2026-12-03' }] }, '2026-11').bills_pending_cents, 1200);
+});
+
+test('cancelled future bills stop counting as obligations without erasing history or actual payments', () => {
+  const snapshot = {
+    bills: [
+      { id: 'historical-fixed', series_id: 'stopped-series', month: '2026-11-01', amount_cents: 900, variable: false },
+      { id: 'active-fixed', month: '2026-12-01', amount_cents: 1200, variable: false },
+      { id: 'active-variable', month: '2026-12-01', amount_cents: 300, variable: true },
+      { id: 'unknown-variable', month: '2026-12-01', amount_cents: null, variable: true },
+      { id: 'cancelled-fixed', series_id: 'stopped-series', month: '2026-12-01', amount_cents: 900, variable: false, cancelled: true },
+      { id: 'cancelled-variable', month: '2026-12-01', amount_cents: 800, variable: true, cancelled: true },
+      { id: 'cancelled-unknown-fixed', month: '2026-12-01', amount_cents: null, variable: false, cancelled: true },
+      { id: 'cancelled-unknown-variable', month: '2026-12-01', amount_cents: null, variable: true, cancelled: true },
+      { id: 'cancelled-with-payment', month: '2026-12-01', amount_cents: 400, variable: false, cancelled: true },
+      { id: 'cancelled-only-month', month: '2027-01-01', amount_cents: null, variable: true, cancelled: true }
+    ],
+    moneyEntries: [{ id: 'actual-payment', bill_id: 'cancelled-with-payment', occurred_on: '2026-12-03', direction: 'expense', category: 'bill', amount_cents: 450 }]
+  };
+  const original = structuredClone(snapshot);
+  const december = M.monthlyMoney(snapshot, '2026-12');
+  assert.equal(december.bills_fixed_planned_cents, 1200);
+  assert.equal(december.bills_variable_planned_cents, 300);
+  assert.equal(december.bills_planned_cents, 1500);
+  assert.equal(december.bills_pending_cents, 1500);
+  assert.equal(december.bills_fixed_missing_amounts, 0);
+  assert.equal(december.bills_variable_missing_amounts, 1);
+  assert.equal(december.bills_missing_amounts, 1);
+  assert.equal(december.bills_unpaid_count, 3);
+  assert.equal(december.bills_unpaid_missing_amounts, 1);
+  assert.equal(december.bills_paid_count, 1);
+  assert.equal(december.bills_paid_cents, 450);
+  assert.deepEqual(december.paid_bill_ids, ['cancelled-with-payment']);
+  assert.equal(december.bill_expense_cents, 450);
+  assert.equal(december.total_expense_cents, 450);
+  const history = M.monthlyBillHistory(snapshot);
+  assert.deepEqual(history.map(row => row.month), ['2027-01', '2026-12', '2026-11']);
+  assert.equal(history[0].bills_planned_cents, 0);
+  assert.equal(history[0].bills_pending_cents, 0);
+  assert.equal(history[0].bills_unpaid_count, 0);
+  assert.equal(history[0].bills_missing_amounts, 0);
+  assert.equal(history[2].bills_fixed_planned_cents, 900, 'stopping a future occurrence does not change an earlier month');
+  assert.deepEqual(snapshot, original);
+});
+
+test('bill history uses saved monthly amounts and includes payment-only and reversed months', () => {
+  const snapshot = {
+    bills: [
+      { id: 'old-fixed', month: '2026-10-01', amount_cents: 1000, variable: false },
+      { id: 'nov-variable', month: '2026-11-01', amount_cents: null, variable: true },
+      { id: 'new-fixed', month: '2026-12-01', amount_cents: 2000, variable: false },
+      { id: 'invalid-month', month: '2026-13-01', amount_cents: 9999, variable: false }
+    ],
+    moneyEntries: [
+      { id: 'late-payment', bill_id: 'old-fixed', occurred_on: '2026-11-05', direction: 'expense', category: 'bill', amount_cents: 900 },
+      { id: 'reversed-payment', occurred_on: '2027-01-02', direction: 'expense', category: 'bill', amount_cents: 500, voided_at: '2027-01-03' },
+      { id: 'food-only', occurred_on: '2026-09-01', direction: 'expense', category: 'food', amount_cents: 700 }
+    ]
+  };
+  const original = structuredClone(snapshot);
+  const history = M.monthlyBillHistory(snapshot);
+  assert.deepEqual(history.map(row => row.month), ['2027-01', '2026-12', '2026-11', '2026-10']);
+  const byMonth = Object.fromEntries(history.map(row => [row.month, row]));
+  assert.equal(byMonth['2026-10'].bills_fixed_planned_cents, 1000);
+  assert.equal(byMonth['2026-10'].bill_expense_cents, 0);
+  assert.equal(byMonth['2026-11'].bill_expense_cents, 900);
+  assert.equal(byMonth['2026-11'].bills_variable_missing_amounts, 1);
+  assert.equal(byMonth['2026-12'].bills_fixed_planned_cents, 2000);
+  assert.equal(byMonth['2027-01'].bill_expense_cents, 0);
+  assert.deepEqual(snapshot, original);
+  assert.deepEqual(M.monthlyBillHistory({}), []);
 });

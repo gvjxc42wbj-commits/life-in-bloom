@@ -481,6 +481,60 @@ test('receipt and manual money writes use one server transaction and strip unrel
   h.store.destroy();
 });
 
+test('an accepted receipt with a cached offline readback stays unconfirmed and retries the same request once', async () => {
+  const cacheStorage = memory();
+  const h = harness({ storeOptions: { cacheStorage, isOnline: () => true } });
+  await h.store.init();
+  const originalRpc = h.client.rpc, requests = [];
+  h.client.rpc = async (name, args) => {
+    if (name !== 'bloom_record_receipt') return originalRpc(name, args);
+    const receipt = copy(args.p_receipt);
+    requests.push(receipt);
+    const saved = h.rows.bloom_receipts.find(row => row.id === receipt.id);
+    if (saved) assert.deepEqual(saved.request_payload, receipt);
+    else {
+      // The server accepted this purchase. Its first response is followed by a
+      // failed read, so the store can see only its older cached household copy.
+      h.rows.bloom_receipts.push({ id: receipt.id, household_id: 'house-one', purchased_on: receipt.purchased_on, items: receipt.items, total_cents: 200, request_payload: receipt });
+      h.rows.bloom_inventory.push({ id: 'receipt-stock', household_id: 'house-one', receipt_id: receipt.id, name: 'Rice', quantity: 1, unit: 'each', location: 'pantry', revision: 1 });
+      h.rows.bloom_money_entries.push({ id: 'receipt-money', household_id: 'house-one', receipt_id: receipt.id, occurred_on: receipt.purchased_on, direction: 'expense', category: 'food', amount_cents: 200 });
+      h.rows.bloom_shopping_items[0].checked = true;
+      h.rows.bloom_shopping_items[0].revision++;
+      h.controls.nextReadError = 'Failed to fetch after receipt acceptance';
+    }
+    return { data: receipt.id, error: null };
+  };
+  const payload = { id: 'receipt-with-lost-readback', purchased_on: '2026-11-04', store: 'Example shop', payer_slot: 1, notes: '', items: [
+    { name: 'Rice', category: 'food', packs: 1, line_total_cents: 200, stock_quantity: 1, stock_unit: 'each', location: 'pantry', shopping_item_id: 'cloud-one', shopping_revision: 1 }
+  ] };
+  try {
+    let initiallyConfirmed = false;
+    await assert.rejects(h.store.recordReceipt(payload).then(result => { initiallyConfirmed = true; return result; }), /save reached the server.*updated records/i);
+    assert.equal(initiallyConfirmed, false, 'the caller must retain its draft instead of announcing refreshed purchase totals');
+    let visible = h.store.snapshot();
+    assert.equal(visible.offline, true);
+    assert.equal(visible.shoppingItems[0].checked, false, 'the stale copy must not invent a successful checkmark');
+    assert.equal(visible.receipts.length, 0);
+    assert.equal(visible.inventory.length, 0);
+    assert.equal(visible.moneyEntries.length, 0);
+    assert.equal(h.rows.bloom_receipts.length, 1, 'the accepted write already exists on the simulated server');
+    await assert.rejects(h.store.recordReceipt(payload), /Reconnect and refresh/i);
+    assert.equal(requests.length, 1, 'offline retry must not make another mutation request');
+
+    await h.store.refresh();
+    assert.equal(h.store.snapshot().offline, false);
+    assert.equal(await h.store.recordReceipt(payload), payload.id);
+    assert.equal(requests.length, 2, 'one initial request and one online retry');
+    assert.deepEqual(requests[1], requests[0], 'the retry keeps the original receipt ID, shopping revision, and purchase details');
+    visible = h.store.snapshot();
+    assert.equal(visible.shoppingItems[0].checked, true);
+    assert.equal(visible.receipts.length, 1);
+    assert.equal(visible.inventory.length, 1);
+    assert.equal(visible.moneyEntries.length, 1);
+    assert.equal(visible.moneyEntries[0].amount_cents, 200);
+  } finally { h.store.destroy(); }
+});
+
 test('recurring plan retries never duplicate or reopen a completed monthly shopping item', async () => {
   const h = harness(); await h.store.init();
   const item = { source_key: 'recurring:2026-11:product-one', month: '2026-11-01', product_id: 'product-one', name: 'Oats',
@@ -504,7 +558,52 @@ test('household export excludes personal records and import checks the exact hou
   await h.store.importHouseholdBackup({ ...backup, ignored: 'do not transmit' });
   const call = h.calls.find(call => call.rpc === 'bloom_restore_household_backup');
   assert.equal(Object.hasOwn(call.args.p_backup, 'ignored'), false);
+  assert.deepEqual(backup.data.billRules, []);
+  const legacy = copy(backup); delete legacy.data.billRules;
+  await h.store.importHouseholdBackup(legacy);
+  assert.deepEqual(h.calls.filter(call => call.rpc === 'bloom_restore_household_backup').at(-1).args.p_backup.data.billRules, []);
   h.store.destroy();
+});
+
+test('bill operations send only reviewed monthly and recurrence fields and create no direct money writes', async () => {
+  const h = harness(); await h.store.init();
+  const row = { request_id: '77777777-7777-4777-8777-777777777777', month: '2026-11-01', name: 'Example utility', amount_cents: null, variable: true, due_on: null, notes: 'Use the actual bill.', repeat_monthly: true, apply_future: true, household_id: 'untrusted-house', paid: true, access_token: 'excluded' };
+  await h.store.saveBill(row);
+  const saved = h.calls.find(call => call.rpc === 'bloom_save_bill').args.p_bill;
+  assert.deepEqual(saved, { id: row.request_id, month: row.month, name: row.name, amount_cents: null, variable: true, due_on: null, notes: row.notes, repeat_monthly: true, apply_future: true });
+  await h.store.saveBill({ ...row, id: row.request_id, revision: 4, amount_cents: 12500, apply_future: false });
+  assert.equal(h.calls.filter(call => call.rpc === 'bloom_save_bill').at(-1).args.p_bill.revision, 4);
+  await h.store.ensureBillMonth('2026-12');
+  assert.deepEqual(h.calls.find(call => call.rpc === 'bloom_ensure_bill_month').args, { p_month: '2026-12-01' });
+  await h.store.stopBillSeries({ series_id: 'series-one' }, '2027-01');
+  assert.deepEqual(h.calls.find(call => call.rpc === 'bloom_stop_bill_series').args, { p_series_id: 'series-one', p_from_month: '2027-01-01' });
+  assert.equal(h.calls.filter(call => call.operation && call.operation !== 'select').length, 0);
+  assert.equal(h.calls.filter(call => call.rpc === 'bloom_record_money_entry').length, 0);
+  assert.throws(() => h.store.ensureBillMonth('2026-99'), /valid month/);
+  h.store.destroy();
+});
+
+test('refresh prepares the current New York billing month and reloads monthly records without creating payments', async () => {
+  const h = harness({ rows: { bloom_bill_rules: [{ id: 'rule-one', household_id: 'house-one', series_id: 'series-one', revision: 1, effective_month: '2026-11-01', name: 'Example fixed bill', amount_cents: 10000, active: true }] }, storeOptions: { getNow: () => new Date('2026-12-01T02:00:00Z') } });
+  const original = h.client.rpc;
+  h.client.rpc = async (name, args) => {
+    if (name !== 'bloom_ensure_bill_month') return original(name, args);
+    h.calls.push({ rpc: name, args: copy(args) });
+    assert.equal(args.p_month, '2026-11-01', 'UTC midnight has not yet started December in the household timezone');
+    if (!h.rows.bloom_bills.length) h.rows.bloom_bills.push({ id: 'bill-one', household_id: 'house-one', month: args.p_month, series_id: 'series-one', name: 'Example fixed bill', amount_cents: 10000, variable: false });
+    return { data: { inserted: 1 }, error: null };
+  };
+  try {
+    let current = await h.store.init();
+    assert.equal(current.billRules.length, 1);
+    assert.equal(current.bills.length, 1);
+    assert.equal(current.bills[0].amount_cents, 10000);
+    current = await h.store.refresh();
+    assert.equal(current.bills.length, 1);
+    assert.equal(current.moneyEntries.length, 0);
+    assert.equal(current.receipts.length, 0);
+    assert.equal(h.store.exportHousehold().data.billRules[0].id, 'rule-one');
+  } finally { h.store.destroy(); }
 });
 
 test('product insertion retry compares nested JSON by value rather than database key order', async () => {

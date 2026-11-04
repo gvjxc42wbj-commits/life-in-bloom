@@ -160,3 +160,11 @@
   .grocery-preview-list li { grid-template-columns: minmax(0, 1fr); }
   .grocery-stock-amount { font-size: 18px; }
 }
+.grocery-purchase-notice {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border, #efbdd0);
+  border-radius: 1rem;
+  background: #fff2f7;
+}
+.grocery-purchase-notice p { margin: .5rem 0 .85rem; }
