@@ -2,10 +2,12 @@
 'use strict';
 (() => {
   const D = window.BloomData;
+  const I = window.BloomInsights;
+  const A = window.BloomAppointments;
   const $ = selector => document.querySelector(selector);
   const content = $('#content');
   const noticeEl = $('#notice');
-  if (!D) {
+  if (!D || !I || !A) {
     noticeEl.hidden = false;
     noticeEl.textContent = 'The app could not finish loading. Please refresh this page.';
     return;
@@ -47,7 +49,7 @@
     month: initialParsed.getMonth(),
     date: initialDate,
     week: D.weekStart(initialDate),
-    view: 'week',
+    view: 'circle',
     mode: 'sleep',
     activityId: '',
     rangeStart: 0,
@@ -98,7 +100,7 @@
     return COLORS[6].color;
   }
   function moodColor(feeling) {
-    return D.MOOD_OPTIONS.find(option => option.label.toLocaleLowerCase() === feeling.toLocaleLowerCase())?.color || '#e9e2f5';
+    return D.MOOD_OPTIONS.find(option => option.label.toLocaleLowerCase() === feeling.toLocaleLowerCase())?.color || '#fae1e8';
   }
   function monthKeys() { return Array.from({ length: dayCount(state.year, state.month) }, (_, index) => dateKey(state.year, state.month, index + 1)); }
   function formatHour(value) { return Number.isInteger(value) ? String(value) : value.toFixed(1); }
@@ -188,19 +190,48 @@
   }
   function hourActivities(record, hour) { return D.awakeActivities(record, hour, state.data.activities); }
 
+  const appointments = A.createController({
+    getData: () => state.data,
+    getWeekStart: () => state.week,
+    canEdit,
+    notify: showNotice,
+    refresh: () => renderKeepScroll(),
+    commitData(candidate) {
+      if (!canEdit()) return false;
+      try {
+        const normalized = D.normalizeData(candidate);
+        D.saveData(storage, normalized);
+        state.data = normalized;
+        state.unsaved = false;
+        noticeEl.hidden = true;
+        updateSaveState();
+        return true;
+      } catch (_) {
+        showNotice('This appointment could not be saved. Your current entries have not been replaced. Please keep the appointment form open and try again.', true);
+        return false;
+      }
+    }
+  });
+
   function renderWeek() {
     const keys = Array.from({ length: 7 }, (_, index) => shiftDate(state.week, index));
+    const weekFrom = parseDate(state.week);
+    weekFrom.setHours(8, 0, 0, 0);
+    const weekUntil = parseDate(shiftDate(state.week, 7));
+    weekUntil.setHours(8, 0, 0, 0);
+    const planned = D.appointmentsInWindow(state.data.appointments || [], weekFrom, weekUntil);
     const end = keys[6];
     const firstYear = parseDate(state.week).getFullYear();
     const lastYear = parseDate(end).getFullYear();
     const label = `${dateMedium(state.week)}${firstYear !== lastYear ? ', ' + firstYear : ''} – ${dateMedium(end)}, ${lastYear}`;
     let html = `<div class='month-nav week-nav'><div class='nav-group'><button type='button' class='nav-btn' data-action='prev-week' aria-label='Previous week'>‹</button><button type='button' class='nav-btn' data-action='next-week' aria-label='Next week'>›</button></div><div class='week-heading'><h2>Your week in Bloom</h2><p class='week-dates'>${label}</p></div><button type='button' class='today-btn' data-action='this-week'>This week</button></div>`;
-    html += `<section class='panel'><div class='panel-title-row'><h2>Open a daily log</h2><span class='pill'>8 AM → 8 AM</span></div><div class='week-day-links'>`;
+    html += `<section class='panel'><div class='panel-title-row'><h2>Open a daily log</h2><span class='pill'>8 AM → 8 AM</span></div><div class='week-jump'><label for='week-jump-date'>Go to week of</label><input type='date' id='week-jump-date' min='0001-01-01' max='9999-12-31' value='${state.week}'></div><div class='week-day-links'>`;
     for (const key of keys) {
       const date = parseDate(key);
       html += `<button type='button' class='week-day-link ${key === trackingToday() ? 'today' : ''}' data-open-date='${key}' aria-label='Open daily log for ${dateLong(key)}'><span>${date.toLocaleDateString('en-US', { weekday: 'short' })}</span><strong>${date.getDate()}</strong></button>`;
     }
     html += `</div><p class='caption'>Record your sleep and activities in the daily log. Add a mood to each hour you mark awake.</p></section>`;
+    html += appointments.renderAgenda(state.week);
     html += `<section class='panel'><div class='panel-title-row'><h2>Your weekly mood grid</h2><span class='pill'>One hour per row</span></div><p class='week-grid-caption' id='week-grid-help'>Tap an awake hour to add or edit how you felt. Scroll sideways to see all seven days. After midnight, times belong to the following calendar day.</p><div class='week-scroll' tabindex='0' role='region' aria-label='Scrollable weekly mood grid' aria-describedby='week-grid-help'><table class='week-grid'><caption class='sr-only'>Mood and activities for ${label}. Each column is an 8 AM to 8 AM tracking day.</caption><thead><tr><th scope='col' class='week-time-col'>Time</th>`;
     for (const key of keys) {
       const date = parseDate(key);
@@ -221,7 +252,7 @@
         if (mood && !awake) html += `<span class='week-status'>Awake time changed</span>`;
         else if (awake && !activities.length) html += `<span class='week-status'>Awake · no activity</span>`;
         for (const activity of activities) html += `<span class='week-activity' style='--activity-color:${activity.color}'><span aria-hidden='true'>${escapeText(activity.icon)}</span> ${escapeText(activity.name)}</span>`;
-        html += '</button></td>';
+        html += `</button>${appointments.renderHour(planned, key, hour)}</td>`;
       }
       html += '</tr>';
     }
@@ -296,19 +327,42 @@ function renderMonth(){
   html+=`</div></div><div class="dot-key"><span><i class="dot-example"></i> 1 hour</span><span><i class="dot-example half"></i> 30 minutes</span><span><i class="dot-example blank"></i> Not recorded</span></div><div class="hint"><strong>How to read it:</strong> Circles fill as you record actual or estimated sleep on each day. If you sleep more than 12 hours, the row shows the real total even though there are only 12 circles. Tap any row for a detailed 24-hour log.</div></div>`;
   return html;
 }
+  function renderMonthInsights() {
+    const summary = I.summarizeMonth(state.data, state.year, state.month);
+    const hours = value => formatHour(Math.round(value * 10) / 10);
+    let html = `<section class='panel month-insights'><div class='panel-title-row'><div><h2>Month at a glance</h2><p class='week-dates'>${monthLabel()}</p></div><span class='pill'>Your recorded history</span></div><div class='insight-metrics'><div class='insight-metric'><small>Average sleep recorded</small><strong>${summary.averageSleep === null ? '—' : hours(summary.averageSleep) + ' hrs'}</strong><span>${summary.daysWithSleep} ${summary.daysWithSleep === 1 ? 'day' : 'days'} with sleep totals</span></div><div class='insight-metric'><small>Sleep + mood together</small><strong>${summary.pairedDays} ${summary.pairedDays === 1 ? 'day' : 'days'}</strong><span>Both entered in the same tracking day</span></div><div class='insight-metric'><small>Hourly mood entries</small><strong>${summary.moodEntryCount}</strong><span>Across ${summary.daysWithMood} ${summary.daysWithMood === 1 ? 'day' : 'days'}</span></div></div><div class='summary-row'><span>Sleep hours recorded this month</span><strong>${hours(summary.sleepHoursTotal)} hrs</strong></div>`;
+    html += `<div class='insight-summary'><h3>Sleep alongside mood</h3><p>${summary.pairedDays === 0 ? 'Add sleep and hourly feelings to see your own records compared here.' : summary.pairedDays === 1 ? 'One tracking day has both sleep and mood entries so far. Add more days to build your comparison.' : `Comparing ${summary.pairedDays} tracking days with both sleep and mood entries.`}</p></div>`;
+    if (summary.comparisons.length) {
+      html += `<div class='insight-pairs'>`;
+      for (const comparison of summary.comparisons) {
+        const width = Math.min(100, Math.max(0, comparison.averageSleep / 24 * 100));
+        html += `<div class='insight-pair'><div class='insight-comparison-text'><strong>${escapeText(comparison.feeling)}</strong><span>${hours(comparison.averageSleep)} hrs on average · ${comparison.days} ${comparison.days === 1 ? 'day' : 'days'}</span></div><div class='insight-bar' aria-hidden='true'><span class='insight-bar-fill' style='width:${width.toFixed(2)}%;--mood-color:${moodColor(comparison.feeling)}'></span></div><p class='caption'>${comparison.days === 1 ? 'One observation; more days will add context.' : `Recorded sleep ranged from ${hours(comparison.minSleep)} to ${hours(comparison.maxSleep)} hours on days you logged this feeling.`}</p></div>`;
+      }
+      html += '</div>';
+    }
+    html += `<details class='insight-disclosure'><summary>How these comparisons work</summary><p>We compare feelings with sleep recorded in the <strong>same 8 AM–8 AM tracking day</strong>. This is a look at entries that occurred together; it does not show that sleep caused a feeling or that sleep happened before it.</p><p>Each day is counted once for each feeling, even if you logged that feeling several times. A day can include several feelings. Missing sleep totals are left out; a fully recorded all-awake day counts as zero.</p><p>These are recorded hours. Unmarked or Unsure time can make sleep totals incomplete.${summary.incompleteSleepDays ? ` ${summary.incompleteSleepDays} ${summary.incompleteSleepDays === 1 ? 'day with a sleep total has' : 'days with sleep totals have'} some unmarked or Unsure time.` : ''} No mood score is assumed.</p></details></section>`;
+    html += `<section class='panel month-insights'><div class='panel-title-row'><h2>Your dated sleep &amp; mood history</h2><span class='pill'>${monthLabel()}</span></div><p class='caption'>Dates identify the 8 AM start of each tracking day. Tap a date to review or update its entries.</p>`;
+    if (!summary.recordedDays.length) return html + `<div class='insight-empty'>Your dated history will appear here as you record sleep, activities, or feelings. Use the month arrows to return to earlier entries.</div></section>`;
+    html += `<div class='history-scroll' tabindex='0' role='region' aria-label='Dated sleep and mood history for ${monthLabel()}'><table class='history-table'><caption class='sr-only'>Recorded sleep and feelings in ${monthLabel()}</caption><thead><tr><th scope='col'>Tracking date</th><th scope='col'>Sleep recorded</th><th scope='col'>Feelings logged</th></tr></thead><tbody>`;
+    for (const day of summary.recordedDays) {
+      html += `<tr><th scope='row'><button type='button' class='history-date' data-open-date='${day.key}' aria-label='Open ${dateLong(day.key)}'>${dateMedium(day.key)}<small>${parseDate(day.key).toLocaleDateString('en-US', { weekday: 'short' })}</small></button></th><td>${day.knownSleep ? `<strong>${hours(day.sleepHours)} hrs</strong>${day.incomplete ? '<small>Partial log</small>' : ''}` : '<span class="muted">Not recorded</span>'}</td><td><div class='history-moods'>${day.moods.length ? day.moods.map(mood => `<span class='history-mood' style='--mood-color:${moodColor(mood.feeling)}'>${escapeText(mood.feeling)}${mood.entries > 1 ? ' · ' + mood.entries : ''}</span>`).join('') : '<span class="muted">No mood entered</span>'}</div></td></tr>`;
+    }
+    return html + `</tbody></table></div><p class='caption'>A number beside a feeling is the number of hourly entries with that feeling. Plans and appointments are not counted as completed activities or mood entries.</p></section>`;
+  }
+
 function polar(cx,cy,r,angle){return {x:cx+r*Math.cos(angle),y:cy+r*Math.sin(angle)};}
 function sector(cx,cy,inner,outer,start,end){const a=polar(cx,cy,outer,start),b=polar(cx,cy,outer,end),c=polar(cx,cy,inner,end),d=polar(cx,cy,inner,start);return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} A ${outer} ${outer} 0 0 1 ${b.x.toFixed(2)} ${b.y.toFixed(2)} L ${c.x.toFixed(2)} ${c.y.toFixed(2)} A ${inner} ${inner} 0 0 0 ${d.x.toFixed(2)} ${d.y.toFixed(2)} Z`;}
 function renderCircle(){
   const all=monthKeys(), n=all.length,metrics=statsForMonth();
-  let svg=`<svg viewBox="0 0 420 420" role="img" aria-label="Circular monthly tracker. Tap a numbered segment to open that day."><defs><radialGradient id="moonHalo"><stop offset="0" stop-color="#fcf5ff"/><stop offset="1" stop-color="#fff9fd"/></radialGradient></defs><circle cx="210" cy="210" r="184" fill="#faf7fd"/>`;
+  let svg=`<svg viewBox="0 0 420 420" role="img" aria-label="Circular monthly tracker. Tap a numbered segment to open that day."><defs><radialGradient id="moonHalo"><stop offset="0" stop-color="#fff5f8"/><stop offset="1" stop-color="#fff9fb"/></radialGradient></defs><circle cx="210" cy="210" r="184" fill="#fff3f7"/>`;
   for(let i=0;i<n;i++){
     const k=all[i],hrs=sleepHours(k),filled=hasSleepTotal(k),t0=-Math.PI/2+i*2*Math.PI/n,t1=-Math.PI/2+(i+1)*2*Math.PI/n;
     const pt=polar(210,210,167,(t0+t1)/2);const fill=filled?colorFor(hrs):'#fff';
     svg+=`<g class="ring-day" data-open-date="${k}" role="button" tabindex="0" aria-label="${dateLong(k)}: ${filled?formatHour(hrs)+' hours sleep logged':'no sleep logged'}"><title>${dateLong(k)}: ${filled?formatHour(hrs)+' hours logged':'not logged'}</title><path d="${sector(210,210,143,183,t0,t1)}" fill="${fill}" stroke="#998ab3" stroke-width="1.2"/><text x="${pt.x.toFixed(1)}" y="${pt.y.toFixed(1)}">${i+1}</text></g>`;
   }
-  svg+=`<circle cx="210" cy="210" r="135" fill="url(#moonHalo)" stroke="#e6d8ee" stroke-width="1.5"/><circle cx="194" cy="207" r="70" fill="#d8c8f4"/><circle cx="229" cy="174" r="70" fill="#fcf5ff"/><g fill="#d5b1a0"><text x="132" y="157" font-size="21">✦</text><text x="297" y="225" font-size="25">✧</text><text x="158" y="286" font-size="17">✧</text><text x="280" y="144" font-size="15">✦</text></g><text x="210" y="311" text-anchor="middle" font-family="Georgia,serif" font-size="15" fill="#947caa">rest • restore • bloom</text></svg>`;
+  svg+=`<circle cx="210" cy="210" r="135" fill="url(#moonHalo)" stroke="#efd3dd" stroke-width="1.5"/><circle cx="194" cy="207" r="70" fill="#f3c4d5"/><circle cx="229" cy="174" r="70" fill="#fff5f8"/><g fill="#d5b1a0"><text x="132" y="157" font-size="21">✦</text><text x="297" y="225" font-size="25">✧</text><text x="158" y="286" font-size="17">✧</text><text x="280" y="144" font-size="15">✦</text></g><text x="210" y="311" text-anchor="middle" font-family="Georgia,serif" font-size="15" fill="#9c6076">rest • restore • bloom</text></svg>`;
   return `${headerForMonth()}<section class="panel"><div class="panel-title-row"><h2>Your monthly moon wheel</h2><span class="pill">Tap a segment</span></div><div class="wheel-wrap">${svg}</div><div class="wheel-legend">${COLORS.map(c=>`<div class="legend-item"><span class="legend-color" style="background:${c.color}"></span>${c.label}</div>`).join('')}</div><p class="caption">One segment per day. An empty segment means sleep is not recorded yet. Only a fully recorded all-awake day counts as zero sleep. Every color is information, not a grade.</p></section>
-  <section class="panel"><h2>Month at a glance</h2><div class="summary-row"><span>Days with sleep totals</span><strong>${metrics.keys.length} of ${n}</strong></div><div class="summary-row"><span>Average sleep recorded</span><strong>${metrics.average===null?'Not enough information':formatHour(Math.round(metrics.average*10)/10)+' hrs'}</strong></div><div class="summary-row"><span>Logged sleep hours (total)</span><strong>${formatHour(metrics.total)} hrs</strong></div><div class="summary-row"><span>Nightly reference target</span><strong>8 hrs, flexible</strong></div><div class="hint">The wheel shows the hours recorded in each 8 AM–8 AM day. It cannot tell whether you were genuinely asleep without a reliable observation or device measurement.</div></section>`;
+  ${renderMonthInsights()}`;
 }
 
   function render() {
@@ -497,6 +551,7 @@ function renderCircle(){
   });
 
   content.addEventListener('click', event => {
+    if (appointments.handleClick(event)) return;
     const open = event.target.closest('[data-open-date]');
     if (open) { openDate(open.dataset.openDate); return; }
     const hour = event.target.closest('[data-mood-hour]');
@@ -557,10 +612,35 @@ function renderCircle(){
     }
   });
   content.addEventListener('change', event => {
+    if (event.target.id === 'week-jump-date' && !Number.isNaN(parseDate(event.target.value).getTime())) {
+      state.week = D.weekStart(event.target.value);
+      renderKeepScroll('#week-jump-date');
+      return;
+    }
     if (event.target.id === 'range-start') state.rangeStart = Number(event.target.value);
     if (event.target.id === 'range-end') state.rangeEnd = Number(event.target.value);
   });
   for (const button of document.querySelectorAll('.view-tab')) button.addEventListener('click', () => changeView(button.dataset.view));
+  const appMenu = $('#app-menu');
+  const menuButton = $('#menu-btn');
+  menuButton.addEventListener('click', () => {
+    menuButton.setAttribute('aria-expanded', 'true');
+    appMenu.showModal();
+  });
+  $('#close-menu-btn').addEventListener('click', () => appMenu.close());
+  appMenu.addEventListener('close', () => menuButton.setAttribute('aria-expanded', 'false'));
+  $('#open-sleep-mood').addEventListener('click', () => {
+    appMenu.close();
+    changeView('circle');
+  });
+  $('#menu-help-btn').addEventListener('click', () => {
+    appMenu.close();
+    $('#help-dialog').showModal();
+  });
+  $('#menu-export-btn').addEventListener('click', () => {
+    appMenu.close();
+    $('#export-btn').click();
+  });
   $('#help-btn').addEventListener('click', () => $('#help-dialog').showModal());
   $('#close-help').addEventListener('click', () => $('#help-dialog').close());
   $('#got-it-btn').addEventListener('click', () => $('#help-dialog').close());
@@ -580,8 +660,8 @@ function renderCircle(){
     const filenameDate = dateKey(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
     if (state.readOnly) {
       try {
-        const raw = storage.getItem(D.STORAGE_KEY) || storage.getItem(D.LEGACY_KEY);
-        if (!raw) throw new Error('No readable stored copy.');
+        const raw = D.STORAGE_KEYS.map(key => storage.getItem(key)).find(value => value !== null);
+        if (raw === undefined) throw new Error('No readable stored copy.');
         downloadText(raw, `life-in-bloom-recovery-${filenameDate}.json`);
         showNotice('Your unchanged saved data was downloaded for recovery. Keep this file when asking for help.', true);
       } catch (_) {
@@ -591,7 +671,7 @@ function renderCircle(){
     }
     try {
       downloadText(JSON.stringify(D.makeBackup(state.data), null, 2), `life-in-bloom-backup-${filenameDate}.json`);
-      showNotice(state.unsaved ? 'Your latest changes were included in the downloaded backup. This browser still could not save them.' : 'Your backup includes sleep, activities, hourly moods and notes. Keep the downloaded JSON file somewhere safe.', state.unsaved);
+      showNotice(state.unsaved ? 'Your latest changes were included in the downloaded backup. This browser still could not save them.' : 'Your backup includes sleep, activities, hourly moods, notes and appointments. Keep the downloaded JSON file somewhere safe.', state.unsaved);
     } catch (_) {
       showNotice('A backup could not be prepared. Please keep this page open and ask for help.', true);
     }
@@ -607,13 +687,13 @@ function renderCircle(){
     }
     try {
       const data = D.parseBackup(await file.text());
-      if (!window.confirm('Replace the entries on this device with this backup? Your current sleep, moods and activities will be replaced. Export first if you need to keep them.')) return;
+      if (!window.confirm('Replace the entries on this device with this backup? Your current sleep, moods, activities and appointments will be replaced. Export first if you need to keep them.')) return;
       D.saveData(storage, data);
       state.data = data;
       state.unsaved = false;
       if (!activityFor(state.activityId)) state.activityId = '';
       render();
-      showNotice('Your backup was imported. Sleep, moods and activities are available on this device.');
+      showNotice('Your backup was imported. Sleep, moods, activities and appointments are available on this device.');
     } catch (error) {
       showNotice(`The backup could not be imported. Your entries have not been replaced. ${error.message || 'Please choose a valid backup file.'}`, true);
     } finally {

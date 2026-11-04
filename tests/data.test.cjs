@@ -88,7 +88,7 @@ test('migrating v1 preserves every sleep record and leaves the original stored c
   assert.equal(loaded.migrated, true);
   assert.equal(loaded.readOnly, false);
   assert.equal(loaded.warning, '');
-  assert.equal(loaded.data.version, 2);
+  assert.equal(loaded.data.version, 3);
   assert.equal(storage.getItem(Data.LEGACY_KEY), original);
   assert.deepEqual(Object.keys(loaded.data.records), Object.keys(records));
   for (const [date, oldRecord] of Object.entries(records)) {
@@ -105,10 +105,10 @@ test('migrating v1 preserves every sleep record and leaves the original stored c
   assert.equal(storage.writes.length, 1);
 });
 
-test('an intentionally empty v2 save does not resurrect older v1 entries', () => {
+test('an intentionally empty v3 save does not resurrect older v1 entries', () => {
   const storage = memoryStorage({
     [Data.LEGACY_KEY]: JSON.stringify(legacyRecords()),
-    [Data.STORAGE_KEY]: JSON.stringify({ version: 2, records: {}, activities: [] })
+    [Data.STORAGE_KEY]: JSON.stringify({ version: 3, records: {}, activities: [], appointments: [] })
   });
   const before = storage.snapshot();
 
@@ -121,8 +121,8 @@ test('an intentionally empty v2 save does not resurrect older v1 entries', () =>
   assert.equal(storage.writes.length, 0);
 });
 
-test('unreadable or unsupported v2 saves become read-only without falling back or replacing data', () => {
-  for (const saved of ['{broken', 'null', JSON.stringify({ version: 3, records: {} })]) {
+test('unreadable or unsupported v3 saves become read-only without falling back or replacing data', () => {
+  for (const saved of ['{broken', 'null', JSON.stringify({ version: 4, records: {} })]) {
     const storage = memoryStorage({
       [Data.LEGACY_KEY]: JSON.stringify(legacyRecords()),
       [Data.STORAGE_KEY]: saved
@@ -139,12 +139,12 @@ test('unreadable or unsupported v2 saves become read-only without falling back o
   }
 });
 
-test('v2 backup round trips preserve custom activities, two activities in an hour, moods, and notes', () => {
+test('v3 backup round trips preserve custom activities, two activities in an hour, moods, and notes', () => {
   const original = deepFreeze(richData());
   const backup = Data.makeBackup(original, new Date(OBSERVED_AT));
   const imported = Data.parseBackup(JSON.stringify(backup));
 
-  assert.equal(backup.version, 2);
+  assert.equal(backup.version, 3);
   assert.equal(backup.exportedAt, OBSERVED_AT);
   assert.deepEqual(imported, original);
   assert.deepEqual(imported.records['2026-11-03'].activities, original.records['2026-11-03'].activities);
@@ -168,7 +168,7 @@ test('v1 exported backups remain importable with their notes, quality, and Unsur
     assert.equal(imported.records[date].quality, record.quality);
     assert.equal(imported.records[date].notes, record.notes);
   }
-  assert.equal(imported.version, 2);
+  assert.equal(imported.version, 3);
   assert.ok(imported.activities.some(activity => activity.id === 'cooking' && activity.icon === '👩🏾‍🍳'));
 });
 

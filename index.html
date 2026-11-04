@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#f9f6fc" />
-  <meta name="description" content="A gentle personal tracker for daily sleep and activities, hourly moods, and a monthly moon wheel." />
+  <meta name="theme-color" content="#fff1f6" />
+  <meta name="description" content="Life in Bloom brings your sleep, feelings, daily activities, and weekly appointments together." />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Life in Bloom" />
@@ -12,15 +12,17 @@
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="stylesheet" href="./styles.css" />
-  <title>Life in Bloom · Sleep &amp; Mood</title>
+  <title>Life in Bloom</title>
 </head>
 <body>
   <div class="app-shell">
     <header class="app-header">
-      <div class="brand-mark" aria-hidden="true">☾</div>
+      <button class="menu-toggle" id="menu-btn" type="button" aria-label="Open Life in Bloom menu" aria-haspopup="dialog" aria-controls="app-menu" aria-expanded="false">
+        <span class="hamburger-lines" aria-hidden="true"><span></span><span></span><span></span></span>
+      </button>
       <div class="brand-text">
-        <div class="eyebrow">LIFE IN BLOOM</div>
-        <div class="brand-name">Sleep &amp; Mood<span class="star">✦</span></div>
+        <div class="brand-name">LIFE IN BLOOM</div>
+        <div class="brand-caption">Your personal journal &amp; planner</div>
       </div>
       <button class="icon-button" id="help-btn" type="button" title="How to use this tracker" aria-label="How to use this tracker">?</button>
     </header>
@@ -29,12 +31,12 @@
       <div class="welcome-banner">
         <div class="banner-stars" aria-hidden="true">✧ &nbsp; ✦ &nbsp; ✧</div>
         <h1>Welcome to Life in Bloom.</h1>
-        <p>A little space for your rest, your activities, and how you feel.</p>
+        <p>A little space for your days, your plans, and how you feel.</p>
       </div>
 
       <nav class="view-tabs" aria-label="Sleep and mood views">
-        <button type="button" class="view-tab active" data-view="week" aria-current="page">◫ &nbsp; Weekly Mood</button>
-        <button type="button" class="view-tab" data-view="circle">◉ &nbsp; Moon Wheel</button>
+        <button type="button" class="view-tab active" data-view="circle" aria-current="page">◉ &nbsp; Moon Wheel</button>
+        <button type="button" class="view-tab" data-view="week">◫ &nbsp; Weekly Mood</button>
         <button type="button" class="view-tab" data-view="day">☾ &nbsp; Daily Log</button>
       </nav>
       <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
@@ -48,23 +50,48 @@
         <label for="import-file" class="footer-button import-label">↑ Import backup</label>
         <input id="import-file" type="file" accept="application/json,.json" hidden />
       </div>
-      <p>Sleep and activities use 30-minute blocks; moods are recorded by hour. Unmarked time is unknown. Entries stay in this browser or installed app and do not automatically sync to other devices.</p>
+      <p>Sleep and activities use 30-minute blocks; moods are recorded by hour. Appointments are plans, separate from your logged time. Entries stay in this browser or installed app and do not automatically sync to other devices.</p>
     </footer>
   </div>
-  <dialog id="help-dialog" class="help-dialog">
+  <dialog id="app-menu" class="app-menu" aria-labelledby="app-menu-title">
+    <div class="menu-inner">
+      <div class="menu-heading">
+        <h2 id="app-menu-title">LIFE IN BLOOM</h2>
+        <button class="icon-button" id="close-menu-btn" type="button" aria-label="Close Life in Bloom menu">×</button>
+      </div>
+      <p class="menu-section-label">Your app</p>
+      <nav class="menu-sections" aria-label="Life in Bloom sections">
+        <button class="menu-section-button" id="open-sleep-mood" type="button" aria-current="page">
+          <span class="menu-section-icon" aria-hidden="true">☾</span>
+          <span><strong>Sleep &amp; Mood</strong><small>Rest, feelings &amp; weekly plans</small></span>
+          <span class="menu-chevron" aria-hidden="true">›</span>
+        </button>
+      </nav>
+      <div class="menu-tools" aria-label="App tools">
+        <button class="menu-tool" id="menu-help-btn" type="button"><span aria-hidden="true">?</span> How to use Life in Bloom</button>
+        <button class="menu-tool" id="menu-export-btn" type="button"><span aria-hidden="true">↓</span> Export backup</button>
+      </div>
+      <p class="menu-note">Your entries are stored on this device. Export a backup to keep another copy.</p>
+    </div>
+  </dialog>
+  <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title">
     <div class="dialog-inner">
-      <div class="dialog-top"><h2>How this tracker works</h2><button type="button" class="icon-button" id="close-help" aria-label="Close help">×</button></div>
+      <div class="dialog-top"><h2 id="help-title">Using Life in Bloom</h2><button type="button" class="icon-button" id="close-help" aria-label="Close help">×</button></div>
+      <p><strong>App menu:</strong> The three-line button at the top opens your app menu. Choose Sleep &amp; Mood to return to this section.</p>
+      <p><strong>Moon Wheel:</strong> Tap a segment to open that day's log. Month at a glance includes dated sleep and mood history, plus comparisons based on the feelings you recorded. The comparisons describe entries from the same 8 AM–8 AM tracking day; they do not establish that sleep caused a feeling.</p>
       <p><strong>Weekly mood:</strong> See seven tracking days, with one row per hour. Scroll the grid sideways on a small screen, or open a day using the date buttons. Tap an awake hour to record or edit how you felt.</p>
+      <p><strong>Appointments:</strong> Add plans for future dates or make them repeat. Use the appointment's usual calendar date and time. Planned appointments appear beside your hourly records; they do not automatically mark you Awake or add an activity or mood. Open an appointment to edit or remove it.</p>
       <p><strong>Daily log:</strong> Choose Asleep, Unsure, or Awake, then tap 30-minute blocks. Awake opens your activity choices. Pick Cooking, Piano, Sewing, Math, Language, or add an activity of your own. The time-range shortcut fills several blocks at once.</p>
       <p><strong>Hourly feelings:</strong> Each awake hour can have a feeling and an optional note. Suggested words are shortcuts; you can write your own. Activity labels show what you recorded doing in that hour. Changing a time block keeps any existing mood observation so you can review it.</p>
       <p><strong>Dates:</strong> Each tracking day runs from 8 AM to 8 AM the next morning. The after-midnight hours are labeled with their actual date. Weeks begin on Monday.</p>
-      <p><strong>Moon Wheel:</strong> Tap a segment of the circle to open that day's detail. Colors reflect estimated hours you recorded, not how well you did.</p>
-      <p><strong>Important:</strong> This is a self-reporting journal, not a medical sleep monitor. Logging time in bed as asleep will overestimate your sleep.</p>
-      <p><strong>Backups:</strong> Export includes sleep, activities, hourly moods, and your custom activity names. Earlier Sleep in Bloom backups can also be imported. Import replaces the current entries, so export first if you want to keep a copy.</p>
+      <p><strong>Sleep totals:</strong> Hours come from the time blocks you mark yourself. Partial records can be incomplete. A day with some activities recorded has an unknown sleep total until sleep is added or every block is explicitly marked Awake.</p>
+      <p><strong>Backups:</strong> Export includes sleep, activities, hourly moods, custom activity names, and appointments with their repeat settings. Earlier Sleep in Bloom backups can also be imported. Import replaces the current entries, so export first if you want to keep a copy.</p>
       <button type="button" class="button primary" id="got-it-btn">Got it</button>
     </div>
   </dialog>
   <script src="./bloom-data.js" defer></script>
+  <script src="./bloom-insights.js" defer></script>
+  <script src="./bloom-appointments.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 </html>
