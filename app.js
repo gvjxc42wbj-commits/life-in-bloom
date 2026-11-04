@@ -219,11 +219,29 @@
   function renderKeepScroll(focusSelector) {
     const top = window.scrollY;
     const weekLeft = $('.week-scroll')?.scrollLeft || 0;
+    const active = document.activeElement;
+    const focusedField = active && content.contains(active) ? active : null;
+    const preserveSelection = focusedField && (!focusSelector || content.querySelector(focusSelector) === focusedField) &&
+      typeof focusedField.selectionStart === 'number' && typeof focusedField.selectionEnd === 'number';
+    const selection = preserveSelection ? {
+      id: focusedField.id, start: focusedField.selectionStart, end: focusedField.selectionEnd,
+      direction: focusedField.selectionDirection || 'none'
+    } : null;
     render();
     if ($('.week-scroll')) $('.week-scroll').scrollLeft = weekLeft;
+    const focusTarget = focusSelector ? content.querySelector(focusSelector) : selection && selection.id ? document.getElementById(selection.id) : null;
+    // Restore text focus immediately: a later animation frame can miss a fast
+    // keystroke or move the caret after the user has focused another control.
+    if (focusTarget && content.contains(focusTarget)) {
+      focusTarget.focus({ preventScroll: true });
+      if (selection && typeof focusTarget.setSelectionRange === 'function') {
+        const length = focusTarget.value.length;
+        try { focusTarget.setSelectionRange(Math.min(selection.start, length), Math.min(selection.end, length), selection.direction); }
+        catch (_) { /* Some non-text input types do not support a selection. */ }
+      }
+    }
     requestAnimationFrame(() => {
       window.scrollTo({ top, behavior: 'auto' });
-      if (focusSelector) content.querySelector(focusSelector)?.focus({ preventScroll: true });
     });
   }
   function headerForMonth() {

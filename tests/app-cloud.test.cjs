@@ -13,16 +13,18 @@ const pagesSource = fs.readFileSync(root + '/bloom-pages.js', 'utf8');
 const personalSource = fs.readFileSync(root + '/bloom-personal.js', 'utf8');
 const grocerySource = fs.readFileSync(root + '/bloom-grocery.js', 'utf8');
 const foodSources = ['bloom-drafts.js','bloom-food-model.js','bloom-commerce.js','bloom-food.js'].map(name => ({ name, source:fs.readFileSync(root + '/' + name,'utf8') }));
-function createRuntime(seed = {}, failWrites = false) {
+function createRuntime(seed = {}, failWrites = false, options = {}) {
   const elements = new Map();
   const downloads = [];
+  const frames = [];
   const backing = new Map(Object.entries(seed));
   const classList = () => ({ toggle() {}, add() {}, remove() {} });
   const make = (id = '') => ({
     id, dataset: {}, classList: classList(), listeners: {}, hidden: false, value: '', innerHTML: '', textContent: '', disabled: false,
     addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); },
-    attributes: {}, setAttribute(name,value) { this.attributes[name]=value; }, removeAttribute(name) { delete this.attributes[name]; }, focus() {},
+    attributes: {}, setAttribute(name,value) { this.attributes[name]=value; }, removeAttribute(name) { delete this.attributes[name]; }, focus() { document.activeElement=this; },
     querySelector() { return null; }, querySelectorAll() { return []; },
+    contains(element) { return element === this || element?.parentNode === this; },
     insertAdjacentHTML(where, value) { this.innerHTML = where === 'afterbegin' ? value + this.innerHTML : this.innerHTML + value; },
     showModal() { this.open = true; }, close() { this.open = false; for (const fn of this.listeners.close || []) fn(); },
     remove() {}, click() { if (this.download) downloads.push(this); },
@@ -39,12 +41,37 @@ function createRuntime(seed = {}, failWrites = false) {
   const confirmations = [];
   let confirmAnswer = true;
   const document = {
+    activeElement: null,
     querySelector: selector => elements.get(selector) || null,
     querySelectorAll: selector => selector === '.view-tab' ? tabs : selector === '[data-page]' ? navs : [],
     getElementById: id => elements.get('#' + id) || null,
     createElement: () => make(),
     body: { appendChild(element) { if (element.id) elements.set('#' + element.id, element); } }
   };
+  // Model the browser behavior that matters for live search: replacing innerHTML
+  // removes focus and creates a different input with a new, initially zero caret.
+  const content = elements.get('#content');
+  let contentHtml = '';
+  Object.defineProperty(content, 'innerHTML', {
+    get() { return contentHtml; },
+    set(value) {
+      if (document.activeElement?.parentNode === content) document.activeElement = document.body;
+      elements.delete('#commerce-search');
+      contentHtml = value;
+      const search = /<input\b[^>]*id="commerce-search"[^>]*>/.exec(value);
+      if (search) {
+        const field = make('commerce-search');
+        field.parentNode = content; field.type = 'search'; field.dataset.commerceSearch = '';
+        field.value = (/\bvalue="([^"]*)"/.exec(search[0])?.[1] || '').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+        field.selectionStart = field.selectionEnd = 0; field.selectionDirection = 'none';
+        field.setSelectionRange = function(start, end, direction = 'none') {
+          this.selectionStart = start; this.selectionEnd = end; this.selectionDirection = direction;
+        };
+        elements.set('#commerce-search',field);
+      }
+    }
+  });
+  content.querySelector = selector => { const field = elements.get(selector); return field?.parentNode === content ? field : null; };
   const localStorage = {
     getItem: key => backing.has(key) ? backing.get(key) : null,
     setItem(key, value) { if (failWrites) throw new Error('quota'); backing.set(key, value); }, removeItem(key) { backing.delete(key); }
@@ -57,7 +84,7 @@ function createRuntime(seed = {}, failWrites = false) {
   const blobs = [];
   const context = vm.createContext({ window, document, Date: FixedDate, console, Blob,
     URL: { createObjectURL(blob) { blobs.push(blob); return 'blob:test'; }, revokeObjectURL() {} },
-    navigator: {}, location: { protocol: 'http:', hostname: '127.0.0.1' }, requestAnimationFrame: fn => fn(), setTimeout() {} });
+    navigator: {}, location: { protocol: 'http:', hostname: '127.0.0.1' }, requestAnimationFrame: fn => options.deferFrames ? frames.push(fn) : fn(), setTimeout() {} });
   vm.runInContext(dataSource, context, { filename: 'bloom-data.js' });
   vm.runInContext(insightsSource, context, { filename: 'bloom-insights.js' });
   vm.runInContext(appointmentsSource, context, { filename: 'bloom-appointments.js' });
@@ -82,7 +109,7 @@ function createRuntime(seed = {}, failWrites = false) {
     const key = attribute[1].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
     return Object.hasOwn(dataset, key) ? this : null;
   } });
-  return { cloud, elements, backing, tabs, navs, windowEvents, confirmations, confirm(value) {confirmAnswer=value;}, navigate: async page => navs.find(button=>button.dataset.page===page).fire('click'), D: window.BloomData, downloads, blobs,
+  return { cloud, elements, backing, tabs, navs, windowEvents, confirmations, document, flushFrames() { while(frames.length) frames.shift()(); }, confirm(value) {confirmAnswer=value;}, navigate: async page => navs.find(button=>button.dataset.page===page).fire('click'), D: window.BloomData, downloads, blobs,
     get: id => elements.get('#' + id),
     click: (id, dataset) => elements.get('#' + id).fire('click', target(dataset)),
     saved: () => JSON.parse(backing.get(window.BloomData.STORAGE_KEY)) };
@@ -191,4 +218,58 @@ test('offline shared routes show a dated saved-copy notice without changing pers
     await rt.navigate(page);
     assert.match(rt.get('content').innerHTML,/Offline — showing your saved device copy/);
   }
+});
+
+async function openSearch() {
+  const rt=createRuntime({},false,{deferFrames:true});
+  rt.cloud.set({status:'ready',user:userA,household:{id:'h-a',name:'Household',owner_user_id:userA.id},members:[{user_id:userA.id,household_id:'h-a',role:'owner'}],
+    products:[{id:'product-one',name:'Meat',brand:'',store:'',category:'food',aisle:'meat',package_quantity:1,package_unit:'each',price_cents:null}],
+    recipes:[],mealEntries:[],receipts:[],moneyEntries:[],bills:[],foodFiles:[],recurringProducts:[]});
+  await rt.navigate('grocery'); await rt.click('content',{groceryAction:'tab',tab:'catalog'}); rt.flushFrames();
+  rt.get('commerce-search').focus();
+  rt.insertText=async text=>{
+    const field=rt.get('commerce-search');
+    assert.equal(rt.document.activeElement,field,'the search must keep focus before the next frame');
+    const position=field.selectionStart;
+    field.value=field.value.slice(0,position)+text+field.value.slice(field.selectionEnd);
+    field.setSelectionRange(position+text.length,position+text.length);
+    await rt.get('content').fire('input',field);
+    return rt.get('commerce-search');
+  };
+  return rt;
+}
+
+test('catalog search keeps rapid typing, middle edits and selection replacement in order before animation frames', async()=>{
+  const rt=await openSearch();
+  for(const letter of 'Meat') await rt.insertText(letter);
+  assert.equal(rt.get('commerce-search').value,'Meat');
+  assert.equal(rt.get('commerce-search').selectionStart,4);
+  assert.match(rt.get('content').innerHTML,/1 matching product/);
+  rt.get('commerce-search').setSelectionRange(2,2);
+  await rt.insertText('X');
+  assert.equal(rt.get('commerce-search').value,'MeXat');
+  assert.equal(rt.get('commerce-search').selectionStart,3);
+  rt.get('commerce-search').setSelectionRange(2,3,'backward');
+  await rt.insertText('');
+  assert.equal(rt.get('commerce-search').value,'Meat');
+  rt.get('commerce-search').setSelectionRange(0,4);
+  await rt.insertText('Rice');
+  assert.equal(rt.get('commerce-search').value,'Rice');
+  assert.equal(rt.get('commerce-search').selectionStart,4);
+  rt.get('page-heading').focus(); rt.flushFrames();
+  assert.equal(rt.document.activeElement,rt.get('page-heading'),'old frames must not steal focus back');
+});
+
+test('background refresh preserves the active search selection instead of dropping its focus', async()=>{
+  const rt=await openSearch();
+  await rt.insertText('Meat');
+  rt.get('commerce-search').setSelectionRange(1,3,'backward');
+  rt.cloud.set({});
+  assert.equal(rt.document.activeElement,rt.get('commerce-search'));
+  assert.equal(rt.get('commerce-search').value,'Meat');
+  assert.equal(rt.get('commerce-search').selectionStart,1);
+  assert.equal(rt.get('commerce-search').selectionEnd,3);
+  assert.equal(rt.get('commerce-search').selectionDirection,'backward');
+  await rt.insertText('oo');
+  assert.equal(rt.get('commerce-search').value,'Moot');
 });
