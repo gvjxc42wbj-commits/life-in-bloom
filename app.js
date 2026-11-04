@@ -1,14 +1,17 @@
-/* Life in Bloom — device-only records, no accounts or analytics. */
+/* Life in Bloom — personal device journals and a shared household Grocery space. */
 'use strict';
 (() => {
   const D = window.BloomData;
   const I = window.BloomInsights;
   const A = window.BloomAppointments;
   const P = window.BloomPages;
+  const G = window.BloomGrocery;
+  const GS = window.BloomGroceryStore;
+  const Personal = window.BloomPersonal;
   const $ = selector => document.querySelector(selector);
   const content = $('#content');
   const noticeEl = $('#notice');
-  if (!D || !I || !A || !P) {
+  if (!D || !I || !A || !P || !G || !GS || !Personal) {
     noticeEl.hidden = false;
     noticeEl.textContent = 'The app could not finish loading. Please refresh this page.';
     return;
@@ -29,11 +32,18 @@
   const shiftDate = D.shiftDate;
   const clockLabel = D.clockLabel;
   let storage;
+  let deviceStorage;
+  let personalManager;
+  let personalState;
   let loaded;
   try {
-    storage = window.localStorage;
-    loaded = D.loadData(storage);
+    deviceStorage = window.localStorage;
+    personalManager = Personal.createManager(deviceStorage);
+    personalState = personalManager.open(null);
+    storage = personalState.storage || deviceStorage;
+    loaded = personalState.loaded || { data: D.normalizeData({ records: {} }), readOnly: true, warning: '' };
   } catch (_) {
+    personalState = { mode: 'locked', message: 'This browser could not open its personal journal settings.' };
     loaded = {
       data: D.normalizeData({ records: {} }),
       readOnly: true,
@@ -58,11 +68,15 @@
     rangeEnd: 1,
     moodTarget: null
   };
+  let cloud = null;
+  let grocery = null;
+  let activeAccountIdentity;
+  const unsavedJournals = new Map();
   const PAGE_DETAILS = {
     home: ['Welcome to Life in Bloom.', 'A little space for your days, your plans, and how you feel.'],
     'sleep-mood': ['Sleep & Mood', 'Your rest, your feelings, and your plans, together.'],
     wellness: ['Wellness', 'Your space for nutrition and everyday care.'],
-    grocery: ['Grocery', 'The things you want to buy, ready in one saved list.'],
+    grocery: ['Grocery', 'Plan together. Shop thoughtfully. Use what you have.'],
     money: ['Money in Bloom', 'A home for where your money goes.'],
     food: ['Food in Bloom', 'Your space for food, recipes, and what you have at home.'],
     skills: ['Skills in Bloom', 'A place for the things you are learning.'],
@@ -144,6 +158,7 @@
     try {
       D.saveData(storage, state.data);
       state.unsaved = false;
+      if (personalState.key) unsavedJournals.delete(personalState.key);
       noticeEl.hidden = true;
       updateSaveState();
       return true;
@@ -174,9 +189,14 @@
     return true;
   }
   function leaveDraft() {
-    if (!pages.hasUnsavedDraft()) return true;
+    if (grocery && grocery.isBusy()) {
+      showNotice('Please wait for the Grocery change to finish saving.', true);
+      return false;
+    }
+    if (!pages.hasUnsavedDraft() && !(grocery && grocery.hasUnsavedDraft())) return true;
     if (!window.confirm('Leave this page and discard your unsaved text? Choose Cancel to stay and save it first.')) return false;
     pages.discardDraft();
+    if (grocery) grocery.discardDraft();
     return true;
   }
   function navigate(page) {
@@ -235,6 +255,7 @@
       D.saveData(storage, normalized);
       state.data = normalized;
       state.unsaved = false;
+      if (personalState.key) unsavedJournals.delete(personalState.key);
       noticeEl.hidden = true;
       updateSaveState();
       return true;
@@ -246,6 +267,8 @@
   const pages = P.createController({
     getData: () => state.data,
     getToday: trackingToday,
+    getPersonalAvailable: () => personalAvailable(),
+    getGrocerySummary: () => grocery ? grocery.getHomeSummary() : null,
     canEdit,
     isReadOnly: () => state.readOnly,
     notify: showNotice,
@@ -257,6 +280,62 @@
     openDate,
     commitData
   });
+  cloud = GS.createStore({ config: window.BloomCloudConfig, onChange: handleCloudChange });
+  grocery = G.createController({
+    store: cloud,
+    getLocalShopping: () => personalAvailable() ? (state.data.shoppingList || []) : [],
+    notify: showNotice,
+    refresh: selector => renderKeepScroll(selector),
+    navigate,
+    confirm: message => window.confirm(message)
+  });
+
+  function personalAvailable() {
+    return personalState && ['legacy', 'account'].includes(personalState.mode);
+  }
+  function switchPersonal(next) {
+    if (personalState && personalState.key && state.unsaved) {
+      unsavedJournals.set(personalState.key, { data: state.data, readOnly: state.readOnly, warning: 'These latest personal entries have not been saved on this device. Export a personal backup before closing.' });
+    }
+    personalState = next;
+    const remembered = next.key && unsavedJournals.get(next.key);
+    const opened = remembered || next.loaded || { data: D.normalizeData({ records: {} }), readOnly: true, warning: '' };
+    loaded = opened;
+    storage = next.storage || deviceStorage;
+    state.data = opened.data;
+    state.readOnly = opened.readOnly;
+    state.unsaved = Boolean(remembered) || (Boolean(opened.warning) && !opened.readOnly);
+    state.moodTarget = null;
+    state.activityId = '';
+    pages.discardDraft();
+    if (opened.warning) showNotice(opened.warning, true);
+    else noticeEl.hidden = true;
+  }
+  function handleCloudChange() {
+    if (!cloud || !grocery) return;
+    const snapshot = cloud.snapshot();
+    const identity = snapshot.user ? snapshot.user.id : null;
+    const changed = identity !== activeAccountIdentity;
+    if (changed) {
+      activeAccountIdentity = identity;
+      for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
+      for (const id of ['activity-dialog', 'mood-dialog', 'appointment-dialog']) {
+        const dialog = document.getElementById(id);
+        if (dialog) { if (dialog.open) dialog.close(); dialog.innerHTML = ''; }
+      }
+      if (personalManager) switchPersonal(personalManager.open(snapshot.user));
+      grocery.hasUnsavedDraft(); // Also discard previous-account UI state when viewing another section.
+    }
+    if (snapshot.recovery) state.page = 'grocery';
+    if (changed || snapshot.recovery || state.page !== 'grocery' || (!grocery.hasUnsavedDraft() && !grocery.isBusy())) renderKeepScroll();
+  }
+  function renderPersonalGate() {
+    const signedIn = cloud && cloud.snapshot().user;
+    if (personalState.mode === 'choose' && signedIn) {
+      return '<section class="panel personal-gate"><p class="page-kicker">Your personal journal on this device</p><h2>Are these earlier entries yours?</h2><p>Your earlier Sleep &amp; Mood, appointments, and Ideas entries are still on this device. Choose how to open your personal journal for this account.</p><div class="page-actions"><button type="button" class="button primary" data-personal-action="claim">These are my earlier entries</button><button type="button" class="button" data-personal-action="fresh">Start a separate journal</button></div><p class="caption">This copies entries locally for your account. It does not upload them to your household. Keep an exported backup.</p></section>';
+    }
+    return '<section class="panel personal-gate"><h2>Your personal journal</h2><p>' + escapeText(personalState.message || 'Sign in to open your personal journal on this device.') + '</p><button type="button" class="button primary" data-personal-action="signin">Open sign-in</button></section>';
+  }
   const appointments = A.createController({
     getData: () => state.data,
     getWeekStart: () => state.week,
@@ -440,7 +519,7 @@ function renderCircle(){
     const [heading, subtitle] = PAGE_DETAILS[state.page];
     $('#page-heading').textContent = heading;
     $('#page-subtitle').textContent = subtitle;
-    $('#sleep-mood-tabs').hidden = !isSleepMood;
+    $('#sleep-mood-tabs').hidden = !isSleepMood || !personalAvailable();
     content.setAttribute('aria-label', isSleepMood ? 'Sleep and mood view' : state.page === 'home' ? 'Life in Bloom home' : heading);
     document.title = state.page === 'home' ? 'Life in Bloom' : `${heading} · Life in Bloom`;
     for (const button of document.querySelectorAll('[data-page]')) {
@@ -455,15 +534,19 @@ function renderCircle(){
       if (active) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     }
-    if (!isSleepMood) content.innerHTML = pages.render(state.page);
+    if (state.page === 'grocery') content.innerHTML = (personalState.mode === 'choose' ? renderPersonalGate() : '') + grocery.render();
+    else if (!personalAvailable() && ['sleep-mood', 'ideas'].includes(state.page)) content.innerHTML = renderPersonalGate();
+    else if (!isSleepMood) content.innerHTML = (state.page === 'home' && !personalAvailable() ? renderPersonalGate() : '') + pages.render(state.page);
     else if (state.view === 'day') content.innerHTML = renderDay();
     else if (state.view === 'circle') content.innerHTML = renderCircle() + `<div class='panel'><button type='button' class='button' data-action='back-month'>View monthly sleep totals</button></div>`;
     else if (state.view === 'month') content.innerHTML = renderMonth() + `<div class='panel'><button type='button' class='button' data-action='back-wheel'>Back to moon wheel</button></div>`;
     else content.innerHTML = renderWeek();
-    if (state.readOnly) {
+    if (state.readOnly && state.page !== 'grocery') {
       for (const element of content.querySelectorAll('[data-mode], [data-slot], [data-quality], [data-action=\'fill-range\'], [data-action=\'clear-day\'], [data-action=\'choose-activity\'], #notes')) element.disabled = true;
     }
     $('#import-file').disabled = state.readOnly;
+    $('#export-btn').disabled = !personalAvailable();
+    $('#menu-export-btn').disabled = !personalAvailable();
     updateSaveState();
   }
   function commitSlot(index) {
@@ -635,6 +718,23 @@ function renderCircle(){
   });
 
   content.addEventListener('click', event => {
+    const personalButton = event.target.closest('[data-personal-action]');
+    if (personalButton) {
+      if (personalButton.dataset.personalAction === 'signin') { navigate('grocery'); return; }
+      const user = cloud.snapshot().user;
+      if (!user || !personalManager) return;
+      try {
+        const next = personalButton.dataset.personalAction === 'claim'
+          ? personalManager.claimLegacy(user.id, unsavedJournals.get('legacy')?.data)
+          : personalManager.startFresh(user.id);
+        switchPersonal(next);
+        if (personalButton.dataset.personalAction === 'claim') unsavedJournals.delete('legacy');
+        renderKeepScroll();
+        showNotice('Your personal journal is open on this device. Export a personal backup to keep another copy.');
+      } catch (error) { showNotice(error.message, true); }
+      return;
+    }
+    if (grocery.handleClick(event)) return;
     const destination = event.target.closest('[data-page]');
     if (destination) { navigate(destination.dataset.page); return; }
     if (pages.handleClick(event)) return;
@@ -707,6 +807,7 @@ function renderCircle(){
     }
   });
   content.addEventListener('input', event => {
+    if (grocery.handleInput(event)) return;
     if (pages.handleInput(event)) return;
     if (event.target.id === 'notes' && canEdit()) {
       state.data.records[state.date] = { ...recordFor(state.date), notes: event.target.value };
@@ -714,6 +815,7 @@ function renderCircle(){
     }
   });
   content.addEventListener('change', event => {
+    if (grocery.handleChange(event)) return;
     if (pages.handleChange(event)) return;
     if (event.target.id === 'week-jump-date' && !Number.isNaN(parseDate(event.target.value).getTime())) {
       state.week = D.weekStart(event.target.value);
@@ -723,7 +825,7 @@ function renderCircle(){
     if (event.target.id === 'range-start') state.rangeStart = Number(event.target.value);
     if (event.target.id === 'range-end') state.rangeEnd = Number(event.target.value);
   });
-  content.addEventListener('submit', event => { pages.handleSubmit(event); });
+  content.addEventListener('submit', event => { if (!grocery.handleSubmit(event)) pages.handleSubmit(event); });
   for (const button of document.querySelectorAll('.view-tab')) button.addEventListener('click', () => changeView(button.dataset.view));
   const appMenu = $('#app-menu');
   const menuButton = $('#menu-btn');
@@ -760,6 +862,7 @@ function renderCircle(){
     setTimeout(() => URL.revokeObjectURL(url), 3000);
   }
   $('#export-btn').addEventListener('click', () => {
+    if (!personalAvailable()) { showNotice('Sign in and open your personal journal before exporting it.', true); return; }
     const filenameDate = dateKey(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
     if (state.readOnly) {
       try {
@@ -774,7 +877,7 @@ function renderCircle(){
     }
     try {
       downloadText(JSON.stringify(D.makeBackup(state.data), null, 2), `life-in-bloom-backup-${filenameDate}.json`);
-      showNotice(state.unsaved ? 'Your latest log changes were included in the downloaded backup. This browser still could not save them.' : 'Your backup includes sleep, moods, activities, appointments, grocery items, and saved Ideas notes. Keep the downloaded JSON file somewhere safe.', state.unsaved);
+      showNotice(state.unsaved ? 'Your latest log changes were included in the downloaded backup. This browser still could not save them.' : 'Your personal backup includes sleep, moods, activities, appointments, the earlier device grocery list, and Ideas. Shared household Grocery records are saved separately online.', state.unsaved);
     } catch (_) {
       showNotice('A backup could not be prepared. Please keep this page open and ask for help.', true);
     }
@@ -783,6 +886,7 @@ function renderCircle(){
     const file = event.target.files?.[0];
     if (!file) return;
     if (!canEdit()) { event.target.value = ''; return; }
+    const personalKey = personalState.key;
     if (file.size > 25_000_000) {
       showNotice('This backup is larger than the 25 MB limit for this version. Your entries have not been changed.', true);
       event.target.value = '';
@@ -790,11 +894,12 @@ function renderCircle(){
     }
     try {
       const data = D.parseBackup(await file.text());
-      if (pages.hasUnsavedDraft()) {
+      if (!personalAvailable() || personalState.key !== personalKey) throw new Error('The signed-in account changed. Choose this backup again for the correct account.');
+      if (pages.hasUnsavedDraft() || grocery.hasUnsavedDraft() || grocery.isBusy()) {
         showNotice('Save your current Grocery or Ideas draft before importing a backup, or use Discard changes on that page.', true);
         return;
       }
-      if (!window.confirm('Replace the entries on this device with this backup? This replaces sleep, moods, activities, appointments, grocery items, and Ideas notes. Export first if you need to keep them.')) return;
+      if (!window.confirm('Replace this account’s personal entries on this device with this backup? This replaces sleep, moods, activities, appointments, the earlier device grocery list, and Ideas. Shared household Grocery is unaffected. Export first if you need to keep the current personal entries.')) return;
       D.saveData(storage, data);
       state.data = data;
       state.unsaved = false;
@@ -810,13 +915,17 @@ function renderCircle(){
   });
 
   window.addEventListener('beforeunload', event => {
-    if (!state.unsaved && !pages.hasUnsavedDraft()) return;
+    if (!state.unsaved && !unsavedJournals.size && !pages.hasUnsavedDraft() && !grocery.hasUnsavedDraft() && !grocery.isBusy()) return;
     event.preventDefault();
     event.returnValue = '';
   });
 
   render();
   if (loaded.warning) showNotice(loaded.warning, true);
+  cloud.init().catch(error => showNotice(error.message || 'Grocery could not connect. Please try again.', true));
+  window.addEventListener('focus', () => {
+    if (cloud.snapshot().user && !grocery.hasUnsavedDraft() && !grocery.isBusy()) cloud.refresh().catch(() => {});
+  });
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
     window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js').catch(() => {}));
   }

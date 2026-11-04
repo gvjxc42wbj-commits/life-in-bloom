@@ -12,6 +12,7 @@
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./grocery.css" />
   <title>Life in Bloom</title>
 </head>
 <body>
@@ -44,13 +45,13 @@
     </main>
 
     <footer class="app-footer">
-      <div><span class="footer-moon">✦</span> Stored on this device — use <strong>Export backup</strong> regularly.</div>
+      <div><span class="footer-moon">✦</span> Personal journal on this device · Household Grocery saved online.</div>
       <div class="backup-actions">
-        <button id="export-btn" class="footer-button" type="button">↓ Export backup</button>
-        <label for="import-file" class="footer-button import-label">↑ Import backup</label>
+        <button id="export-btn" class="footer-button" type="button">↓ Export personal backup</button>
+        <label for="import-file" class="footer-button import-label">↑ Import personal backup</label>
         <input id="import-file" type="file" accept="application/json,.json" hidden />
       </div>
-      <p>Your logs, appointments, grocery list, and saved ideas stay in this browser or installed app. They do not automatically sync to other devices. Export backup keeps a copy of all these entries.</p>
+      <p>Sleep &amp; Mood, appointments, and Ideas stay in this browser. After sign-in, personal journals are separated by account on this device; they are not encrypted or synced online. Your shared Grocery list, profiles, food budget, and inventory save to your household when you are connected.</p>
     </footer>
   </div>
   <nav class="bottom-nav" id="bottom-nav" aria-label="Main navigation">
@@ -126,9 +127,9 @@
       </nav>
       <div class="menu-tools" aria-label="App tools">
         <button class="menu-tool" id="menu-help-btn" type="button"><span aria-hidden="true">?</span> How to use Life in Bloom</button>
-        <button class="menu-tool" id="menu-export-btn" type="button"><span aria-hidden="true">↓</span> Export backup</button>
+        <button class="menu-tool" id="menu-export-btn" type="button"><span aria-hidden="true">↓</span> Export personal backup</button>
       </div>
-      <p class="menu-note">Your entries are stored on this device. Export a backup to keep another copy.</p>
+      <p class="menu-note">Personal journal backups stay separate from shared household Grocery records.</p>
     </div>
   </dialog>
   <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title">
@@ -144,16 +145,21 @@
       <p><strong>Hourly feelings:</strong> Each awake hour can have a feeling and an optional note. Suggested words are shortcuts; you can write your own. Activity labels show what you recorded doing in that hour. Changing a time block keeps any existing mood observation so you can review it.</p>
       <p><strong>Dates:</strong> Each tracking day runs from 8 AM to 8 AM the next morning. The after-midnight hours are labeled with their actual date. Weeks begin on Monday.</p>
       <p><strong>Sleep totals:</strong> Hours come from the time blocks you mark yourself. Partial records can be incomplete. A day with some activities recorded has an unknown sleep total until sleep is added or every block is explicitly marked Awake.</p>
-      <p><strong>Grocery:</strong> Add an item and an optional quantity to your list. Check it when picked up, or edit and remove it. Checked items stay on the list until you remove them. Checking an item does not yet add a purchase to inventory or Money in Bloom.</p>
+      <p><strong>Grocery:</strong> Sign in to share one household list, monthly food budgets, and Pantry, Refrigerator, and Freezer inventory. Each person edits their own profile. Measurements are personal; the dietary targets and constraints in the shared form can be read by the household. Shopping checkmarks do not create purchases or change inventory. Meal calculations and actual purchase tracking are a later step.</p>
       <p><strong>Idea’s in Bloom:</strong> Type a note and choose Save note. Open a saved note to edit it, or remove it when you no longer need it.</p>
-      <p><strong>Backups:</strong> Export includes sleep, activities, hourly moods, custom activity names, appointments with their repeat settings, your grocery list, and saved idea notes. Earlier Sleep in Bloom backups can also be imported. Import replaces the current entries, so export first if you want to keep a copy.</p>
+      <p><strong>Personal backups:</strong> Export includes this device’s personal sleep, activities, moods, appointments, earlier device grocery list, and Ideas. Import replaces these personal entries only. Shared household Grocery records stay online and are not replaced by a personal backup. Earlier Sleep in Bloom backups are supported.</p>
       <button type="button" class="button primary" id="got-it-btn">Got it</button>
     </div>
   </dialog>
   <script src="./bloom-data.js" defer></script>
+  <script src="./bloom-personal.js" defer></script>
   <script src="./bloom-insights.js" defer></script>
   <script src="./bloom-appointments.js" defer></script>
   <script src="./bloom-pages.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" defer crossorigin="anonymous"></script>
+  <script src="./bloom-config.js" defer></script>
+  <script src="./bloom-grocery-store.js" defer></script>
+  <script src="./bloom-grocery.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 </html>

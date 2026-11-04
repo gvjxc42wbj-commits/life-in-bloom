@@ -1,0 +1,12 @@
+{
+  "lockVersion": 1,
+  "dependencies": {
+    "@supabase/supabase-js": {
+      "version": "2.118.0",
+      "url": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js",
+      "release": "https://github.com/supabase/supabase-js/releases/tag/v2.118.0",
+      "license": "MIT",
+      "delivery": "Bundled browser script; no floating version or local build step"
+    }
+  }
+}

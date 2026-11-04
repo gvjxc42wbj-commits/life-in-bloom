@@ -1,4 +1,4 @@
-/* Home, a saved shopping list, and simple notes for Life in Bloom. No network access. */
+/* Home, legacy device shopping, and personal notes. Cloud Grocery is a separate controller. */
 (function (root) {
   'use strict';
 
@@ -19,8 +19,8 @@
     food: {
       title: 'Food in Bloom',
       subtitle: 'Food, recipes, and what you have',
-      text: 'Recipes and pantry, refrigerator, and freezer inventories will belong here. Your saved grocery list is available now.',
-      links: [{ page: 'grocery', label: 'Open your grocery list' }]
+      text: 'Recipes and meal planning will belong here. Open Grocery for your shared list, monthly food budget, and Pantry, Refrigerator, and Freezer inventory.',
+      links: [{ page: 'grocery', label: 'Open Grocery' }]
     },
     skills: {
       title: 'Skills in Bloom',
@@ -137,6 +137,8 @@
 
     function renderHome() {
       const data = getData();
+      const personalAvailable = options.getPersonalAvailable ? options.getPersonalAvailable() : true;
+      const grocerySummary = options.getGrocerySummary ? options.getGrocerySummary() : null;
       const today = getToday();
       const record = data.records[today] || D.blankRecord();
       const sleep = Object.values(record.slots).filter(value => value === 'sleep').length / 2;
@@ -150,9 +152,13 @@
       const upcoming = D.appointmentsInWindow(data.appointments || [], now, until).slice(0, 3);
       let html = '<section class="bloom-page"><div class="page-heading"><p class="page-kicker">Your main page</p><h2>Your day, at a glance</h2><p>' + escapeText(dateLabel(calendarKey(now))) + '</p></div>';
       html += '<div class="home-grid">';
-      html += '<button type="button" class="home-card" data-page-action="open-day" data-date="' + today + '"><span class="page-kicker">Sleep &amp; Mood</span><strong class="home-card-value">' + escapeText(sleepText) + '</strong><span>' + moodCount + ' hourly feeling' + (moodCount === 1 ? '' : 's') + ' recorded</span><small>Tracking day ' + escapeText(D.parseDate(today).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })) + ', 8 AM to the next 8 AM · Open Daily Log ›</small></button>';
-      html += '<button type="button" class="home-card" data-page-action="navigate" data-page-target="grocery"><span class="page-kicker">Grocery</span><strong class="home-card-value">' + remaining + ' item' + (remaining === 1 ? '' : 's') + ' to buy</strong><span>Your saved shopping list</span><small>Open Grocery ›</small></button>';
-      html += '<button type="button" class="home-card" data-page-action="navigate" data-page-target="ideas"><span class="page-kicker">Idea’s in Bloom</span><strong class="home-card-value">' + noteCount + ' saved note' + (noteCount === 1 ? '' : 's') + '</strong><span>A place to keep your ideas</span><small>Open your notes ›</small></button></div>';
+      if (personalAvailable) html += '<button type="button" class="home-card" data-page-action="open-day" data-date="' + today + '"><span class="page-kicker">Sleep &amp; Mood</span><strong class="home-card-value">' + escapeText(sleepText) + '</strong><span>' + moodCount + ' hourly feeling' + (moodCount === 1 ? '' : 's') + ' recorded</span><small>Tracking day ' + escapeText(D.parseDate(today).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })) + ', 8 AM to the next 8 AM · Open Daily Log ›</small></button>';
+      const groceryTitle = grocerySummary ? grocerySummary.title : remaining + ' item' + (remaining === 1 ? '' : 's') + ' to buy';
+      const groceryDescription = grocerySummary ? grocerySummary.description : 'Your saved shopping list';
+      html += '<button type="button" class="home-card" data-page-action="navigate" data-page-target="grocery"><span class="page-kicker">Grocery</span><strong class="home-card-value">' + escapeText(groceryTitle) + '</strong><span>' + escapeText(groceryDescription) + '</span><small>Open Grocery ›</small></button>';
+      if (personalAvailable) html += '<button type="button" class="home-card" data-page-action="navigate" data-page-target="ideas"><span class="page-kicker">Idea’s in Bloom</span><strong class="home-card-value">' + noteCount + ' saved note' + (noteCount === 1 ? '' : 's') + '</strong><span>A place to keep your ideas</span><small>Open your notes ›</small></button>';
+      html += '</div>';
+      if (personalAvailable) {
       html += '<section class="panel"><div class="panel-title-row"><h2>Coming up</h2>' + linkButton('sleep-mood', 'Sleep & Mood') + '</div><p class="caption">Up to three appointments in the next seven days. Tap one to open its Daily Log.</p>';
       if (!upcoming.length) {
         html += '<p class="empty-state">No appointments planned in the next seven days. Add plans in Sleep &amp; Mood whenever you are ready.</p>';
@@ -169,7 +175,9 @@
         }
         html += '</ul>';
       }
-      html += '</section><section class="panel"><h2>Your other spaces</h2><p class="caption">Use the menu for every section, or choose a shortcut below.</p><div class="section-links">' + linkButton('wellness', 'Wellness · Nutrition') + linkButton('food', 'Food in Bloom') + linkButton('skills', 'Skills in Bloom') + linkButton('housework', 'Housework') + linkButton('dog', 'Dog') + linkButton('money', 'Money in Bloom') + linkButton('smoking', 'Smoking Log') + '</div></section></section>';
+      html += '</section>';
+      }
+      html += '<section class="panel"><h2>Your other spaces</h2><p class="caption">Use the menu for every section, or choose a shortcut below.</p><div class="section-links">' + linkButton('wellness', 'Wellness · Nutrition') + linkButton('food', 'Food in Bloom') + linkButton('skills', 'Skills in Bloom') + linkButton('housework', 'Housework') + linkButton('dog', 'Dog') + linkButton('money', 'Money in Bloom') + linkButton('smoking', 'Smoking Log') + '</div></section></section>';
       return html;
     }
 
