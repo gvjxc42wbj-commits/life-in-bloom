@@ -350,7 +350,7 @@
       }
       const status=missing.length===0&&lines.length?'ready':missing.length<=2?'almost':'need';
       return{recipe,recipe_id:recipe.id,name:recipe.name,status,missing,available_count:available.length,ingredient_count:lines.length};
-    }).sort((a,b)=>({ready:0,almost:1,need:2}[a.status]-({ready:0,almost:1,need:2}[b.status])||a.missing.length-b.missing.length||String(a.name).localeCompare(String(b.name)));
+    }).sort((a,b)=>(({ready:0,almost:1,need:2}[a.status])-({ready:0,almost:1,need:2}[b.status])||a.missing.length-b.missing.length||String(a.name).localeCompare(String(b.name))));
   }
 
   function recurringPlan(recurring, products, inventory, month) {
