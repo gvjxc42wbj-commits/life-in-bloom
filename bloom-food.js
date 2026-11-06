@@ -4,7 +4,7 @@
   const M = root.BloomFoodModel || (typeof require === 'function' ? require('./bloom-food-model.js') : null);
   const RECIPE_FIELDS = ['name', 'servings', 'ingredient_text', 'instructions', 'source_url', 'notes', 'nutrition_mode', 'nutrition_source'];
   const LOG_FIELDS = ['occurred_on', 'person_slot', 'kind', 'source_kind', 'recipe_id', 'product_id', 'servings', 'notes'];
-  const PLAN_FIELDS = ['recipe_id', 'cook_on', 'servings', 'person1_servings', 'person2_servings', 'notes'];
+  const PLAN_FIELDS = ['recipe_id', 'cook_on', 'meal_type', 'servings', 'person1_servings', 'person2_servings', 'notes'];
   const PLAN_REJECTIONS = new Set(['22023', '23514', '23503', '23505', '40001', '42501']);
   const uuid = () => {
     if (root.crypto && root.crypto.randomUUID) return root.crypto.randomUUID();
@@ -60,7 +60,7 @@
   function shoppingIngredientDraft() { return { name: '', quantity: '', unit: '', product_id: '', optional: false, notes: '', included: true }; }
   function recipeDraft() { return { id: '', request_id: uuid(), revision: null, name: '', servings: '', ingredient_text: '', ingredients: [{ product_id: '', quantity: '', unit: 'each' }], planning_ingredients: [], instructions: '', source_url: '', notes: '', nutrition_mode: 'ingredients', nutrition_reference: referenceDraft(), nutrition_source: '', archived: false }; }
   function logDraft(date) { return { id: '', request_id: uuid(), revision: null, occurred_on: date, person_slot: '1', kind: 'eaten', source_kind: 'recipe', recipe_id: '', product_id: '', servings: '1', notes: '', nutrition_original: null, original_servings: null, original_recipe_id: null, original_product_id: null, original_label: '' }; }
-  function planDraft(date) { return { id: '', request_id: uuid(), revision: null, recipe_id: '', recipe_revision: null, recipe_name: '', base_servings: null, shopping_month: null, cook_on: date, servings: '', person1_servings: '', person2_servings: '', notes: '', ingredients: [] }; }
+  function planDraft(date) { return { id: '', request_id: uuid(), revision: null, recipe_id: '', recipe_revision: null, recipe_name: '', base_servings: null, shopping_month: null, cook_on: date, meal_type: 'dinner', servings: '', person1_servings: '', person2_servings: '', notes: '', ingredients: [] }; }
   function planningRows(recipe, products) {
     if (!recipe) return [];
     const explicit = Array.isArray(recipe.planning_ingredients) && recipe.planning_ingredients.length;
@@ -143,7 +143,7 @@
     const draftStore = options.draftStore || null;
     const openGrocery = options.openGrocery || (() => navigate('grocery'));
     let identity = null, generation = 0, busy = null, pending = Promise.resolve(), currentPage = 'food';
-    let tab = 'recipes', selectedDate = dayKey(getNow()), search = '', editor = false, openedRecipeId = '', logging = false, planning = false;
+    let tab = 'home', selectedDate = dayKey(getNow()), search = '', editor = false, openedRecipeId = '', logging = false, planning = false;
     let selectedFile = null, fileUrls = new Map(), draftSaved = false, draftWarningShown = false;
     let planAttempt = null, planProblem = '', planIngredientsOpen = false;
     let drafts = { recipe: recipeDraft(), log: logDraft(selectedDate), plan: planDraft(selectedDate) }, baselines = copy(drafts);
@@ -166,7 +166,7 @@
         };
         drafts[group] = restore(saved.drafts[group]); baselines[group] = restore(saved.baselines[group]);
       }
-      tab = ['recipes', 'plans', 'soon', 'log'].includes(saved.tab) ? saved.tab : 'recipes';
+      tab = ['home','recipes','plans','cooking','soon','log'].includes(saved.tab) ? saved.tab : 'home';
       selectedDate = M.dateNumber(saved.selectedDate) == null ? dayKey(getNow()) : saved.selectedDate;
       editor = Boolean(saved.editor); logging = Boolean(saved.logging); planning = Boolean(saved.planning); openedRecipeId = String(saved.openedRecipeId || '');
       if (saved.planAttempt && ['save', 'cancel'].includes(saved.planAttempt.action) && saved.planAttempt.payload && typeof saved.planAttempt.payload === 'object' && typeof saved.planAttempt.payload.request_id === 'string') planAttempt = copy(saved.planAttempt);
@@ -178,7 +178,7 @@
       const current = store.snapshot() || {};
       const key = (current.user && current.user.id || '') + ':' + (current.household && current.household.id || '');
       if (key !== identity) {
-        identity = key; generation++; busy = null; selectedDate = dayKey(getNow()); tab = 'recipes'; search = ''; editor = false; logging = false; planning = false; planAttempt = null; planProblem = ''; planIngredientsOpen = false; openedRecipeId = ''; selectedFile = null; fileUrls = new Map();
+        identity = key; generation++; busy = null; selectedDate = dayKey(getNow()); tab = 'home'; search = ''; editor = false; logging = false; planning = false; planAttempt = null; planProblem = ''; planIngredientsOpen = false; openedRecipeId = ''; selectedFile = null; fileUrls = new Map();
         drafts = { recipe: recipeDraft(), log: logDraft(selectedDate), plan: planDraft(selectedDate) }; baselines = copy(drafts); draftSaved = false; draftWarningShown = false;
         if (draftStore && current.user && current.household) {
           try { const saved = draftStore.read(current.user.id, current.household.id, 'food'); draftSaved = Boolean(saved && restoreDrafts(saved.data)); }
@@ -299,7 +299,7 @@
       let html = '<section class="panel food-plan-panel"><p class="page-kicker">Cook on a day you choose</p><h2>' + (value.id ? 'Edit your planned meal' : 'Plan this meal') + '</h2><p class="food-help">Save the date and servings. Missing ingredients go onto your current grocery list immediately, with the cooking date beside them.</p><form id="food-plan-form" class="food-form" data-food-form="plan">';
       if (value.id) html += '<h3>' + esc(value.recipe_name || recipe && recipe.name || 'Saved recipe') + '</h3>';
       else html += '<label class="food-field" for="food-plan-recipe_id"><span>Saved recipe</span><select id="food-plan-recipe_id" name="recipe_id" data-food-field="plan.recipe_id" required' + (locked ? ' disabled' : '') + '><option value="">Choose a recipe</option>' + (current.recipes || []).filter(row => !row.archived).map(row => '<option value="' + esc(row.id) + '"' + (row.id === value.recipe_id ? ' selected' : '') + '>' + esc(row.name) + '</option>').join('') + '</select></label>';
-      html += '<div class="food-form-grid">' + field('plan', 'cook_on', 'Day you want to cook', 'date', ' required min="' + dayKey(getNow()) + '" max="2200-12-31"') + field('plan', 'servings', 'Total servings to make', 'number', ' required min="0.000001" max="10000" step="any" inputmode="decimal"') + '</div>';
+      html += '<div class="food-form-grid">' + field('plan', 'cook_on', 'Day you want to cook', 'date', ' required min="' + dayKey(getNow()) + '" max="2200-12-31"') + '<label class="food-field" for="food-plan-meal_type"><span>Meal type</span><select id="food-plan-meal_type" name="meal_type" data-food-field="plan.meal_type"' + (locked ? ' disabled' : '') + '>' + [['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['snack','Snack']].map(([value,label])=>'<option value="'+value+'"'+(drafts.plan.meal_type===value?' selected':'')+'>'+label+'</option>').join('') + '</select></label>' + field('plan', 'servings', 'Total servings to make', 'number', ' required min="0.000001" max="10000" step="any" inputmode="decimal"') + '</div>';
       html += '<section id="food-plan-preview" class="food-plan-preview" aria-label="Scaled recipe ingredients">' + renderPlanPreview(current) + '</section>';
       if (recipe && Number(recipe.revision) !== Number(value.recipe_revision)) html += '<p class="food-alert">The saved recipe has changed since this plan was opened. Load its latest ingredients and review them before saving.</p>' + button('reload-plan-recipe', 'Load latest recipe ingredients', '', false, Boolean(planAttempt));
       if (recipe) html += allergyNotice(recipe, current);
@@ -319,7 +319,7 @@
       const refs = (current.mealShoppingLinks || []).filter(link => (link.plan_refs || []).some(ref => ref.plan_id === plan.id));
       const rows = planRequirementRows(plan, current).filter(row => row.included);
       const issues = Array.isArray(plan.issues) ? plan.issues : [];
-      let html = '<article class="food-meal-card"><div class="food-heading"><div><span class="food-date-badge">' + (plan.status === 'cancelled' ? 'Cancelled' : history ? 'Past cooking date · saved plan' : dateLabel(plan.cook_on)) + '</span><h3>' + esc(plan.recipe_name || 'Saved recipe') + '</h3></div><strong>' + esc(fmt(plan.servings)) + ' servings</strong></div><p class="food-help">' + (history ? dateLabel(plan.cook_on) + ' · ' : '') + 'Recipe makes ' + esc(fmt(plan.base_servings)) + ' servings before scaling.' + (plan.person1_servings != null ? ' Person 1: ' + esc(fmt(plan.person1_servings)) + '.' : '') + (plan.person2_servings != null ? ' Person 2: ' + esc(fmt(plan.person2_servings)) + '.' : '') + '</p>';
+      let html = '<article class="food-meal-card"><div class="food-heading"><div><span class="food-date-badge">' + (plan.status === 'cancelled' ? 'Cancelled' : history ? 'Past cooking date · saved plan' : dateLabel(plan.cook_on)) + '</span><h3>' + esc(plan.recipe_name || 'Saved recipe') + '</h3><small>' + esc((plan.meal_type || 'dinner').replace(/^./,c=>c.toUpperCase())) + '</small></div><strong>' + esc(fmt(plan.servings)) + ' servings</strong></div><p class="food-help">' + (history ? dateLabel(plan.cook_on) + ' · ' : '') + 'Recipe makes ' + esc(fmt(plan.base_servings)) + ' servings before scaling.' + (plan.person1_servings != null ? ' Person 1: ' + esc(fmt(plan.person1_servings)) + '.' : '') + (plan.person2_servings != null ? ' Person 2: ' + esc(fmt(plan.person2_servings)) + '.' : '') + '</p>';
       if (plan.notes) html += '<p class="food-prose">' + esc(plan.notes) + '</p>';
       html += '<details><summary>Ingredients for this meal</summary><ul class="food-plan-requirements">' + rows.map(item => '<li><strong>' + esc(item.name) + '</strong><span>' + (item.required_quantity == null ? 'Amount needs review' : esc(fmt(item.required_quantity)) + ' ' + esc(item.unit || '· unit needs review')) + '</span></li>').join('') + '</ul></details>';
       if (!history && plan.status === 'planned') {
@@ -438,6 +438,16 @@
       return '<section class="panel"><h2>Food entries · ' + dateLabel(selectedDate) + '</h2><ul class="food-entry-list">' + entries.map(entry => '<li class="food-person-' + (Number(entry.person_slot) === 2 ? 'purple' : 'pink') + '"><div><span class="food-date-badge">Person ' + Number(entry.person_slot) + ' · ' + (entry.kind === 'planned' ? 'Planned' : 'Eaten') + '</span><h3>' + esc(entry.label) + '</h3><p>' + esc(fmt(entry.servings)) + ' serving' + (Number(entry.servings) === 1 ? '' : 's') + '</p><div class="food-nutrition-brief">' + briefNutrition(entry.nutrition_snapshot || M.nutritionTotals([])) + '</div>' + (entry.notes ? '<p class="food-prose">' + esc(entry.notes) + '</p>' : '') + '</div><div class="food-actions">' + (entry.kind === 'planned' ? button('eaten-from-plan', 'Log an eaten portion', ' data-id="' + esc(entry.id) + '"') : '') + button('edit-log', 'Edit', ' data-id="' + esc(entry.id) + '"') + button('delete-log', 'Delete entry', ' data-id="' + esc(entry.id) + '"', false, current.offline) + '</div></li>').join('') + '</ul></section>';
     }
     function datePicker() { return '<label class="food-field food-day-picker" for="food-selected-date"><span>Nutrition date</span><input id="food-selected-date" type="date" data-food-date value="' + esc(selectedDate) + '" min="1900-01-01" max="2200-12-31"></label>'; }
+    function expiryGroups(current){const today=dayKey(getNow()),base=M.dateNumber(today),groups={today:0,three:0,seven:0,later:0};for(const item of current.inventory||[]){if(Number(item.quantity)<=0)continue;const due=M.effectiveDate(item);if(!due)continue;const days=M.dateNumber(due.date)-base;if(days<=0)groups.today++;else if(days<=3)groups.three++;else if(days<=7)groups.seven++;else groups.later++;}return groups;}
+    function renderFoodHome(current){const groups=expiryGroups(current),inventory=(current.inventory||[]).filter(row=>Number(row.quantity)>0),list=(current.shoppingItems||[]).filter(row=>!row.checked),plans=(current.cookingPlans||[]).filter(row=>row.status==='planned'&&row.cook_on>=dayKey(getNow())),recipes=(current.recipes||[]).filter(row=>!row.archived);return '<section class="food-hub"><div class="food-hub-intro"><p class="page-kicker">Your kitchen, connected</p><h2>Food in Bloom</h2><p>See what is at home, what to buy, what you plan to eat, and what you can cook.</p></div><div class="food-hub-grid">'+
+      '<button type="button" class="food-hub-card" data-food-action="grocery" data-tab="inventory"><span aria-hidden="true">🧺</span><strong>Food at Home</strong><small>'+inventory.length+' inventory entries · pantry, refrigerator & freezer</small></button>'+
+      '<button type="button" class="food-hub-card" data-food-action="grocery" data-tab="list"><span aria-hidden="true">🛒</span><strong>Grocery</strong><small>'+list.length+' items still on the shared list</small></button>'+
+      '<button type="button" class="food-hub-card" data-food-action="tab" data-tab="plans"><span aria-hidden="true">🗓️</span><strong>Menu</strong><small>'+plans.length+' upcoming planned meal'+(plans.length===1?'':'s')+'</small></button>'+
+      '<button type="button" class="food-hub-card" data-food-action="tab" data-tab="recipes"><span aria-hidden="true">📖</span><strong>Recipes</strong><small>'+recipes.length+' saved recipe'+(recipes.length===1?'':'s')+'</small></button>'+
+      '<button type="button" class="food-hub-card" data-food-action="tab" data-tab="cooking"><span aria-hidden="true">🍳</span><strong>Cooking</strong><small>What can I cook? · use food before it expires</small></button></div>'+
+      '<button type="button" class="food-expiring-summary" data-food-action="tab" data-tab="soon"><span><strong>Expiring Soon</strong><small>Today '+groups.today+' · next 3 days '+groups.three+' · next 7 days '+groups.seven+'</small></span><span aria-hidden="true">›</span></button></section>';}
+    function renderCooking(current){const rows=M.recipeReadiness?M.recipeReadiness(current.recipes||[],current.products||[],current.inventory||[],dayKey(getNow())):[],groups={ready:rows.filter(r=>r.status==='ready'),almost:rows.filter(r=>r.status==='almost'),need:rows.filter(r=>r.status==='need')};const cards=(items,emptyText)=>items.length?'<div class="food-recipe-grid">'+items.map(item=>'<article class="food-recipe-card"><h3>'+esc(item.name)+'</h3><p>'+(item.status==='ready'?'Recorded inventory covers the linked ingredients.':item.missing.length+' ingredient'+(item.missing.length===1?'':'s')+' missing or needing review.')+'</p><div class="food-actions">'+button('view-recipe','Open recipe',' data-id="'+esc(item.recipe_id)+'"')+button('plan-recipe','Plan this meal',' data-id="'+esc(item.recipe_id)+'"')+'</div></article>').join('')+'</div>':'<p class="food-help">'+emptyText+'</p>';const equipment=current.kitchenEquipment||[];return '<section class="panel"><p class="page-kicker">Cooking</p><h2>What Can I Cook?</h2>'+cards(groups.ready,'No recipe is fully covered by linked inventory yet.')+'</section><section class="panel"><h2>Almost Can Cook</h2>'+cards(groups.almost,'No almost-ready recipes right now.')+'</section><section class="panel"><div class="food-heading"><div><p class="page-kicker">Use it before it expires</p><h2>Cook with food coming up soon</h2></div>'+button('tab','See expiring food',' data-tab="soon"')+'</div><p class="food-help">Recipe suggestions use the dates and quantities you recorded.</p></section><section class="panel"><p class="page-kicker">Kitchen Equipment</p><h2>Appliances & tools</h2><p class="food-help">Equipment is stored separately from food. Add brand/model only when you know it.</p><form class="food-form" data-food-form="equipment"><div class="food-form-grid"><label class="food-field"><span>Equipment name</span><input name="name" required maxlength="160"></label><label class="food-field"><span>Brand (optional)</span><input name="brand" maxlength="120"></label><label class="food-field"><span>Model (optional)</span><input name="model" maxlength="160"></label><label class="food-field"><span>Capabilities, comma-separated</span><input name="capabilities" maxlength="500" placeholder="pressure cook, sauté"></label></div><label class="food-field"><span>Notes</span><textarea name="notes" maxlength="4000"></textarea></label><button class="button primary" type="submit">+ Add equipment</button></form>'+(equipment.length?'<ul class="food-equipment-list">'+equipment.filter(row=>!row.archived).map(row=>'<li><div><strong>'+esc(row.name)+'</strong><small>'+esc([row.brand,row.model].filter(Boolean).join(' · ')||'Brand/model not recorded')+'</small><small>'+esc(Array.isArray(row.capabilities)?row.capabilities.join(', '):'')+'</small></div>'+button('delete-equipment','Remove',' data-id="'+esc(row.id)+'"')+'</li>').join('')+'</ul>':'<p class="food-help">No kitchen equipment saved yet.</p>')+'</section>';}
+
     function renderWellness(current) {
       let html = '<section class="panel"><div class="food-heading"><div><p class="page-kicker">Household nutrition</p><h2>Each person’s day</h2></div>' + datePicker() + '</div><p class="food-help">Person 1 is pink. Person 2 is purple. Planned portions and actually eaten portions have separate totals. Your chosen goals remain editable in Grocery Profiles.</p><div class="food-actions">' + button('grocery', 'Nutrition profiles', ' data-tab="profiles"') + button('food-home', 'Saved recipes & food dates') + '</div></section><div class="food-person-grid">';
       for (const person of [1, 2]) {
@@ -460,9 +470,11 @@
       if (current.offline) html += '<p class="food-offline" role="status">Offline · showing the saved device copy. You can prepare a draft; reconnect to save changes online.</p>';
       if (currentPage === 'wellness') return html + renderWellness(current) + '</section>';
       const dueCount = M.dueItems(current.inventory || [], dayKey(getNow())).length;
-      html += '<div class="food-shortcuts"><button type="button" data-food-action="grocery" data-tab="list"><span class="food-shortcut-icon" aria-hidden="true">🛒</span><span><strong>Grocery list</strong><small>Open what you need to buy</small></span><span aria-hidden="true">›</span></button><button type="button" data-food-action="grocery" data-tab="inventory"><span class="food-shortcut-icon" aria-hidden="true">🧺</span><span><strong>Food at home</strong><small>Pantry · refrigerator · freezer</small></span><span aria-hidden="true">›</span></button></div><nav class="food-tabs" aria-label="Food sections">' + [['recipes', '📖', 'Saved recipes'], ['plans', '🗓️', 'Meal plan'], ['soon', '🌱', 'Use soon' + (dueCount ? ' · ' + dueCount : '')], ['log', '🍽️', 'Food log']].map(([value, icon, label]) => '<button type="button" data-food-action="tab" data-tab="' + value + '"' + (tab === value ? ' aria-current="page"' : '') + '><span aria-hidden="true">' + icon + '</span> ' + esc(label) + '</button>').join('') + '</nav>';
-      if (tab === 'recipes') html += renderRecipes(current);
+      html += '<nav class="food-tabs" aria-label="Food sections">' + [['home','🌸','Food home'],['recipes','📖','Recipes'],['plans','🗓️','Menu'],['cooking','🍳','Cooking'],['soon','🌱','Use soon'+(dueCount?' · '+dueCount:'')],['log','🍽️','Food log']].map(([value, icon, label]) => '<button type="button" data-food-action="tab" data-tab="' + value + '"' + (tab === value ? ' aria-current="page"' : '') + '><span aria-hidden="true">' + icon + '</span> ' + esc(label) + '</button>').join('') + '</nav>';
+      if (tab === 'home') html += renderFoodHome(current);
+      else if (tab === 'recipes') html += renderRecipes(current);
       else if (tab === 'plans') html += renderPlans(current);
+      else if (tab === 'cooking') html += renderCooking(current);
       else if (tab === 'soon') html += renderSoon(current);
       else {
         html += '<section class="panel"><div class="food-heading"><h2>Your food log</h2>' + datePicker() + '</div><div class="food-actions">' + button('new-log', '+ Add a food entry', ' data-person="1" data-kind="eaten"', true) + button('wellness', 'See nutrition by person') + (dirty('log') ? button('resume-log', 'Resume food draft') : '') + '</div></section>';
@@ -592,7 +604,7 @@
       if ((person1 || 0) + (person2 || 0) > servings + 1e-9) throw new Error('The servings divided between people cannot exceed the total servings to make.');
       const ingredients = validatedShoppingIngredients(current, value.ingredients, true);
       if (!ingredients.some(item => item.included)) throw new Error('Include at least one named shopping ingredient. You can leave an uncertain amount blank for review.');
-      const payload = { id: value.id || value.request_id, request_id: value.request_id, recipe_id: value.recipe_id, recipe_revision: Number(value.recipe_revision), cook_on: value.cook_on, servings, person1_servings: person1, person2_servings: person2, notes: text(value.notes, 'Meal notes', 4000, false), ingredients };
+      const payload = { id: value.id || value.request_id, request_id: value.request_id, recipe_id: value.recipe_id, recipe_revision: Number(value.recipe_revision), cook_on: value.cook_on, meal_type: ['breakfast','lunch','dinner','snack'].includes(value.meal_type) ? value.meal_type : 'dinner', servings, person1_servings: person1, person2_servings: person2, notes: text(value.notes, 'Meal notes', 4000, false), ingredients };
       if (value.id) payload.revision = value.revision;
       return payload;
     }
@@ -644,9 +656,10 @@
     }
     function handleSubmit(event) {
       const form = event.target, kind = form && form.dataset && form.dataset.foodForm;
-      if (!['recipe', 'log', 'plan'].includes(kind)) return false;
+      if (!['recipe', 'log', 'plan', 'equipment'].includes(kind)) return false;
       event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
+        if (kind === 'equipment') { ready(current); const get=name=>form.elements&&form.elements.namedItem(name); const name=text(get('name')&&get('name').value,'Equipment name',160,true),brand=text(get('brand')&&get('brand').value,'Brand',120,false),modelName=text(get('model')&&get('model').value,'Model',160,false),notes=text(get('notes')&&get('notes').value,'Notes',4000,false),capabilities=String(get('capabilities')&&get('capabilities').value||'').split(',').map(v=>v.trim()).filter(Boolean).slice(0,30); run('Saving kitchen equipment…',()=>store.saveKitchenEquipment({request_id:uuid(),name,brand,model:modelName,capabilities,notes,archived:false}),()=>{form.reset();notify('Kitchen equipment saved.');}); return true; }
         readForm(form, kind); persist(); ready(current);
         if (kind === 'recipe') {
           const payload = recipePayload(current);
@@ -858,6 +871,7 @@
           if (typeof store.reconcileMealShopping !== 'function') throw new Error('Refresh the app to load the meal-planning tools.');
           run('Checking meal ingredients and food at home…', () => store.reconcileMealShopping(), () => { notify('Your planned meals were checked against food at home and the grocery list was updated.'); }, '#food-plans'); return true;
         }
+        else if (action === 'delete-equipment') { const row=(current.kitchenEquipment||[]).find(item=>item.id===data.id); if(row&&confirm('Remove '+row.name+' from Kitchen Equipment?')) run('Removing equipment…',()=>store.deleteKitchenEquipment(row),()=>notify('Kitchen equipment removed.')); return true; }
         else if (action === 'new-log') { openLog(current, null, { person_slot: String(data.person || 1), kind: data.kind === 'planned' ? 'planned' : 'eaten' }); return true; }
         else if (action === 'resume-log') { logging = true; if (currentPage === 'food') tab = 'log'; }
         else if (action === 'log-recipe') { const recipe = (current.recipes || []).find(row => row.id === data.id); if (!recipe) throw new Error('Refresh to find this recipe.'); openLog(current, null, { recipe_id: recipe.id, person_slot: String(data.person || 1), source_kind: 'recipe' }); return true; }
@@ -886,7 +900,7 @@
       } catch (error) { notify(error.message, true); }
       return true;
     }
-    function selectTab(value) { snapshot(); if (busy || !['recipes', 'plans', 'soon', 'log'].includes(value)) return false; tab = value; persist(); refresh(); return true; }
+    function selectTab(value) { snapshot(); if (busy || !['home','recipes','plans','cooking','soon','log'].includes(value)) return false; tab = value; persist(); refresh(); return true; }
     function hasUnpersistedChanges() { snapshot(); return Boolean(selectedFile || ((dirty('recipe') || dirty('log') || dirty('plan') || planAttempt) && !draftSaved)); }
     return { render, handleClick, handleSubmit, handleInput, handleChange, hasUnsavedDraft, hasUnpersistedChanges, discardDraft, selectTab, startProductLog, setSelectedDate, getSelectedDate: () => { snapshot(); return selectedDate; }, isBusy: () => Boolean(busy), whenIdle: () => pending, getHomeSummary: () => { const current = snapshot(); return { due: M.dueItems(current.inventory || [], dayKey(getNow())).length, recipes: (current.recipes || []).filter(row => !row.archived).length }; } };
   }

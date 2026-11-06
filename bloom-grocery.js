@@ -6,6 +6,7 @@
     ['list', 'Shopping list'], ['catalog', 'Products'], ['recurring', 'Regular products'], ['receipts', 'Receipts'], ['budget', 'Monthly budget'], ['inventory', 'Food at home'],
     ['profiles', 'Profiles'], ['history', 'Budget history'], ['household', 'Household']
   ];
+  const VISIBLE_TABS = [['list','Shopping list'],['catalog','Products'],['recurring','Regular products'],['receipts','Purchases'],['inventory','Food at home']];
   const LOCATIONS = [['pantry', 'Pantry'], ['refrigerator', 'Refrigerator'], ['freezer', 'Freezer']];
   const DATE_TYPES = [['unknown', 'Type not specified'], ['best_before', 'Best before'], ['use_by', 'Use by'], ['sell_by', 'Sell by'], ['expiry', 'Expiration']];
   const TARGETS = [
@@ -169,6 +170,7 @@
     let baselines;
     let draftStatus = '', draftWriteFailed = false;
     let backupReview = null;
+    let masterImportReview = null;
 
     function resetDrafts() {
       approvedCommerceMonth = null;
@@ -184,6 +186,7 @@
       migrationReview = null;
       invite = null;
       backupReview = null;
+      masterImportReview = null;
       draftWriteFailed = false;
     }
     resetDrafts();
@@ -366,7 +369,7 @@
       return '<section class="panel"><p class="page-kicker">Your shared space</p><h2>Set up your household</h2><p>You are signed in as <strong>' + escapeText(current.user && current.user.email || 'your account') + '</strong>.</p><div class="grocery-setup-grid"><section><h3>Create a household</h3><p class="grocery-help">One shared list, budget, and food inventory for two people.</p>' + form('household-create', input('household', 'name', 'Household name', 'type="text" required maxlength="80" autocomplete="off"') + '<div class="grocery-actions">' + submit('Create household') + '</div>') + '</section><section><h3>Join your household</h3><p class="grocery-help">If the other person already created it, ask them for the sharing code.</p>' + form('household-join', input('household', 'code', 'Sharing code', 'type="text" required maxlength="128" autocomplete="off" autocapitalize="none" spellcheck="false"') + '<div class="grocery-actions">' + submit('Join household') + '</div>') + '</section></div><p class="grocery-help">Household members can see its grocery list, food inventory, budgets, and shared dietary targets and restrictions.</p><div class="grocery-actions">' + button('signout', 'Sign out') + '</div></section>' + localPreviewPanel();
     }
     function renderHeader(current) {
-      return '<div class="grocery-heading"><div><p class="page-kicker">Your household groceries</p><h2>' + escapeText(current.household.name || 'Our household') + '</h2><p class="grocery-help">' + (current.offline ? 'Saved device copy · ' : 'Shared online · ') + (current.members || []).length + ' of 2 household members</p></div><div class="grocery-actions">' + button('refresh', 'Refresh list', ' aria-label="Refresh shared Grocery records"') + '</div></div><nav class="grocery-tabs" aria-label="Grocery sections">' + TABS.map(([value, label]) => '<button type="button" data-grocery-action="tab" data-tab="' + value + '"' + (tab === value ? ' aria-current="page"' : '') + disabled() + '>' + label + '</button>').join('') + '</nav>';
+      return '<div class="grocery-heading"><div><p class="page-kicker">Food · Grocery</p><h2>' + escapeText(current.household.name || 'Our household') + '</h2><p class="grocery-help">' + (current.offline ? 'Saved device copy · ' : 'Shared online · ') + (current.members || []).length + ' of 2 household members</p></div><div class="grocery-actions">' + button('refresh', 'Refresh list', ' aria-label="Refresh shared Grocery records"') + '</div></div><nav class="grocery-tabs" aria-label="Grocery sections">' + VISIBLE_TABS.map(([value, label]) => '<button type="button" data-grocery-action="tab" data-tab="' + value + '"' + (tab === value ? ' aria-current="page"' : '') + disabled() + '>' + label + '</button>').join('') + '</nav>';
     }
     function deleteControls(type, row) {
       if (pendingDelete && pendingDelete.type === type && pendingDelete.row.id === row.id) {
@@ -411,7 +414,9 @@
       const editing = Boolean(drafts.shopping.id);
       const known = items.filter(item => !item.checked && !purchaseReceipt(current, item) && item.estimate_cents != null).reduce((sum, item) => sum + Number(item.estimate_cents), 0);
       const missing = items.filter(item => !item.checked && !purchaseReceipt(current, item) && item.estimate_cents == null).length;
-      let html = '<section class="panel"><div class="grocery-month-heading"><div><p class="page-kicker">' + monthLabel(selectedMonth) + '</p><h2>Your grocery list</h2><span class="pill">' + remaining + ' to buy</span></div>' + monthControl() + '</div><p class="grocery-help">Add what your household needs. Both people see the same saved monthly list. Earlier lists remain in their own months.</p><div class="grocery-list-summary"><span>Known shopping estimate <strong>' + money(known) + '</strong>' + (missing ? '<small>' + missing + ' price(s) needed — estimate incomplete</small>' : '') + '</span><div class="grocery-actions">' + button('record-trip', 'Record a shopping trip', '', true) + button('tab', 'Browse products', ' data-tab="catalog"') + '</div></div>';
+      const estimatedTax = model && model.estimatedTax ? model.estimatedTax(known) : Math.round(known * 0.03);
+      const estimatedTotal = known + estimatedTax;
+      let html = '<section class="panel"><div class="grocery-month-heading"><div><p class="page-kicker">' + monthLabel(selectedMonth) + '</p><h2>Your grocery list</h2><span class="pill">' + remaining + ' to buy</span></div>' + monthControl() + '</div><p class="grocery-help">Add what your household needs. Both people see the same saved monthly list. Earlier lists remain in their own months.</p><div class="grocery-list-summary"><span><small>Known subtotal</small><strong>' + money(known) + '</strong><small>3% estimated tax: ' + money(estimatedTax) + '</small><small>Estimated total: <strong>' + money(estimatedTotal) + '</strong></small>' + (missing ? '<small>' + missing + ' price(s) needed — estimate incomplete</small>' : '<small>Estimate only; actual receipt spending uses what you really paid.</small>') + '</span><div class="grocery-actions">' + button('record-trip', 'Record a shopping trip', '', true) + button('tab', 'Browse products', ' data-tab="catalog"') + '</div></div>';
       const needsPurchase = items.filter(item => item.checked && !purchaseReceipt(current, item));
       if (needsPurchase.length) html += '<div class="grocery-purchase-notice"><strong>' + needsPurchase.length + ' previously checked item' + (needsPurchase.length === 1 ? '' : 's') + ' need purchase details.</strong><p>Confirm the amount paid and food quantities to save them in inventory, shopping trips, and your budget.</p>' + button('record-checked-trip', 'Finish saving checked items', '', true) + '</div>';
       html += '<div class="grocery-actions">' + button('meal-plans', 'Meal plans ›') + '</div></section>' + (commerce && commerce.renderPurchase ? commerce.renderPurchase() : '') + '<section class="panel">';
@@ -456,13 +461,20 @@
       }).join('') + '</ul>' : '<div class="grocery-empty"><h3>Your first month starts here</h3><p>Choose a food budget and save it. That month will appear in this history.</p>' + button('tab', 'Set a monthly budget', ' data-tab="budget"', true) + '</div>') + '</section>';
     }
 
+    function renderMasterImport(current) {
+      const existing=new Set((current.products||[]).map(row=>row.import_id).filter(Boolean));
+      let html='<section class="panel grocery-master-import"><div class="panel-title-row"><div><p class="page-kicker">Master food library</p><h3>Import Inventory CSV</h3></div><span class="pill">'+existing.size+' master IDs saved</span></div><p class="grocery-help">Imports are append-only by permanent import_id. Existing products, nutrition, prices, quantities, dates, and opened status are never overwritten by re-uploading the master file.</p><label class="grocery-field"><span>Choose the Life in Bloom master CSV</span><input type="file" accept=".csv,text/csv" data-grocery-master-import'+disabled()+'></label>';
+      if(masterImportReview)html+='<div class="grocery-import-result"><strong>'+masterImportReview.newCount+' new item'+(masterImportReview.newCount===1?'':'s')+' ready</strong><span>'+masterImportReview.skipCount+' existing item'+(masterImportReview.skipCount===1?'':'s')+' will be skipped</span><span>0 items changed · 0 deleted</span></div><div class="grocery-actions">'+button('confirm-master-import','Import new master items','',true)+button('cancel-master-import','Cancel')+'</div>';
+      return html+'</section>';
+    }
+
     function renderInventory(current) {
       const all = current.inventory || [];
       const rows = all.filter(row => inventoryFilter === 'all' || row.location === inventoryFilter);
       const editing = Boolean(drafts.inventory.id);
       const today = monthKey(getNow()) + '-' + String(getNow().getDate()).padStart(2, '0');
       const due = model && model.dueItems ? model.dueItems(all, today) : [];
-      let html = '<section class="panel"><div class="panel-title-row"><div><p class="page-kicker">Food inventory</p><h2>Food already at home</h2></div>' + button('use-soon', 'Use-soon food & recipes ›') + '</div><p class="grocery-help">Track each package or batch, its remaining amount, and the dates printed on it. Food carries forward when a new month starts.</p><div class="grocery-location-tabs" aria-label="Food storage locations">' + [['all', 'All food'], ...LOCATIONS].map(([value, label]) => '<button type="button" data-grocery-action="filter-location" data-location="' + value + '" aria-pressed="' + (inventoryFilter === value) + '"' + disabled() + '><span>' + label + '</span><strong>' + (value === 'all' ? all.length : all.filter(row => row.location === value).length) + '</strong></button>').join('') + '</div>';
+      let html = renderMasterImport(current) + '<section class="panel"><div class="panel-title-row"><div><p class="page-kicker">Food inventory</p><h2>Food already at home</h2></div>' + button('use-soon', 'Use-soon food & recipes ›') + '</div><p class="grocery-help">Track each package or batch, its remaining amount, and the dates printed on it. Food carries forward when a new month starts.</p><div class="grocery-location-tabs" aria-label="Food storage locations">' + [['all', 'All food'], ...LOCATIONS].map(([value, label]) => '<button type="button" data-grocery-action="filter-location" data-location="' + value + '" aria-pressed="' + (inventoryFilter === value) + '"' + disabled() + '><span>' + label + '</span><strong>' + (value === 'all' ? all.length : all.filter(row => row.location === value).length) + '</strong></button>').join('') + '</div>';
       html += '<h3>' + (editing ? 'Update this food' : 'Add food you already have') + '</h3>' + form('inventory', select('inventory', 'product_id', 'Link to a saved product <small>(optional)</small>', productChoices(current)) + '<div class="grocery-form-grid">' + input('inventory', 'name', 'Food or product name', 'type="text" required maxlength="160" autocomplete="off"') + input('inventory', 'brand', 'Brand <small>(optional)</small>', 'type="text" maxlength="120" autocomplete="off"') + input('inventory', 'quantity', 'Amount remaining', 'type="number" min="0" max="1000000000" step="any" inputmode="decimal" required') + input('inventory', 'unit', 'Unit', 'type="text" list="grocery-unit-options" maxlength="30" required autocomplete="off"') + select('inventory', 'location', 'Stored in', LOCATIONS) + '</div><datalist id="grocery-unit-options"><option value="each"><option value="g"><option value="kg"><option value="oz"><option value="lb"><option value="ml"><option value="l"><option value="fl_oz"><option value="cup"><option value="packages"></datalist><fieldset class="grocery-date-fields"><legend>Expiration, freezing & reminders</legend><div class="grocery-form-grid">' + input('inventory', 'expires_on', 'Expiration / printed package date', 'type="date" min="1900-01-01" max="2200-12-31"') + select('inventory', 'date_type', 'What does that date say?', DATE_TYPES) + input('inventory', 'opened_on', 'Date opened <small>(optional)</small>', 'type="date" min="1900-01-01" max="2200-12-31"') + input('inventory', 'frozen_on', 'Date frozen <small>(optional)</small>', 'type="date" min="1900-01-01" max="2200-12-31"') + input('inventory', 'freezer_use_by', 'Your freezer reminder date <small>(optional)</small>', 'type="date" min="1900-01-01" max="2200-12-31"') + input('inventory', 'reminder_days', 'Show a reminder this many days before', 'type="number" min="0" max="30" step="1" inputmode="numeric" required') + '</div><p class="grocery-help">A frozen date records what you did. It does not automatically extend the printed date or determine food safety. Leave dates blank when you do not know them.</p></fieldset>' + textarea('inventory', 'notes', 'Notes <small>(optional)</small>', 2000) + '<div class="grocery-actions">' + submit(editing ? 'Save food changes' : '+ Add to inventory') + button('clear-inventory', editing ? 'Discard changes' : 'Clear form') + '</div>') + '</section>';
       html += '<section class="panel"><div class="panel-title-row"><h3>' + (inventoryFilter === 'all' ? 'Your food inventory' : LOCATIONS.find(entry => entry[0] === inventoryFilter)[1]) + '</h3><span class="pill">' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + '</span></div>';
       if (!rows.length) html += '<div class="grocery-empty"><p>No food recorded here yet. Add what you have above, using the amount and unit on your package.</p></div>';
@@ -713,6 +725,12 @@
       const field = event.target;
       if (!field || !field.dataset) return false;
       const current = snapshot();
+      if (Object.hasOwn(field.dataset, 'groceryMasterImport')) {
+        const file=field.files&&field.files[0]; if(!file||busy||(commerce&&commerce.isBusy()))return true; if(!requireReady(current))return true;
+        if(!root.BloomFoodImport||typeof root.BloomFoodImport.prepare!=='function'){announce('The Food CSV tools did not finish loading. Refresh and try again.',true);return true;}
+        if(file.size>5*1024*1024){announce('Choose a master CSV up to 5 MB.',true);return true;}
+        run('Reading the master Food CSV…',async()=>root.BloomFoodImport.prepare(await file.text()),rows=>{const existing=new Set((snapshot().products||[]).map(row=>row.import_id).filter(Boolean));masterImportReview={rows,newCount:rows.filter(row=>!existing.has(row.import_id)).length,skipCount:rows.filter(row=>existing.has(row.import_id)).length,name:file.name};announce('Review the append-only import before saving it.');});return true;
+      }
       if (Object.hasOwn(field.dataset, 'groceryHouseholdImport')) {
         const file = field.files && field.files[0];
         if (!file || busy || (commerce && commerce.isBusy())) return true;
@@ -756,7 +774,7 @@
       const element = event.target && event.target.closest && event.target.closest('[data-grocery-action]');
       if (!element || !element.dataset || !element.dataset.groceryAction) return false;
       const action = element.dataset.groceryAction;
-      const actions = ['tab', 'auth-mode', 'retry', 'refresh', 'signout', 'filter-location', 'open-budget', 'edit-shopping', 'edit-inventory', 'clear-shopping', 'clear-inventory', 'clear-private', 'clear-diet', 'delete-shopping', 'delete-inventory', 'confirm-delete', 'keep-item', 'review-import', 'confirm-import', 'cancel-import', 'create-invite', 'record-trip', 'record-checked-trip', 'view-shopping-receipt', 'open-money', 'use-soon', 'meal-plans', 'freeze-inventory', 'export-household', 'restore-household', 'cancel-household-import'];
+      const actions = ['tab', 'auth-mode', 'retry', 'refresh', 'signout', 'filter-location', 'open-budget', 'edit-shopping', 'edit-inventory', 'clear-shopping', 'clear-inventory', 'clear-private', 'clear-diet', 'delete-shopping', 'delete-inventory', 'confirm-delete', 'keep-item', 'review-import', 'confirm-import', 'cancel-import', 'create-invite', 'record-trip', 'record-checked-trip', 'view-shopping-receipt', 'open-money', 'use-soon', 'meal-plans', 'freeze-inventory', 'export-household', 'restore-household', 'cancel-household-import', 'confirm-master-import', 'cancel-master-import'];
       if (!actions.includes(action)) return false;
       const current = snapshot();
       if (busy || (commerce && commerce.isBusy())) return true;
@@ -817,7 +835,9 @@
             const skipped = result && (result.skippedFiles || result.skipped_files) || 0;
             announce('The backup was checked and missing household records restored. Existing records were kept.' + (skipped ? ' ' + skipped + ' unavailable attachment reference(s) were skipped.' : ''));
           });
-        } else if (action === 'freeze-inventory') {
+        } else if (action === 'cancel-master-import') { masterImportReview=null; refresh(); }
+        else if (action === 'confirm-master-import') { if(!masterImportReview||!Array.isArray(masterImportReview.rows))throw new Error('Choose and review the master CSV first.'); const rows=masterImportReview.rows; run('Adding new master Food products…',()=>store.importFoodMaster(rows),result=>{masterImportReview=null;const added=Number(result&&result.added||0),skipped=Number(result&&result.skipped||0);announce('Import complete · '+added+' new item'+(added===1?'':'s')+' added · '+skipped+' existing item'+(skipped===1?'':'s')+' skipped · 0 changed · 0 deleted.');}); }
+        else if (action === 'freeze-inventory') {
           const row = (current.inventory || []).find(item => item.id === element.dataset.id);
           if (!row) return true;
           if (dirty('inventory')) { announce('Save or discard the food entry you are editing first.', true); return true; }

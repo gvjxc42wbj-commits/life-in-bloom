@@ -10,21 +10,22 @@
     moneyEntries: 'bloom_money_entries', bills: 'bloom_bills', billRules: 'bloom_bill_rules', recipes: 'bloom_recipes',
     mealEntries: 'bloom_meal_entries', foodFiles: 'bloom_food_files',
     cookingPlans: 'bloom_cooking_plans', mealShoppingLinks: 'bloom_meal_shopping_links',
-    lifeRecords: 'bloom_life_records', dogStockEffects: 'bloom_dog_stock_effects'
+    lifeRecords: 'bloom_life_records', dogStockEffects: 'bloom_dog_stock_effects', kitchenEquipment: 'bloom_kitchen_equipment'
   };
   const PRIVATE_FIELDS = ['display_name', 'age_years', 'height_cm', 'weight_kg', 'activity_level', 'notes'];
   const DIET_FIELDS = ['display_name', 'color', 'calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'allergies', 'restrictions', 'preferences', 'notes'];
-  const INVENTORY_FIELDS = ['name', 'brand', 'quantity', 'unit', 'location', 'expires_on', 'notes', 'product_id', 'frozen_on', 'opened_on', 'date_type', 'freezer_use_by', 'reminder_days'];
+  const INVENTORY_FIELDS = ['name', 'brand', 'quantity', 'unit', 'location', 'expires_on', 'notes', 'product_id', 'frozen_on', 'opened_on', 'date_type', 'freezer_use_by', 'reminder_days', 'purchase_on', 'servings_remaining', 'stock_level'];
   const SHOPPING_FIELDS = ['name', 'quantity', 'checked', 'month', 'product_id', 'packs', 'estimate_cents', 'category'];
   const EXTRA_FIELDS = {
-    products: ['name','brand','category','aisle','package_quantity','package_unit','item_label','price_cents','price_date','store','source_url','serving_quantity','serving_unit','nutrients','allergens','notes','archived'],
+    products: ['name','brand','category','aisle','package_quantity','package_unit','item_label','price_cents','price_date','store','source_url','serving_quantity','serving_unit','nutrients','allergens','notes','archived','import_id','package_size_text','default_storage_location','icon_id','regular_price_cents','price_status','price_notes','servings_per_package','nutrition_status','source_label','date_added','batch'],
     recurringProducts: ['product_id','person_slot','quantity','basis','every_days','active'],
     bills: ['month','name','amount_cents','variable','due_on','notes'],
-    recipes: ['name','servings','ingredients','ingredient_text','instructions','source_url','notes','archived','nutrition_mode','nutrition_reference','nutrition_source','planning_ingredients'],
+    recipes: ['name','servings','ingredients','ingredient_text','instructions','source_url','notes','archived','nutrition_mode','nutrition_reference','nutrition_source','planning_ingredients','tags','equipment'],
+    kitchenEquipment: ['name','brand','model','capabilities','notes','archived'],
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment'];
   const LIFE_COLLECTIONS = {
     hydrationSettings:'hydration_settings', hydrationEntries:'hydration_entry',
     skills:'skill', skillSessions:'skill_session', smokingSettings:'smoking_settings', smokingDays:'smoking_day',
@@ -711,7 +712,7 @@
       saveRoutineTask:'routine_task',saveRoutineLog:'routine_log',saveDogNote:'dog_note',saveDogSupply:'dog_supply'
     }).map(([name,kind])=>[name,row=>saveLifeRecord(kind,row)]));
     function saveCookingPlan(row) {
-      const plan = pick(row, ['recipe_id','recipe_revision','cook_on','servings','person1_servings','person2_servings','notes']);
+      const plan = pick(row, ['recipe_id','recipe_revision','cook_on','meal_type','servings','person1_servings','person2_servings','notes']);
       plan.id = row.id || row.request_id || newUuid();
       plan.request_id = row.request_id || newUuid();
       if (row.id && row.revision != null) plan.revision = revisionOf(row);
@@ -723,6 +724,9 @@
       return rpc('bloom_cancel_cooking_plan', { p_id: row.id, p_revision: revisionOf(row), p_request_id: requestId }, true);
     }
     function reconcileMealShopping() { return rpc('bloom_reconcile_meal_shopping', {}, true); }
+    function importFoodMaster(rows) { if (!Array.isArray(rows) || !rows.length) throw new Error('Choose a reviewed master CSV first.'); return rpc('bloom_import_food_master', { p_rows: clone(rows) }, true); }
+    function saveKitchenEquipment(row) { return saveExtra('kitchenEquipment', row); }
+    function deleteKitchenEquipment(row) { return deleteRow(TABLES.kitchenEquipment, row); }
     function saveMealEntry(row) { return saveExtra('mealEntries', row); }
     function deleteMealEntry(row) { return deleteRow(TABLES.mealEntries, row); }
     function recordReceipt(payload) {
@@ -860,7 +864,7 @@
       createHousehold, createInvite, joinHousehold, removeMember, savePrivateProfile, saveDietProfile,
       saveBudget, saveInventory, deleteInventory, saveShoppingItem, toggleShoppingItem,
       deleteShoppingItem, importLocalShopping, saveProduct, saveRecurringProduct, saveBill, ensureBillMonth, stopBillSeries, saveRecipe,
-      saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
+      saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, importFoodMaster, saveKitchenEquipment, deleteKitchenEquipment, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
       ...lifeSavers,saveLifeRecord,archiveLifeRecord,addDogSupplyToShopping,exportPersonalLifeRecords,importPersonalLifeRecords,
       uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }

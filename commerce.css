@@ -130,3 +130,5 @@
   .commerce-review-list > li > div:last-child { text-align: left; }
   .commerce-money-totals strong { font-size: 20px; }
 }
+
+.commerce-estimate-stack{display:grid;gap:.3rem;padding:.8rem;border-radius:16px;background:#fff7fa;border:1px solid #efd4dd}.commerce-estimate-stack span{display:flex;justify-content:space-between;gap:1rem}

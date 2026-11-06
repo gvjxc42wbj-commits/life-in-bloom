@@ -1,0 +1,4 @@
+-- Life in Bloom Food master-library expansion. Live migration applied 2026-11-06.
+-- Adds append-only Product import IDs, richer inventory metadata, meal types,
+-- recipe equipment/tags, kitchen equipment, expanded nutrient keys, and the
+-- authenticated bloom_import_food_master RPC. See Supabase migration history.

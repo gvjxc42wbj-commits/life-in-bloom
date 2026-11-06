@@ -68,9 +68,9 @@
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.8 4.7a5.5 5.5 0 0 0-7.8 0L12 5.8l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.5a5.5 5.5 0 0 0 0-7.8Z" /><path d="M5 12h4l2-4 2 8 2-4h4" /></svg>
       <span>Wellness</span>
     </button>
-    <button class="bottom-nav-button" type="button" data-page="grocery">
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 3h3l3 13h11l3-9H6" /><circle cx="9" cy="20" r="1" /><circle cx="18" cy="20" r="1" /></svg>
-      <span>Grocery</span>
+    <button class="bottom-nav-button" type="button" data-page="food">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 11c0 5 3 9 8 9s8-4 8-9H4Z"/><path d="M7 8c1-2 3-3 5-3s4 1 5 3M12 5V2"/></svg>
+      <span>Food</span>
     </button>
     <button class="bottom-nav-button" type="button" data-page="dog">
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><ellipse cx="5" cy="9" rx="2" ry="2.5" /><ellipse cx="10" cy="5" rx="2" ry="2.5" /><ellipse cx="16" cy="5" rx="2" ry="2.5" /><ellipse cx="21" cy="10" rx="2" ry="2.5" /><path d="M7 17c1-2 2-5 5-5s4 3 5 5c2 4-1 5-5 3-4 2-7 1-5-3Z" /></svg>
@@ -141,7 +141,7 @@
     <div class="dialog-inner">
       <div class="dialog-top"><h2 id="help-title">Using Life in Bloom</h2><button type="button" class="icon-button" id="close-help" aria-label="Close help">×</button></div>
       <p><strong>Home:</strong> The Home button at the bottom opens your Life in Bloom main page. Tapping the app name at the top also returns Home.</p>
-      <p><strong>Bottom navigation:</strong> Wellness opens Nutrition. Grocery opens your saved things-to-buy list directly. Dog and Money open their sections.</p>
+      <p><strong>Bottom navigation:</strong> Wellness opens nutrition and profiles. Food opens the kitchen hub: Food at Home, Grocery, Menu, Recipes, Cooking and Expiring Soon. Dog and Money open their sections.</p>
       <p><strong>App menu:</strong> The three-line button opens Sleep &amp; Mood, Money in Bloom, Food in Bloom, Skills in Bloom, Idea’s in Bloom, Housework, Dog, and Smoking Log. Dog and Money open the same pages from either menu.</p>
       <p><strong>Moon Wheel:</strong> Tap a segment to open that day's log. Month at a glance includes dated sleep and mood history, plus comparisons based on the feelings you recorded. The comparisons describe entries from the same 8 AM–8 AM tracking day; they do not establish that sleep caused a feeling.</p>
       <p><strong>Weekly mood:</strong> See seven tracking days, with one row per hour. Scroll the grid sideways on a small screen, or open a day using the date buttons. Tap an awake hour to record or edit how you felt.</p>
@@ -150,7 +150,7 @@
       <p><strong>Hourly feelings:</strong> Each awake hour can have a feeling and an optional note. Suggested words are shortcuts; you can write your own. Activity labels show what you recorded doing in that hour. Changing a time block keeps any existing mood observation so you can review it.</p>
       <p><strong>Dates:</strong> Each tracking day runs from 8 AM to 8 AM the next morning. The after-midnight hours are labeled with their actual date. Weeks begin on Monday.</p>
       <p><strong>Sleep totals:</strong> Hours come from the time blocks you mark yourself. Partial records can be incomplete. A day with some activities recorded has an unknown sleep total until sleep is added or every block is explicitly marked Awake.</p>
-      <p><strong>Grocery and Money:</strong> Keep a product catalog, monthly shopping lists, Food and Household allocations, and food dates. Record a reviewed receipt once to update inventory and the Money ledger together. Checking an item opens its purchase details. Confirm the amount paid to update the shopping trip, inventory, budget history, and ledger together. Bills are planned until you record payment.</p>
+      <p><strong>Food, Grocery and Money:</strong> Food keeps inventory, products, menu plans, recipes, cooking and expiration together. Shopping estimates show subtotal plus a generic 3% estimated tax; confirmed receipts remain the source of actual Money spending. Monthly Food and Household allocations and history live in Money.</p>
       <p><strong>Food and Nutrition:</strong> Save recipes using catalog ingredients and their label nutrients. Log planned or eaten portions separately for pink Person 1 and purple Person 2. Unknown nutrients remain incomplete. Use soon highlights your recorded food dates and matching saved recipes; a date or suggestion does not establish food safety. Food logging does not automatically change stock.</p>
       <p><strong>Staying signed in and offline drafts:</strong> The app remembers this device until you sign out, clear its storage, or the account session ends. Household forms save drafts locally. Reconnect and save to post changes; offline drafts do not create spending. Household backups are separate from the personal-journal backup below.</p>
       <p><strong>Idea’s in Bloom:</strong> Type a note and choose Save note. Open a saved note to edit it, or remove it when you no longer need it.</p>
@@ -169,6 +169,7 @@
   <script src="./bloom-grocery-store.js" defer></script>
   <script src="./bloom-drafts.js" defer></script>
   <script src="./bloom-food-model.js" defer></script>
+  <script src="./bloom-food-import.js" defer></script>
   <script src="./bloom-commerce.js" defer></script>
   <script src="./bloom-food.js" defer></script>
   <script src="./bloom-grocery.js" defer></script>

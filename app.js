@@ -89,7 +89,7 @@
     home: ['Welcome to Life in Bloom.', 'A little space for your days, your plans, and how you feel.'],
     'sleep-mood': ['Sleep & Mood', 'Your rest, your feelings, and your plans, together.'],
     wellness: ['Wellness', 'Your space for nutrition and everyday care.'],
-    grocery: ['Grocery', 'Plan together. Shop thoughtfully. Use what you have.'],
+    grocery: ['Food · Grocery', 'Your shopping list and reusable product library.'],
     money: ['Money in Bloom', 'A home for where your money goes.'],
     food: ['Food in Bloom', 'Your space for food, recipes, and what you have at home.'],
     skills: ['Skills in Bloom', 'A place for the things you are learning.'],
@@ -598,7 +598,7 @@ function renderCircle(){
     content.setAttribute('aria-label', isSleepMood ? 'Sleep and mood view' : state.page === 'home' ? 'Life in Bloom home' : heading);
     document.title = state.page === 'home' ? 'Life in Bloom' : `${heading} · Life in Bloom`;
     for (const button of document.querySelectorAll('[data-page]')) {
-      const active = button.dataset.page === state.page;
+      const active = button.dataset.page === state.page || (button.classList.contains('bottom-nav-button') && button.dataset.page === 'food' && state.page === 'grocery');
       button.classList.toggle('active', active);
       if (active) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');

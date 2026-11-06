@@ -8,6 +8,9 @@
     { key: 'carbs_g', label: 'Carbohydrates', unit: 'g' },
     { key: 'fat_g', label: 'Fat', unit: 'g' },
     { key: 'fiber_g', label: 'Fiber', unit: 'g' },
+    { key: 'added_sugar_g', label: 'Added sugar', unit: 'g' },
+    { key: 'saturated_fat_g', label: 'Saturated fat', unit: 'g' },
+    { key: 'trans_fat_g', label: 'Trans fat', unit: 'g' },
     { key: 'sodium_mg', label: 'Sodium', unit: 'mg' },
     { key: 'calcium_mg', label: 'Calcium', unit: 'mg' },
     { key: 'iron_mg', label: 'Iron', unit: 'mg' },
@@ -15,6 +18,8 @@
     { key: 'vitamin_d_mcg', label: 'Vitamin D', unit: 'mcg' },
     { key: 'fluid_ml', label: 'Beverage volume', unit: 'mL' }
   ];
+  const GROCERY_TAX_RATE = 0.03;
+  const estimatedTax = centsValue => Number.isSafeInteger(Number(centsValue)) && Number(centsValue) >= 0 ? Math.round(Number(centsValue) * GROCERY_TAX_RATE) : null;
   const UNITS = [
     { value: 'each', label: 'each', family: 'count', factor: 1 },
     { value: 'g', label: 'grams (g)', family: 'mass', factor: 1 },
@@ -334,6 +339,20 @@
     }
     return result.sort((a, b) => a.days_until - b.days_until || b.matching_items.length - a.matching_items.length || a.missing_ingredients.length - b.missing_ingredients.length || String(a.name).localeCompare(String(b.name)));
   }
+  function recipeReadiness(recipes, products, inventory, today) {
+    const productMap=new Map((products||[]).map(row=>[row.id,row]));
+    return uniqueRows(recipes).filter(recipe=>recipe&&!recipe.archived).map(recipe=>{
+      const lines=recipePlanningIngredients(recipe,products||[]),pool=stockPool(inventory||[],today),missing=[],available=[];
+      for(const line of lines.filter(row=>row.optional!==true)){const name=line.name||(productMap.get(line.product_id)||{}).name||'Ingredient';
+        if(!line.product_id||positive(line.quantity)==null||!UNITS.some(unit=>unit.value===normalizeUnit(line.unit))){missing.push({name,reason:'Needs a linked product or reviewed amount.'});continue;}
+        let needed=Number(line.quantity);for(const batch of pool.filter(row=>row.product_id===line.product_id&&row.remaining>0)){const compatible=convertQuantity(batch.remaining,batch.unit,line.unit);if(compatible==null)continue;const used=Math.min(needed,compatible),removed=convertQuantity(used,line.unit,batch.unit);batch.remaining=Math.max(0,batch.remaining-removed);needed=Math.max(0,needed-used);if(needed<=1e-9)break;}
+        if(needed>1e-9)missing.push({name,quantity:tidy(needed),unit:line.unit});else available.push(name);
+      }
+      const status=missing.length===0&&lines.length?'ready':missing.length<=2?'almost':'need';
+      return{recipe,recipe_id:recipe.id,name:recipe.name,status,missing,available_count:available.length,ingredient_count:lines.length};
+    }).sort((a,b)=>({ready:0,almost:1,need:2}[a.status]-({ready:0,almost:1,need:2}[b.status])||a.missing.length-b.missing.length||String(a.name).localeCompare(String(b.name)));
+  }
+
   function recurringPlan(recurring, products, inventory, month) {
     const period = monthDetails(month);
     const catalog = indexProducts(products);
@@ -379,7 +398,8 @@
       if (estimate == null) missingPrices++; else total += estimate;
       items.push({ product_id: id, name: product.name, category: product.category === 'household' ? 'household' : 'food', required_quantity: required, stock_quantity: tidy(allocated), shortage_quantity: shortage, package_quantity: Number(product.package_quantity), package_unit: product.package_unit, packs, estimate_cents: estimate, price_cents: price, price_date: product.price_date || null, person_slots: [...group.person_slots].sort((a, b) => (a == null ? 3 : a) - (b == null ? 3 : b)), recurring_ids: group.recurring_ids, notes });
     }
-    return { month: period.month, days: period.days, items, known_total_cents: total, missing_prices: missingPrices, complete: missingPrices === 0 && issues.length === 0, issues };
+    const tax = estimatedTax(total);
+    return { month: period.month, days: period.days, items, known_total_cents: total, estimated_tax_cents: tax, estimated_total_cents: tax == null ? null : total + tax, missing_prices: missingPrices, complete: missingPrices === 0 && issues.length === 0, issues };
   }
   function monthlyMoney(snapshot, month) {
     const period = monthDetails(month);
@@ -417,8 +437,12 @@
     }
     for (const category of Object.values(amounts)) {
       category.remaining_before_plan_cents = category.budget_cents == null ? null : category.budget_cents - category.spent_cents;
+      category.planned_subtotal_cents = category.planned_cents;
+      category.planned_tax_cents = estimatedTax(category.planned_cents) || 0;
+      category.planned_with_tax_cents = category.planned_cents + category.planned_tax_cents;
       category.known_available_cents = category.budget_cents == null ? null : category.budget_cents - category.spent_cents - category.planned_cents;
       category.available_cents = category.missing_prices ? null : category.known_available_cents;
+      category.available_after_tax_cents = category.missing_prices || category.budget_cents == null ? null : category.budget_cents - category.spent_cents - category.planned_with_tax_cents;
     }
     let billsPlanned = 0, billsMissing = 0, billsPending = 0, billsPaid = 0, billsPaidCount = 0, billsUnpaidCount = 0, billsUnpaidMissing = 0;
     const billGroups = { fixed: { planned_cents: 0, missing_amounts: 0 }, variable: { planned_cents: 0, missing_amounts: 0 } };
@@ -453,7 +477,7 @@
     return [...months].sort().reverse().map(month => monthlyMoney(data, month));
   }
 
-  const api = { NUTRIENTS, UNITS, AISLES, convertQuantity, recipePlanningIngredients, cookingPlanPreview, recipeNutrition, productNutrition, nutritionTotals, nutritionProvenance, dueItems, recipeSuggestions, recurringPlan, monthlyMoney, monthlyBillHistory, dateNumber, monthDetails, effectiveDate };
+  const api = { NUTRIENTS, UNITS, AISLES, GROCERY_TAX_RATE, estimatedTax, convertQuantity, recipePlanningIngredients, cookingPlanPreview, recipeNutrition, productNutrition, nutritionTotals, nutritionProvenance, dueItems, recipeSuggestions, recipeReadiness, recurringPlan, monthlyMoney, monthlyBillHistory, dateNumber, monthDetails, effectiveDate };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.BloomFoodModel = api;
 })(typeof window !== 'undefined' ? window : globalThis);
