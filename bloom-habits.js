@@ -79,6 +79,9 @@
     let readingBookOpen=false, readingSessionOpen=false, readingNoteOpen=false;
     let readerPage=1, readerZoom=1.15, readerMode='pdf', readerRangeStart=1, readerRangeEnd=1;
     let readerPdfDoc=null, readerPdfFileId='', readerPdfLoad=null, readerStatus='', readerTextDraft='', readerTextDraftPage=0, readerLesson=null;
+    let readerTextSize=18, readerLineHeight=1.75, readerSpeechRate=1;
+    let readingAssignmentOpen=false, readingAssignmentDraft={id:'',title:'',prompt:'',body:'',tutor_questions:'',due_on:'',status:'draft'};
+    let readAloudRecorder=null, readAloudStream=null, readAloudChunks=[], readAloudStartedAt=0, readAloudBlob=null, readAloudDuration=0, readAloudPreviewUrl='', readAloudClarity='', readAloudConfidence='', readAloudNotes='';
     let readingBookDraft={id:'',title:'',author:'',isbn:'',edition:'',total_pages:'',current_page:'',current_section:'',status:'not_started',cover_url:'',notes:''};
     let readingSessionDraft={minutes:'20',start_page:'',end_page:'',section:'',notes:''};
     let readingNoteDraft={page_number:'',section:'',note_type:'note',body:''};
@@ -130,7 +133,7 @@
       const today = M.dayKey(getNow());
       if (key !== identity) {
         identity = key; generation++; busy = null; attempt = null; problem = ''; backupReview = null; selectedDate = today; lastToday = today; selectedCategory = 'all'; selectedSkillId = '';
-        skillOpen = false; sessionOpen = false; settingsOpen = false; purchaseOpen = false; draftSaved = false; draftWarning = false; engineeringHomeworkOpen = false; engineeringHomeworkDraft = { title:'', due_on:'', notes:'' }; readingView='home'; selectedReadingBookId=''; readingCoachTab='vocabulary'; readingSeedChecked=''; readingBookOpen=false; readingSessionOpen=false; readingNoteOpen=false; readerPage=1; readerZoom=1.15; readerMode='pdf'; readerRangeStart=1; readerRangeEnd=1; readerPdfDoc=null; readerPdfFileId=''; readerPdfLoad=null; readerStatus=''; readerTextDraft=''; readerTextDraftPage=0; readerLesson=null;
+        skillOpen = false; sessionOpen = false; settingsOpen = false; purchaseOpen = false; draftSaved = false; draftWarning = false; engineeringHomeworkOpen = false; engineeringHomeworkDraft = { title:'', due_on:'', notes:'' }; readingView='home'; selectedReadingBookId=''; readingCoachTab='vocabulary'; readingSeedChecked=''; readingBookOpen=false; readingSessionOpen=false; readingNoteOpen=false; readerPage=1; readerZoom=1.15; readerMode='pdf'; readerRangeStart=1; readerRangeEnd=1; readerPdfDoc=null; readerPdfFileId=''; readerPdfLoad=null; readerStatus=''; readerTextDraft=''; readerTextDraftPage=0; readerLesson=null; readerTextSize=18; readerLineHeight=1.75; readerSpeechRate=1; readingAssignmentOpen=false; readingAssignmentDraft={id:'',title:'',prompt:'',body:'',tutor_questions:'',due_on:'',status:'draft'}; readAloudRecorder=null; readAloudStream=null; readAloudChunks=[]; readAloudStartedAt=0; readAloudBlob=null; readAloudDuration=0; readAloudPreviewUrl=''; readAloudClarity=''; readAloudConfidence=''; readAloudNotes='';
         drafts = makeDrafts(); baselines = copy(drafts); sourceKeys = {};
         const settings = settingsRow(current); reset('settings', rowDraft('settings', settings, today)); sourceKeys.settings = settings ? settings.id + ':' + settings.revision : 'new';
         loadDay(current);
@@ -264,6 +267,65 @@
         setReaderStatus(record?(record.verified?'Verified page text · '+record.extraction_method.replace('_',' '):'Extracted · review before lesson use'):'Page not extracted yet');
       }catch(error){setReaderStatus(error&&error.message||'The PDF page could not be opened.');}
     }
+    function readingAssignments(current,bookId) {
+      const user=current.user&&current.user.id, household=current.household&&current.household.id;
+      return (current.readingAssignments||[]).filter(row=>row&&row.user_id===user&&row.household_id===household&&(!bookId||row.book_id===bookId))
+        .sort((a,b)=>String(a.due_on||'9999-12-31').localeCompare(String(b.due_on||'9999-12-31'))||String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
+    }
+    function readingAudio(current,bookId) {
+      const user=current.user&&current.user.id, household=current.household&&current.household.id;
+      return (current.readingAudioRecordings||[]).filter(row=>row&&row.user_id===user&&row.household_id===household&&(!bookId||row.book_id===bookId))
+        .sort((a,b)=>String(b.recorded_on||'').localeCompare(String(a.recorded_on||''))||String(b.created_at||'').localeCompare(String(a.created_at||'')));
+    }
+    function wordCount(value) { return (String(value||'').match(/\b[\p{L}\p{N}’'-]+\b/gu)||[]).length; }
+    function verifiedRangeText(current,fileId,start,end) {
+      return readingPageTexts(current,fileId).filter(row=>row.verified&&Number(row.page_number)>=start&&Number(row.page_number)<=end)
+        .map(row=>String(row.verified_text||'')).filter(Boolean).join('\n\n');
+    }
+    function hydrateReadingAudio(rows) {
+      if(!root.document||!store.getReadingAudioUrl)return;
+      for(const row of rows){
+        const audio=root.document.querySelector('[data-reading-audio-id="'+row.id+'"]');
+        if(!audio||audio.dataset.loaded==='true')continue;
+        Promise.resolve(store.getReadingAudioUrl(row)).then(url=>{const live=root.document&&root.document.querySelector('[data-reading-audio-id="'+row.id+'"]');if(live){live.src=url;live.dataset.loaded='true';}}).catch(()=>{});
+      }
+    }
+    function stopReadingSpeech() {
+      try{if(root.speechSynthesis)root.speechSynthesis.cancel();}catch(_){}
+    }
+    function startReadingSpeech(text) {
+      if(!root.speechSynthesis||!root.SpeechSynthesisUtterance)throw new Error('Text-to-speech is not available in this browser.');
+      const value=String(text||'').trim();if(!value)throw new Error('Extract or verify page text before listening.');
+      root.speechSynthesis.cancel();
+      const utterance=new root.SpeechSynthesisUtterance(value);utterance.rate=readerSpeechRate;utterance.lang='en-US';root.speechSynthesis.speak(utterance);
+    }
+    function preferredRecordingMime() {
+      if(!root.MediaRecorder)return '';
+      const choices=['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus'];
+      return choices.find(type=>!root.MediaRecorder.isTypeSupported||root.MediaRecorder.isTypeSupported(type))||'';
+    }
+    async function startReadAloudRecording() {
+      if(!root.navigator||!root.navigator.mediaDevices||!root.navigator.mediaDevices.getUserMedia||!root.MediaRecorder)throw new Error('Microphone recording is not supported in this browser.');
+      if(readAloudRecorder&&readAloudRecorder.state==='recording')return;
+      if(readAloudPreviewUrl&&root.URL)root.URL.revokeObjectURL(readAloudPreviewUrl);
+      readAloudBlob=null;readAloudPreviewUrl='';readAloudDuration=0;readAloudChunks=[];
+      readAloudStream=await root.navigator.mediaDevices.getUserMedia({audio:true});
+      const mime=preferredRecordingMime(),options=mime?{mimeType:mime}:undefined;
+      readAloudRecorder=new root.MediaRecorder(readAloudStream,options);
+      readAloudRecorder.ondataavailable=event=>{if(event.data&&event.data.size)readAloudChunks.push(event.data);};
+      readAloudRecorder.onstop=()=>{
+        const base=String(readAloudRecorder.mimeType||mime||'audio/webm').split(';')[0];
+        readAloudBlob=new Blob(readAloudChunks,{type:base});
+        readAloudDuration=Math.max(.1,(Date.now()-readAloudStartedAt)/1000);
+        if(root.URL)readAloudPreviewUrl=root.URL.createObjectURL(readAloudBlob);
+        if(readAloudStream){for(const track of readAloudStream.getTracks())track.stop();}
+        readAloudStream=null;refresh('.reader-read-aloud');
+      };
+      readAloudStartedAt=Date.now();readAloudRecorder.start(1000);refresh('.reader-read-aloud');
+    }
+    function stopReadAloudRecording() {
+      if(readAloudRecorder&&readAloudRecorder.state==='recording')readAloudRecorder.stop();
+    }
     function bookProgress(book) {
       const total=Number(book&&book.total_pages), page=Number(book&&book.current_page);
       return Number.isFinite(total)&&total>0&&Number.isFinite(page)&&page>=0?Math.max(0,Math.min(100,Math.round(page/total*100))):null;
@@ -395,6 +457,25 @@
       if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydrateReadingFiles(files)));
       return html;
     }
+    function renderReadAloudStudio(current,book,file) {
+      const rows=readingAudio(current,book.id),verified=verifiedRangeText(current,file.id,readerRangeStart,readerRangeEnd),sourceWords=wordCount(verified);
+      const recording=readAloudRecorder&&readAloudRecorder.state==='recording';
+      let draft='<div class="read-aloud-controls">'+(recording?button('read-aloud-stop','■ Stop recording','',true):button('read-aloud-start','● Start recording','',true,current.offline))+'<label class="button">Upload audio<input type="file" accept="audio/*" data-reading-audio-upload hidden></label></div>';
+      if(readAloudBlob)draft+='<div class="read-aloud-preview"><audio controls src="'+esc(readAloudPreviewUrl)+'"></audio><div class="read-aloud-draft-grid"><label>Clarity<select data-read-aloud-field="clarity"><option value="">Not rated</option>'+[1,2,3,4,5].map(v=>'<option value="'+v+'"'+(String(readAloudClarity)===String(v)?' selected':'')+'>'+v+' / 5</option>').join('')+'</select></label><label>Confidence<select data-read-aloud-field="confidence"><option value="">Not rated</option>'+[1,2,3,4,5].map(v=>'<option value="'+v+'"'+(String(readAloudConfidence)===String(v)?' selected':'')+'>'+v+' / 5</option>').join('')+'</select></label><label class="wide">Notes<textarea rows="2" data-read-aloud-field="notes">'+esc(readAloudNotes)+'</textarea></label></div><p class="habit-help">'+Math.round(readAloudDuration)+' sec'+(sourceWords?' · '+sourceWords+' verified source words · ~'+Math.round(sourceWords/(readAloudDuration/60))+' WPM':' · Verify the selected page range to calculate WPM')+'</p>'+button('read-aloud-save','Save this recording','',true,current.offline)+'</div>';
+      const cards=rows.length?rows.map(row=>'<article class="read-aloud-entry"><div><strong>'+esc(dateLabel(row.recorded_on))+(row.section?' · '+esc(row.section):'')+'</strong><small>'+(row.page_from?'Pages '+row.page_from+(row.page_to&&row.page_to!==row.page_from?'–'+row.page_to:'')+' · ':'')+Math.round(Number(row.duration_seconds||0))+' sec'+(row.words_per_minute!=null?' · '+Math.round(Number(row.words_per_minute))+' WPM':'')+'</small></div><audio controls preload="none" data-reading-audio-id="'+esc(row.id)+'"></audio><div class="read-aloud-ratings">'+(row.clarity_rating?'<span>Clarity '+row.clarity_rating+'/5</span>':'')+(row.confidence_rating?'<span>Confidence '+row.confidence_rating+'/5</span>':'')+'</div>'+(row.notes?'<p>'+esc(row.notes)+'</p>':'')+button('read-aloud-delete','Remove',' data-id="'+esc(row.id)+'"')+'</article>').join(''):'<p class="habit-help">No read-aloud recordings saved yet. Record the same type of passage over time to hear your fluency change.</p>';
+      if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydrateReadingAudio(rows)));
+      return '<section class="panel reader-read-aloud"><div class="habit-heading"><div><p class="page-kicker">Read aloud journal</p><h2>Record Your Reading</h2><p class="habit-help">Save dated recordings by book and page range so you can compare fluency over weeks or months. WPM is approximate and only calculated from verified source text.</p></div><span class="habit-badge">'+rows.length+' saved</span></div><div class="read-aloud-source"><strong>Current source:</strong> pages '+readerRangeStart+'–'+readerRangeEnd+' · '+sourceWords+' verified words</div>'+draft+'<div class="read-aloud-history">'+cards+'</div></section>';
+    }
+    function renderReadingTutorWorkspace(current,book) {
+      const rows=readingAssignments(current,book.id),attachments=readingFiles(current,book.id).filter(file=>file.file_role==='assignment_attachment');
+      let form='';
+      if(readingAssignmentOpen){
+        const d=readingAssignmentDraft;
+        form='<form class="habit-form tutor-assignment-form" data-reading-assignment-form><div class="habit-form-grid"><label class="habit-field"><span>Assignment title</span><input required maxlength="240" data-reading-assignment-field="title" value="'+esc(d.title)+'"></label><label class="habit-field"><span>Due date</span><input type="date" data-reading-assignment-field="due_on" value="'+esc(d.due_on)+'"></label><label class="habit-field"><span>Status</span><select data-reading-assignment-field="status"><option value="draft"'+(d.status==='draft'?' selected':'')+'>Draft</option><option value="ready"'+(d.status==='ready'?' selected':'')+'>Ready for tutor</option><option value="reviewed"'+(d.status==='reviewed'?' selected':'')+'>Reviewed</option></select></label></div><label class="habit-field"><span>Tutor prompt / instructions</span><textarea rows="3" data-reading-assignment-field="prompt">'+esc(d.prompt)+'</textarea></label><label class="habit-field"><span>My written work</span><textarea rows="10" maxlength="20000" data-reading-assignment-field="body" placeholder="Write or paste your response here...">'+esc(d.body)+'</textarea></label><label class="habit-field"><span>Questions for my tutor</span><textarea rows="4" data-reading-assignment-field="tutor_questions" placeholder="What do you want help reviewing?">'+esc(d.tutor_questions)+'</textarea></label><div class="habit-actions"><button type="submit" class="button primary">Save assignment</button>'+button('reading-assignment-cancel','Cancel')+'</div></form>';
+      }
+      const list=rows.length?rows.map(row=>{const files=attachments.filter(file=>file.assignment_id===row.id);return '<article class="tutor-assignment-card"><div class="habit-heading"><div><strong>'+esc(row.title)+'</strong><small>'+(row.due_on?'Due '+esc(dateLabel(row.due_on))+' · ':'')+esc(row.status.replace('_',' '))+'</small></div><div class="habit-actions">'+button('reading-assignment-edit','Edit',' data-id="'+esc(row.id)+'"')+button('reading-assignment-delete','Remove',' data-id="'+esc(row.id)+'"')+'</div></div>'+(row.prompt?'<p><b>Prompt:</b> '+esc(row.prompt)+'</p>':'')+(row.body?'<details><summary>My written work</summary><p class="tutor-written-work">'+esc(row.body).replace(/\n/g,'<br>')+'</p></details>':'')+(row.tutor_questions?'<p><b>Questions for tutor:</b> '+esc(row.tutor_questions)+'</p>':'')+'<div class="tutor-attachment-row"><label class="button">Attach image / PDF<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" data-reading-assignment-upload data-id="'+esc(row.id)+'" multiple hidden></label>'+files.map(file=>'<span>'+esc(file.name)+' '+button('reading-file-open','Open',' data-id="'+esc(file.id)+'"')+button('reading-file-delete','×',' data-id="'+esc(file.id)+'"')+'</span>').join('')+'</div></article>';}).join(''):'<p class="habit-help">No tutor assignments saved yet. Use this for essays, chapter responses, worksheets, or questions you want to review together.</p>';
+      return '<section class="panel reading-tutor-workspace"><div class="habit-heading"><div><p class="page-kicker">Tutor workspace</p><h2>Written Assignments & Review</h2><p class="habit-help">Keep your own writing, tutor prompts, questions, and supporting images/PDFs in one place beside the book.</p></div>'+button('reading-assignment-add','+ New assignment','',true)+'</div>'+form+'<div class="tutor-assignment-list">'+list+'</div></section>';
+    }
     function renderBloomReader(current,book,file){
       if(!file) return '<section class="reading-dashboard"><section class="reading-banner"><div><p class="page-kicker">Bloom Reader</p><h2>'+esc(book.title)+'</h2><p>Upload the full PDF to begin.</p></div>'+button('reading-detail','← Book Detail',' data-id="'+esc(book.id)+'"')+'</section><section class="panel"><h2>Private book PDF</h2><p class="habit-help">The PDF stays in your private Reading storage. Bloom Reader extracts only the pages you choose.</p><label class="button primary">Upload full-book PDF<input type="file" accept="application/pdf" data-reading-book-pdf hidden></label></section></section>';
       const pageTexts=readingPageTexts(current,file.id),currentRecord=pageTexts.find(row=>Number(row.page_number)===readerPage);
@@ -407,10 +488,13 @@
       }
       const html='<section class="reading-dashboard bloom-reader"><section class="reading-banner"><div><p class="page-kicker">Bloom Reader</p><h2>'+esc(book.title)+'</h2><p>Private PDF reader · text layer first · OCR fallback</p></div>'+button('reading-detail','← Book Detail',' data-id="'+esc(book.id)+'"')+'</section>'
         + '<section class="panel reader-toolbar"><div class="reader-page-controls">'+button('reader-prev','←')+'<label>Page <input type="number" min="1" data-reader-page value="'+readerPage+'"></label><span>of <b data-reader-total-pages>'+esc(total)+'</b></span>'+button('reader-next','→')+'</div><div class="reader-view-controls">'+button('reader-mode','PDF',' data-mode="pdf"',readerMode==='pdf')+button('reader-mode','Reading View',' data-mode="text"',readerMode==='text')+button('reader-zoom-out','A−')+button('reader-zoom-in','A+')+'</div></section>'
-        + '<section class="reader-workspace"><div class="panel reader-page-panel">'+(readerMode==='pdf'?'<div class="reader-canvas-wrap"><canvas data-bloom-reader-canvas></canvas></div>':'<article class="reader-text-view">'+(usable?'<p>'+esc(usable).replace(/\n/g,'</p><p>')+'</p>':'<p class="habit-help">Extract this page first to create Reading View text.</p>')+'</article>')+'</div>'
+        + '<section class="reader-workspace"><div class="panel reader-page-panel">'+(readerMode==='pdf'?'<div class="reader-canvas-wrap"><canvas data-bloom-reader-canvas></canvas></div>':'<article class="reader-text-view" style="font-size:'+readerTextSize+'px;line-height:'+readerLineHeight+'">'+(usable?'<p>'+esc(usable).replace(/\n/g,'</p><p>')+'</p>':'<p class="habit-help">Extract this page first to create Reading View text.</p>')+'</article>')+'</div>'
         + '<aside class="panel reader-coach-panel"><p class="page-kicker">Lesson source range</p><h2>Extract selected pages</h2><div class="reader-range"><label>From <input type="number" min="1" data-reader-range="start" value="'+readerRangeStart+'"></label><label>To <input type="number" min="1" data-reader-range="end" value="'+readerRangeEnd+'"></label></div><p class="habit-help">Bloom Reader uses the PDF text layer first. If a page has too little usable text, it automatically renders that page and runs OCR in a Web Worker.</p>'+button('reader-extract','Extract / OCR range','',true,current.offline)+'<p class="reader-status" data-reader-status>'+esc(readerStatus||'Ready')+'</p><hr><p class="page-kicker">Generate My Lesson</p><p class="habit-help">'+verifiedInRange.length+' verified page'+(verifiedInRange.length===1?'':'s')+' in this range.</p>'+button('reader-generate-lesson','Generate lesson draft','',true,verifiedInRange.length===0)+'</aside></section>'
         + '<section class="panel reader-review"><div class="habit-heading"><div><p class="page-kicker">Review OCR / extracted text</p><h2>PDF page '+readerPage+'</h2><p class="habit-help">'+(currentRecord?'Method: '+esc(currentRecord.extraction_method.replace('_',' '))+(currentRecord.verified?' · Verified':' · Not verified'):'Extract this page or a range first.')+'</p></div>'+(currentRecord&&currentRecord.verified?'<span class="habit-badge">✓ Verified</span>':'')+'</div><textarea data-reader-page-text rows="16" placeholder="Extract the page to review its text.">'+esc(readerTextDraft)+'</textarea><div class="habit-actions">'+button('reader-save-text','Save correction','',false,!currentRecord)+button('reader-verify-text','Save & mark verified','',true,!currentRecord)+'</div><p class="habit-help">Only text you mark verified is allowed into Generate My Lesson.</p></section>'
         + lesson
+        + '<section class="panel reader-listen-panel"><div class="habit-heading"><div><p class="page-kicker">Text reader</p><h2>Listen & Follow Along</h2><p class="habit-help">Hear the extracted text while following the page. This uses your browser voice and never uploads the spoken audio.</p></div></div><div class="reader-listen-controls">'+button('reader-listen','▶ Listen')+button('reader-speech-pause','Pause')+button('reader-speech-resume','Resume')+button('reader-speech-stop','Stop')+'<label>Speed <select data-reader-speech-rate><option value=".8"'+(readerSpeechRate===.8?' selected':'')+'>0.8×</option><option value="1"'+(readerSpeechRate===1?' selected':'')+'>1×</option><option value="1.2"'+(readerSpeechRate===1.2?' selected':'')+'>1.2×</option><option value="1.4"'+(readerSpeechRate===1.4?' selected':'')+'>1.4×</option></select></label>'+button('reader-text-smaller','A−')+button('reader-text-larger','A+')+button('reader-line-toggle','Line spacing')+'</div></section>'
+        + renderReadAloudStudio(current,book,file)
+        + renderReadingTutorWorkspace(current,book)
         + '<section class="panel reader-cache-summary"><details><summary>Cached pages · '+pageTexts.length+'</summary><div class="reader-page-cache">'+pageTexts.map(row=>'<button type="button" data-habit-action="reader-jump" data-page="'+row.page_number+'" class="'+(row.verified?'is-verified':'')+'"><strong>'+row.page_number+'</strong><small>'+esc(row.extraction_method==='ocr'?'OCR':'Text')+(row.verified?' · ✓':'')+'</small></button>').join('')+'</div></details></section></section>';
       if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydrateBloomReader(current,book,file)));
       return html;
@@ -652,6 +736,10 @@
     }
     function handleSubmit(event) {
       const form=event.target;
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'readingAssignmentForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot(),book=readingBook(current,selectedReadingBookId);if(!book)return true;
+        try{requireReady(current);run('Saving tutor assignment…',()=>store.saveReadingAssignment({...readingAssignmentDraft,book_id:book.id}),()=>{readingAssignmentOpen=false;readingAssignmentDraft={id:'',title:'',prompt:'',body:'',tutor_questions:'',due_on:'',status:'draft'};notify('Tutor assignment saved.');},null,'.reading-tutor-workspace');}catch(error){notify(error.message,true);}return true;
+      }
       if(form&&form.dataset&&Object.hasOwn(form.dataset,'readingBookForm')){
         if(event.preventDefault)event.preventDefault();const current=snapshot();if(busy)return true;
         try{requireReady(current);run('Saving book…',()=>store.saveReadingBook(readingBookDraft),book=>{selectedReadingBookId=book.id;readingBookOpen=false;readingView='detail';notify('Book saved.');});}catch(error){notify(error.message,true);}return true;
@@ -701,6 +789,9 @@
       const element = event.target, data = element && element.dataset;
       if (!data) return false;
       const current = snapshot();
+      if(Object.hasOwn(data,'readerSpeechRate')){readerSpeechRate=Math.max(.5,Math.min(2,Number(element.value)||1));return true;}
+      if(Object.hasOwn(data,'readAloudField')){if(data.readAloudField==='clarity')readAloudClarity=element.value;else if(data.readAloudField==='confidence')readAloudConfidence=element.value;else if(data.readAloudField==='notes')readAloudNotes=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'readingAssignmentField')){const key=data.readingAssignmentField;if(Object.hasOwn(readingAssignmentDraft,key))readingAssignmentDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'readerPage')){const file=readingBookPdf(current,selectedReadingBookId);const max=Number(file&&file.page_count)||20000;readerPage=Math.max(1,Math.min(max,Math.floor(Number(element.value)||1)));readerTextDraftPage=0;refresh();return true;}
       if(Object.hasOwn(data,'readerRange')){const value=Math.max(1,Math.floor(Number(element.value)||1));if(data.readerRange==='start')readerRangeStart=value;else readerRangeEnd=value;if(readerRangeEnd<readerRangeStart)readerRangeEnd=readerRangeStart;return true;}
       if(Object.hasOwn(data,'readerPageText')){readerTextDraft=String(element.value||'');readerTextDraftPage=readerPage;return true;}
@@ -747,6 +838,14 @@
         try{requireReady(current);if(file.size>20*1024*1024)throw new Error('Choose a Reading backup smaller than 20 MB.');
           run('Restoring Reading backup…',async()=>{let value;try{value=JSON.parse(await file.text());}catch(_){throw new Error('This is not a valid Reading JSON backup.');}await store.importReadingRecords(value);return true;},()=>notify('Reading backup restored and merged with your saved records.'));
         }catch(error){notify(error.message,true);}return true;
+      }
+      if(data&&Object.hasOwn(data,'readingAudioUpload')){
+        const current=snapshot(),book=readingBook(current,selectedReadingBookId),file=element.files&&element.files[0];element.value='';if(!file||!book)return true;
+        try{requireReady(current);const duration=prompt('Approximate duration in seconds for this audio file:','60');if(duration===null)return true;const seconds=Number(duration);if(!Number.isFinite(seconds)||seconds<=0)throw new Error('Enter a valid duration in seconds.');const sourceFile=readingBookPdf(current,book.id),source=sourceFile?verifiedRangeText(current,sourceFile.id,readerRangeStart,readerRangeEnd):'';run('Uploading read-aloud audio…',()=>store.uploadReadingAudio({file,book_id:book.id,recorded_on:M.dayKey(getNow()),section:book.current_section||'',page_from:readerRangeStart,page_to:readerRangeEnd,duration_seconds:seconds,source_word_count:source?wordCount(source):null}),()=>notify('Read-aloud audio saved.'),null,'.reader-read-aloud');}catch(error){notify(error.message,true);}return true;
+      }
+      if(data&&Object.hasOwn(data,'readingAssignmentUpload')){
+        const current=snapshot(),book=readingBook(current,selectedReadingBookId),assignment=readingAssignments(current,selectedReadingBookId).find(item=>item.id===data.id),files=Array.from(element.files||[]);element.value='';if(!book||!assignment||!files.length)return true;
+        try{requireReady(current);run('Uploading tutor attachment…',async()=>{const out=[];for(const file of files.slice(0,8))out.push(await store.uploadReadingFile({file,book_id:book.id,file_role:'assignment_attachment',assignment_id:assignment.id}));return out;},rows=>notify((rows||[]).length+' tutor attachment'+((rows||[]).length===1?'':'s')+' saved.'),null,'.reading-tutor-workspace');}catch(error){notify(error.message,true);}return true;
       }
       if(data&&Object.hasOwn(data,'readingBookPdf')){
         const current=snapshot(),book=readingBook(current,selectedReadingBookId),file=element.files&&element.files[0];element.value='';if(!file||!book)return true;
@@ -859,7 +958,7 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-habit-action]') : null;
       const data = element && element.dataset, action = data && data.habitAction;
-      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump'].includes(action)) return false;
+      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete'].includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery' || action === 'money') { navigate(action); return true; }
@@ -885,6 +984,35 @@
           if(!confirm('Delete this saved Engineering file?'))return true;
           run('Deleting Engineering file…',()=>store.deleteEngineeringFile(row),()=>notify('Engineering file deleted.'),null,'#engineering-homework');return true;
         }
+        else if(action==='reader-listen'){
+          const file=readingBookPdf(current,selectedReadingBookId),text=file&&verifiedRangeText(current,file.id,readerRangeStart,readerRangeEnd);
+          startReadingSpeech(text||readerTextDraft);return true;
+        }
+        else if(action==='reader-speech-pause'){if(root.speechSynthesis)root.speechSynthesis.pause();return true;}
+        else if(action==='reader-speech-resume'){if(root.speechSynthesis)root.speechSynthesis.resume();return true;}
+        else if(action==='reader-speech-stop'){stopReadingSpeech();return true;}
+        else if(action==='reader-text-smaller'){readerTextSize=Math.max(14,readerTextSize-2);refresh();return true;}
+        else if(action==='reader-text-larger'){readerTextSize=Math.min(32,readerTextSize+2);refresh();return true;}
+        else if(action==='reader-line-toggle'){readerLineHeight=readerLineHeight<1.9?2.05:1.55;refresh();return true;}
+        else if(action==='read-aloud-start'){Promise.resolve(startReadAloudRecording()).catch(error=>notify(error.message,true));return true;}
+        else if(action==='read-aloud-stop'){stopReadAloudRecording();return true;}
+        else if(action==='read-aloud-save'){
+          const book=readingBook(current,selectedReadingBookId),file=readingBookPdf(current,selectedReadingBookId);
+          if(!book||!readAloudBlob||!readAloudDuration)throw new Error('Record or upload audio before saving.');
+          const source=file?verifiedRangeText(current,file.id,readerRangeStart,readerRangeEnd):'',words=source?wordCount(source):null;
+          const ext=readAloudBlob.type==='audio/mp4'?'m4a':readAloudBlob.type==='audio/ogg'?'ogg':readAloudBlob.type==='audio/mpeg'?'mp3':readAloudBlob.type==='audio/wav'?'wav':'webm';
+          const audioFile=new File([readAloudBlob],book.title+' read aloud '+M.dayKey(getNow())+'.'+ext,{type:readAloudBlob.type||'audio/webm'});
+          run('Saving read-aloud recording…',()=>store.uploadReadingAudio({file:audioFile,book_id:book.id,recorded_on:M.dayKey(getNow()),section:book.current_section||'',page_from:readerRangeStart,page_to:readerRangeEnd,duration_seconds:readAloudDuration,source_word_count:words,clarity_rating:readAloudClarity,confidence_rating:readAloudConfidence,notes:readAloudNotes}),()=>{if(readAloudPreviewUrl&&root.URL)root.URL.revokeObjectURL(readAloudPreviewUrl);readAloudBlob=null;readAloudPreviewUrl='';readAloudDuration=0;readAloudClarity='';readAloudConfidence='';readAloudNotes='';notify('Read-aloud recording saved.');},null,'.reader-read-aloud');return true;
+        }
+        else if(action==='read-aloud-delete'){
+          const row=readingAudio(current,selectedReadingBookId).find(item=>item.id===data.id);if(!row)throw new Error('Refresh to find that recording.');
+          if(!confirm('Remove this read-aloud recording?'))return true;
+          run('Removing recording…',()=>store.deleteReadingAudio(row),()=>notify('Read-aloud recording removed.'),null,'.reader-read-aloud');return true;
+        }
+        else if(action==='reading-assignment-add'){readingAssignmentDraft={id:'',title:'',prompt:'',body:'',tutor_questions:'',due_on:'',status:'draft'};readingAssignmentOpen=true;refresh('.reading-tutor-workspace');return true;}
+        else if(action==='reading-assignment-edit'){const row=readingAssignments(current,selectedReadingBookId).find(item=>item.id===data.id);if(!row)throw new Error('Refresh to find that assignment.');readingAssignmentDraft={...row,due_on:row.due_on||''};readingAssignmentOpen=true;refresh('.reading-tutor-workspace');return true;}
+        else if(action==='reading-assignment-cancel'){readingAssignmentOpen=false;readingAssignmentDraft={id:'',title:'',prompt:'',body:'',tutor_questions:'',due_on:'',status:'draft'};refresh('.reading-tutor-workspace');return true;}
+        else if(action==='reading-assignment-delete'){const row=readingAssignments(current,selectedReadingBookId).find(item=>item.id===data.id);if(!row)throw new Error('Refresh to find that assignment.');if(!confirm('Remove this tutor assignment? Attached files will remain until you remove them separately.'))return true;run('Removing assignment…',()=>store.deleteReadingAssignment(row),()=>notify('Tutor assignment removed.'),null,'.reading-tutor-workspace');return true;}
         else if(action==='reading-reader'){if(data.id)selectedReadingBookId=data.id;readingView='reader';readerPage=1;readerRangeStart=1;readerRangeEnd=1;readerTextDraftPage=0;readerLesson=null;refresh();return true;}
         else if(action==='reader-prev'){readerPage=Math.max(1,readerPage-1);readerTextDraftPage=0;refresh();return true;}
         else if(action==='reader-next'){const file=readingBookPdf(current,selectedReadingBookId),max=Number(file&&file.page_count)||readerPage+1;readerPage=Math.min(max,readerPage+1);readerTextDraftPage=0;refresh();return true;}
