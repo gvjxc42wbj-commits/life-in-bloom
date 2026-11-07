@@ -855,7 +855,7 @@
       try {
         if (action === 'grocery') { openGrocery(data.tab || 'list', data.month || undefined); return true; }
         if (action === 'food-home' || action === 'wellness') { navigate(action === 'food-home' ? 'food' : 'wellness'); return true; }
-        if (action === 'tab') { if (['recipes', 'plans', 'soon', 'log'].includes(data.tab)) tab = data.tab; }
+        if (action === 'tab') { if (['home','recipes','plans','cooking','soon','log'].includes(data.tab)) tab = data.tab; }
         else if (action === 'new-recipe') { if (dirty('recipe') && !confirm('Start a new recipe and discard your current recipe draft?')) return true; resetGroup('recipe', recipeDraft()); editor = true; openedRecipeId = ''; tab = 'recipes'; }
         else if (action === 'resume-recipe') { editor = true; tab = 'recipes'; }
         else if (action === 'view-recipe') { openedRecipeId = data.id; editor = false; selectedFile = null; tab = 'recipes'; }
