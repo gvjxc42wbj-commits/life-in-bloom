@@ -175,7 +175,7 @@
     function resetDrafts() {
       approvedCommerceMonth = null;
       drafts = {
-        auth: { email: '', password: '', confirmation: '' },
+        auth: { email: '', access_code: '', password: '', confirmation: '' },
         household: { name: '', code: '' },
         shopping: blankShopping(), inventory: blankInventory(), private: blankPrivate(), diet: blankDiet(),
         budget: { amount: '', household_amount: '', revision: null }
@@ -357,7 +357,7 @@
       let fields = input('auth', 'email', 'Your email', 'type="email" required maxlength="254" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false"');
       if (mode !== 'reset') fields += input('auth', 'password', 'Password', 'type="password" required ' + (mode === 'signup' ? 'minlength="12" ' : '') + 'maxlength="256" autocomplete="' + (mode === 'signup' ? 'new-password' : 'current-password') + '"');
       if (mode === 'signin') fields += '<p class="grocery-help">Stay signed in on this device. Use Sign out when you want to switch accounts.</p>';
-      if (mode === 'signup') fields += input('auth', 'confirmation', 'Repeat password', 'type="password" required minlength="12" maxlength="256" autocomplete="new-password"') + '<p class="grocery-help">Use at least 12 characters. Each household member creates their own account.</p>';
+      if (mode === 'signup') fields += input('auth', 'access_code', 'Access code', 'type="text" required minlength="6" maxlength="128" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="BLOOM-XXXX-XXXX"') + input('auth', 'confirmation', 'Repeat password', 'type="password" required minlength="12" maxlength="256" autocomplete="new-password"') + '<p class="grocery-help"><strong>Life in Bloom is invitation-only.</strong> Enter a valid access code, then choose a password with at least 12 characters.</p>';
       fields += '<div class="grocery-actions">' + submit(mode === 'signup' ? 'Create my account' : mode === 'reset' ? 'Send reset email' : 'Sign in') + '</div>';
       let html = '<section class="panel grocery-auth"><p class="page-kicker">Grocery together</p><h2>' + title + '</h2><p>Share your shopping list, monthly food budget, and food inventory. Each person keeps an individual nutrition profile.</p>' + form('auth', fields) + '<div class="grocery-auth-links">';
       if (mode !== 'signin') html += button('auth-mode', 'Back to sign in', ' data-grocery-mode="signin"');
@@ -643,20 +643,20 @@
             if (drafts.auth.confirmation !== password) throw new Error('The passwords do not match. Please enter them again.');
           } else if (authMode === 'signin' && !password) throw new Error('Please enter your password.');
           if (kind === 'password') run('Saving your new password…', () => store.updatePassword(password), () => {
-            resetGroup('auth', { email: '', password: '', confirmation: '' });
+            resetGroup('auth', { email: '', access_code: '', password: '', confirmation: '' });
             announce('Your new password was saved.');
           });
-          else if (authMode === 'signup') run('Creating your account…', () => store.signUp(email, password), () => {
-            resetGroup('auth', { email, password: '', confirmation: '' });
+          else if (authMode === 'signup') run('Checking your invitation and creating your account…', () => store.signUp(email, password, drafts.auth.access_code), () => {
+            resetGroup('auth', { email, access_code: '', password: '', confirmation: '' });
             authMode = 'signin';
             announce('Check your email to confirm your account, then return here and sign in.');
           }, '#grocery-auth-email');
           else if (authMode === 'reset') run('Requesting a reset email…', () => store.resetPassword(email), () => {
-            resetGroup('auth', { email, password: '', confirmation: '' });
+            resetGroup('auth', { email, access_code: '', password: '', confirmation: '' });
             announce('If an account can receive reset email at that address, a reset message will arrive. Check your inbox.');
           });
           else run('Signing in…', () => store.signIn(email, password), () => {
-            resetGroup('auth', { email: '', password: '', confirmation: '' });
+            resetGroup('auth', { email: '', access_code: '', password: '', confirmation: '' });
             announce('You are signed in to Grocery.');
           });
           return true;
@@ -833,7 +833,7 @@
           if (!['signin', 'signup', 'reset'].includes(element.dataset.groceryMode)) return true;
           authMode = element.dataset.groceryMode;
           const email = drafts.auth.email;
-          resetGroup('auth', { email, password: '', confirmation: '' });
+          resetGroup('auth', { email, access_code: '', password: '', confirmation: '' });
           refresh('#grocery-auth-email');
           return true;
         }
