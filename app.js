@@ -96,7 +96,8 @@
     ideas: ['Idea’s in Bloom', 'Save a thought now and come back to it later.'],
     housework: ['Housework', 'Your space for caring for your home.'],
     dog: ['Dog', 'A home for your dog’s care and routines.'],
-    smoking: ['Smoking Log', 'Your space for recording your own patterns.']
+    smoking: ['Smoking Log', 'Your space for recording your own patterns.'],
+    settings: ['Settings', 'Your account, household, and personal setup.']
   };
 
   function escapeText(value) {
@@ -425,7 +426,7 @@
     }
     if (snapshot.recovery) state.page = 'grocery';
     const editing = connectedControllers().some(controller => controller.hasUnsavedDraft() || controller.isBusy());
-    if (changed || snapshot.recovery || !['home','grocery','food','wellness','money','dog','housework','skills','smoking'].includes(state.page) || !editing) renderKeepScroll();
+    if (changed || snapshot.recovery || !['home','grocery','food','wellness','money','dog','housework','skills','smoking','settings'].includes(state.page) || !editing) renderKeepScroll();
   }
   function renderPersonalGate() {
     const signedIn = cloud && cloud.snapshot().user;
@@ -632,6 +633,27 @@ function renderCircle(){
     if(title) title.textContent=reminder.title;
     if(countdown) countdown.textContent=formatTrashCountdown(reminder.remaining);
   }
+
+  function renderSettings() {
+    const shared=cloud && cloud.snapshot ? cloud.snapshot() : {};
+    const user=shared && shared.user;
+    const household=shared && shared.household;
+    const profile=shared && shared.privateProfile || {};
+    if(!user){
+      return '<section class="settings-page"><section class="panel settings-hero"><p class="page-kicker">Settings</p><h2>Account & personal setup</h2><p>Sign in to manage your household and personal profile.</p></section><section class="panel"><h3>Sign in</h3><form data-settings-form="signin" class="settings-form"><label class="form-field"><span>Email</span><input type="email" name="email" required autocomplete="email"></label><label class="form-field"><span>Password</span><input type="password" name="password" required autocomplete="current-password"></label><div class="page-actions"><button class="button primary" type="submit">Sign in</button></div></form></section></section>';
+    }
+    let html='<section class="settings-page"><section class="panel settings-hero"><p class="page-kicker">Settings</p><h2>Account & personal setup</h2><p>Manage your sign-in, household membership, and your own profile without changing shared app content.</p></section>';
+    html+='<section class="panel settings-account"><div class="panel-title-row"><div><p class="page-kicker">Account</p><h3>'+escapeText(user.email||'Signed-in account')+'</h3></div><button type="button" class="button" data-settings-action="signout">Sign out</button></div></section>';
+    html+='<section class="panel settings-profile"><div class="panel-title-row"><div><p class="page-kicker">Personal</p><h3>Your profile</h3><p class="caption">This is your private profile information. It is separate from shared household Food, Money, recipes, inventory, Dog, and other app records.</p></div></div><form data-settings-form="profile" class="settings-form"><div class="settings-grid"><label class="form-field"><span>Display name</span><input name="display_name" maxlength="120" value="'+escapeText(profile.display_name||'')+'"></label><label class="form-field"><span>Age</span><input name="age_years" type="number" min="0" max="130" step="1" value="'+escapeText(profile.age_years==null?'':profile.age_years)+'"></label><label class="form-field"><span>Height (cm)</span><input name="height_cm" type="number" min="0" max="300" step=".1" value="'+escapeText(profile.height_cm==null?'':profile.height_cm)+'"></label><label class="form-field"><span>Weight (kg)</span><input name="weight_kg" type="number" min="0" max="1000" step=".1" value="'+escapeText(profile.weight_kg==null?'':profile.weight_kg)+'"></label><label class="form-field"><span>Activity level</span><input name="activity_level" maxlength="120" value="'+escapeText(profile.activity_level||'')+'" placeholder="Optional"></label></div><label class="form-field"><span>Personal notes</span><textarea name="notes" maxlength="4000" rows="4">'+escapeText(profile.notes||'')+'</textarea></label><div class="page-actions"><button type="submit" class="button primary">Save personal profile</button></div></form></section>';
+    if(household){
+      html+='<section class="panel settings-household"><div class="panel-title-row"><div><p class="page-kicker">Household</p><h3>'+escapeText(household.name||'Life in Bloom Household')+'</h3><p class="caption">'+Number((shared.members||[]).length)+' member'+((shared.members||[]).length===1?'':'s')+' connected.</p></div></div><div class="settings-warning"><strong>Leave this household</strong><p>This removes only your membership. It does not delete the household or its shared data.</p><button type="button" class="button" data-settings-action="leave-household">Remove me from this household</button></div></section>';
+    } else {
+      html+='<section class="panel settings-household"><p class="page-kicker">Household</p><h3>Add yourself to a household</h3><div class="settings-household-grid"><form data-settings-form="join-household" class="settings-form"><label class="form-field"><span>Invite code</span><input name="code" required maxlength="100" placeholder="Enter household invite code"></label><button class="button primary" type="submit">Join household</button></form><form data-settings-form="create-household" class="settings-form"><label class="form-field"><span>New household name</span><input name="name" required maxlength="160" placeholder="Life in Bloom Household"></label><button class="button" type="submit">Create household</button></form></div></section>';
+    }
+    html+='<section class="panel settings-danger"><p class="page-kicker">Personal reset</p><h3>Restart my personal setup</h3><p>This removes your <strong>personal profile setup only</strong> so that profile can start fresh. It does <strong>not</strong> delete shared household data, Food, Grocery, recipes, inventory, Money, Dog records, Skills history, or the rest of Life in Bloom.</p><button type="button" class="button" data-settings-action="reset-profile">Restart my personal profile</button></section></section>';
+    return html;
+  }
+
   function render() {
     const isSleepMood = state.page === 'sleep-mood';
     const [heading, subtitle] = PAGE_DETAILS[state.page];
@@ -653,14 +675,15 @@ function renderCircle(){
       if (active) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     }
-    if (state.page === 'grocery') content.innerHTML = (personalState.mode === 'choose' ? renderPersonalGate() : '') + grocery.render();
+    if (state.page === 'settings') content.innerHTML = renderSettings();
+    else if (state.page === 'grocery') content.innerHTML = (personalState.mode === 'choose' ? renderPersonalGate() : '') + grocery.render();
     else if (state.page === 'money' && commerce) content.innerHTML = commerce.render('money');
     else if (['food','wellness'].includes(state.page) && food) {
       if (state.page === 'wellness' && wellness && food.setSelectedDate) food.setSelectedDate(wellness.getSelectedDate());
       content.innerHTML = (state.page === 'wellness' && wellness ? wellness.renderWater() : '') + food.render(state.page);
     }
     else if (['dog','housework'].includes(state.page) && dog) content.innerHTML = dog.render(state.page);
-    else if (['skills','smoking'].includes(state.page) && habits) content.innerHTML = habits.render(state.page);
+    else if (['skills','smoking','settings'].includes(state.page) && habits) content.innerHTML = habits.render(state.page);
     else if (!personalAvailable() && ['sleep-mood', 'ideas'].includes(state.page)) content.innerHTML = renderPersonalGate();
     else if (!isSleepMood) content.innerHTML = (state.page === 'home' && !personalAvailable() ? renderPersonalGate() : '') + pages.render(state.page);
     else if (state.view === 'day') content.innerHTML = renderDay();
@@ -668,10 +691,10 @@ function renderCircle(){
     else if (state.view === 'month') content.innerHTML = renderMonth() + `<div class='panel'><button type='button' class='button' data-action='back-wheel'>Back to moon wheel</button></div>`;
     else content.innerHTML = renderWeek();
     const shared=cloud && cloud.snapshot();
-    if(shared && ['home','grocery','food','wellness','money','dog','housework','skills','smoking'].includes(state.page) && shared.status==='error') {
+    if(shared && ['home','grocery','food','wellness','money','dog','housework','skills','smoking','settings'].includes(state.page) && shared.status==='error') {
       content.insertAdjacentHTML('afterbegin','<aside class="panel cloud-status error" role="alert"><strong>Life in Bloom could not finish loading shared data.</strong><br>'+escapeText(shared.error || 'Please refresh. Your saved records have not been deleted.')+'</aside>');
     }
-    if(shared && ['home','grocery','food','wellness','money','dog','housework','skills','smoking'].includes(state.page) && (shared.offline || shared.cacheWarning)) {
+    if(shared && ['home','grocery','food','wellness','money','dog','housework','skills','smoking','settings'].includes(state.page) && (shared.offline || shared.cacheWarning)) {
       content.insertAdjacentHTML('afterbegin','<aside class="panel cloud-status" role="status">'+escapeText(shared.offline ? 'Offline — showing your saved device copy. Keep working on drafts; reconnect and save to update the household. Last copy: '+new Date(shared.cachedAt).toLocaleString() : shared.cacheWarning)+'</aside>');
     }
     if (state.readOnly && state.page === 'sleep-mood') {
@@ -852,6 +875,25 @@ function renderCircle(){
   });
 
   content.addEventListener('click', event => {
+    const settingsButton=event.target.closest('[data-settings-action]');
+    if(settingsButton){
+      const action=settingsButton.dataset.settingsAction;
+      if(action==='signout'){
+        if(!window.confirm('Sign out of this account on this device?'))return;
+        Promise.resolve(cloud.signOut()).then(()=>{showNotice('Signed out.');renderKeepScroll();}).catch(error=>showNotice(error.message,true));
+        return;
+      }
+      if(action==='leave-household'){
+        if(!window.confirm('Remove yourself from this household? Shared household data will stay in the household.'))return;
+        Promise.resolve(cloud.leaveHousehold()).then(()=>{showNotice('You left the household.');renderKeepScroll();}).catch(error=>showNotice(error.message,true));
+        return;
+      }
+      if(action==='reset-profile'){
+        if(!window.confirm('Restart your personal profile setup? This will remove only your private profile fields. Shared household data and your other Life in Bloom records will not be deleted.'))return;
+        Promise.resolve(cloud.deletePrivateProfile()).then(()=>{showNotice('Your personal profile was reset. The rest of Life in Bloom was kept.');renderKeepScroll();}).catch(error=>showNotice(error.message,true));
+        return;
+      }
+    }
     const personalButton = event.target.closest('[data-personal-action]');
     if (personalButton) {
       if (personalButton.dataset.personalAction === 'signin') { navigate('grocery'); return; }
@@ -975,6 +1017,24 @@ function renderCircle(){
     if (event.target.id === 'range-end') state.rangeEnd = Number(event.target.value);
   });
   content.addEventListener('submit', event => {
+    const settingsForm=event.target.closest('[data-settings-form]');
+    if(settingsForm){
+      event.preventDefault();
+      const kind=settingsForm.dataset.settingsForm,form=new FormData(settingsForm);
+      let task;
+      try{
+        if(kind==='signin') task=cloud.signIn(String(form.get('email')||''),String(form.get('password')||''));
+        else if(kind==='join-household') task=cloud.joinHousehold(String(form.get('code')||''));
+        else if(kind==='create-household') task=cloud.createHousehold(String(form.get('name')||''));
+        else if(kind==='profile'){
+          const current=cloud.snapshot(),p=current.privateProfile||{};
+          const num=name=>{const v=String(form.get(name)||'').trim();return v===''?null:Number(v);};
+          task=cloud.savePrivateProfile({...p,display_name:String(form.get('display_name')||'').trim(),age_years:num('age_years'),height_cm:num('height_cm'),weight_kg:num('weight_kg'),activity_level:String(form.get('activity_level')||'').trim(),notes:String(form.get('notes')||'').trim()});
+        } else return;
+      }catch(error){showNotice(error.message,true);return;}
+      Promise.resolve(task).then(()=>{showNotice(kind==='signin'?'Signed in.':kind==='profile'?'Personal profile saved.':kind==='join-household'?'Household joined.':'Household created.');renderKeepScroll();}).catch(error=>showNotice(error.message,true));
+      return;
+    }
     if (wellness && wellness.handleSubmit(event)) return;
     if (habits && habits.handleSubmit(event)) return;
     if (dog && dog.handleSubmit(event)) return;
