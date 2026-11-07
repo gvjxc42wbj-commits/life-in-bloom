@@ -77,7 +77,12 @@
     else extra=' Weather is behaving itself for the moment.';
     return clothes+extra;
   }
+  let auburnWeatherCache=null,auburnWeatherCacheAt=0,auburnWeatherPromise=null;
   async function fetchAuburnWeather(){
+    const now=Date.now();
+    if(auburnWeatherCache && now-auburnWeatherCacheAt<15*60*1000)return auburnWeatherCache;
+    if(auburnWeatherPromise)return auburnWeatherPromise;
+    auburnWeatherPromise=(async()=>{
     const point=await fetch('https://api.weather.gov/points/'+AUBURN_WEATHER_POINT,{headers:{Accept:'application/geo+json'}});
     if(!point.ok)throw new Error('Weather point unavailable');
     const pointData=await point.json(),props=pointData&&pointData.properties||{},hourlyUrl=props.forecastHourly,dailyUrl=props.forecast;
@@ -105,6 +110,12 @@
       wind:String(period.windSpeed||''),
       icon:weatherIcon(period.shortForecast,period.temperature)
     };
+    })();
+    try{
+      const value=await auburnWeatherPromise;
+      auburnWeatherCache=value;auburnWeatherCacheAt=Date.now();
+      return value;
+    }finally{auburnWeatherPromise=null;}
   }
   function hydrateAuburnWeather(){
     if(!root.document)return;
@@ -283,6 +294,12 @@
       context=context||{};const current=snapshot(),today=dayKey(getNow());
       let html='<div class="bloom-dashboard bloom-dashboard-reference">';
       if(ready(current)) {
+        const hour=Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',hourCycle:'h23'}).format(getNow()));
+        const greeting=hour<12?'Good morning':hour<18?'Good afternoon':'Good evening';
+        html+='<section class="bloom-home-hero reference-home-hero"><p class="page-kicker">Your day, in bloom</p><h1 id="home-dashboard-heading" tabindex="-1">'+greeting+' <span aria-hidden="true">'+(hour<18?'☀':'☾')+'</span></h1><p>'+esc(dateLabel(today))+'</p><p class="bloom-home-gentle">A little care. A little practice.<br>Room for the day you’re having.</p></section>';
+        html+='<section class="bloom-household-strip reference-household-strip"><span aria-hidden="true">⌂</span><div><strong>'+esc(current.household.name||'Life in Bloom Household')+'</strong><small>'+(current.members||[]).length+' of 2 household members · shared Food, Money, Dog & Housework</small></div>'+button('household','Household / sign out')+'</section>';
+        const trash=trashReminderState(getNow());
+        if(trash)html+='<section class="bloom-trash-reminder reference-trash-reminder'+(trash.urgent?' is-urgent':'')+'" data-trash-reminder data-trash-deadline="'+esc(trash.deadline)+'"><span class="bloom-trash-icon" aria-hidden="true">🗑️</span><div><p class="page-kicker">Trash reminder</p><strong data-trash-title>'+esc(trash.title)+'</strong><p>'+esc(trash.detail)+'</p></div><div class="bloom-trash-countdown"><span>Time left</span><strong data-trash-countdown aria-live="polite"></strong><small>Deadline · 10:00 a.m.</small></div></section>';
         const h=options.getHabitsSummary?options.getHabitsSummary(today):{},dog=options.getDogSummary?options.getDogSummary(today):{};
         const boost=boostSummary(current,today,1);
         html+='<div class="bloom-dashboard-grid bloom-dashboard-six">';
