@@ -589,7 +589,8 @@
         }
         else if(action==='engineering-file-open'){
           const row=engineeringFileRows(current).find(item=>item.id===data.id); if(!row)throw new Error('Refresh to find that Engineering file.');
-          run('Opening Engineering file…',()=>store.getEngineeringFileUrl(row),url=>{if(root.open)root.open(url,'_blank','noopener');},null,'#engineering-homework');return true;
+          const popup=root.open?root.open('about:blank','_blank'):null;
+          run('Opening Engineering file…',()=>store.getEngineeringFileUrl(row),url=>{if(popup)popup.location.href=url;else if(root.location)root.location.href=url;},()=>{try{if(popup)popup.close();}catch(_){ }},'#engineering-homework');return true;
         }
         else if(action==='engineering-file-delete'){
           const row=engineeringFileRows(current).find(item=>item.id===data.id); if(!row)throw new Error('Refresh to find that Engineering file.');
