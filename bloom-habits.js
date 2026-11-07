@@ -97,6 +97,9 @@
     let spanishHomeworkDraft={id:'',title:'',due_on:'',status:'open',notes:''};
     let spanishPrepareDraft={id:'',item_type:'question',text_value:'',status:'prepare',lesson_date:''};
     let journalDate=M.dayKey(getNow()), journalBody='', journalLoadedKey='';
+    let paintingView='portfolio', selectedPaintingArtworkId='', paintingArtworkOpen=false, paintingVersionOpen=false;
+    let paintingArtworkDraft={id:'',title:'',medium:'',started_on:'',completed_on:'',status:'in_progress',description:'',overall_notes:''};
+    let paintingVersionDraft={id:'',artwork_id:'',version_date:'',stage_label:'',comments:'',corrections:'',what_changed:'',what_learned:'',next_steps:''};
     let pianoPracticeDraft={duration_minutes:'20',source:'independent',course_name:'',lesson_name:'',piece_name:'',accuracy_percent:'',notes:''};
     let pianoRepertoireDraft={title:'',kind:'piece',status:'learning',source:'',notes:''};
     let pianoMediaMeta={title:'Practice sample',piece_name:'',notes:''};
@@ -703,6 +706,24 @@
       journalBody=row?String(row.body||''):'';
       journalLoadedKey=date+':'+(row&&row.updated_at||'new');
     }
+    function paintingRows(current,key){
+      const user=current.user&&current.user.id,household=current.household&&current.household.id;
+      return (current[key]||[]).filter(row=>row&&row.user_id===user&&row.household_id===household);
+    }
+    function paintingMediaRows(current,artworkId){
+      return paintingRows(current,'paintingMedia').filter(row=>!artworkId||row.artwork_id===artworkId).sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')));
+    }
+    function hydratePaintingMedia(rows){
+      if(!root.document||!store.getPaintingMediaUrl)return;
+      for(const row of rows){
+        const node=root.document.querySelector('[data-painting-media-id="'+row.id+'"]');
+        if(!node||node.dataset.loaded==='true')continue;
+        Promise.resolve(store.getPaintingMediaUrl(row)).then(url=>{
+          const live=root.document&&root.document.querySelector('[data-painting-media-id="'+row.id+'"]');
+          if(live){if(live.tagName==='A')live.href=url;else live.src=url;live.dataset.loaded='true';}
+        }).catch(()=>{});
+      }
+    }
     function renderPianoDashboard(current,today) {
       const apps=pianoRows(current,'pianoAppProgress').slice().sort((a,b)=>String(a.app_name).localeCompare(String(b.app_name))||String(a.course_name).localeCompare(String(b.course_name)));
       const sessions=pianoRows(current,'pianoPracticeSessions').slice().sort((a,b)=>String(b.occurred_on).localeCompare(String(a.occurred_on))||String(b.created_at||'').localeCompare(String(a.created_at||'')));
@@ -890,6 +911,43 @@
         + '</section>';
     }
 
+    function renderPaintingPortfolio(current,today){
+      const artworks=paintingRows(current,'paintingArtworks').slice().sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
+      const versions=paintingRows(current,'paintingVersions').slice().sort((a,b)=>String(a.version_date||'').localeCompare(String(b.version_date||''))||String(a.created_at||'').localeCompare(String(b.created_at||'')));
+      const media=paintingMediaRows(current);
+      const selected=artworks.find(row=>row.id===selectedPaintingArtworkId)||null;
+
+      if(paintingView==='detail'&&selected){
+        const artworkVersions=versions.filter(v=>v.artwork_id===selected.id);
+        const artworkMedia=media.filter(m=>m.artwork_id===selected.id);
+        const hero=artworkMedia.slice().reverse()[0]||null;
+        let versionForm='';
+        if(paintingVersionOpen){
+          const d=paintingVersionDraft;
+          versionForm='<form class="habit-form painting-inline-form" data-painting-version-form><div class="habit-form-grid"><label class="habit-field"><span>Date</span><input type="date" data-painting-version-field="version_date" value="'+esc(d.version_date)+'"></label><label class="habit-field"><span>Stage / version label</span><input maxlength="160" data-painting-version-field="stage_label" value="'+esc(d.stage_label)+'" placeholder="For example, Underpainting"></label></div><label class="habit-field"><span>Comments</span><textarea rows="3" data-painting-version-field="comments">'+esc(d.comments)+'</textarea></label><label class="habit-field"><span>Corrections to make</span><textarea rows="3" data-painting-version-field="corrections">'+esc(d.corrections)+'</textarea></label><label class="habit-field"><span>What changed since the last version?</span><textarea rows="3" data-painting-version-field="what_changed">'+esc(d.what_changed)+'</textarea></label><label class="habit-field"><span>What did I learn?</span><textarea rows="3" data-painting-version-field="what_learned">'+esc(d.what_learned)+'</textarea></label><label class="habit-field"><span>Next steps</span><textarea rows="3" data-painting-version-field="next_steps">'+esc(d.next_steps)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save progress stage</button>'+button('painting-version-cancel','Cancel')+'</div></form>';
+        }
+        const timeline=artworkVersions.length?artworkVersions.map((v,index)=>{
+          const files=artworkMedia.filter(m=>m.version_id===v.id);
+          return '<article class="painting-version-card"><div class="painting-version-marker">'+(index+1)+'</div><div class="painting-version-content"><div class="habit-heading"><div><strong>'+esc(v.stage_label||'Progress update')+'</strong><small>'+esc(dateLabel(v.version_date))+'</small></div><label class="button">Upload image<input type="file" accept="image/*,application/pdf" data-painting-version-upload data-id="'+esc(v.id)+'" hidden></label></div>'+(files.length?'<div class="painting-version-media">'+files.map(m=>m.mime_type==='application/pdf'?'<a class="painting-pdf" target="_blank" rel="noopener" data-painting-media-id="'+esc(m.id)+'">Open PDF</a>':'<img alt="" data-painting-media-id="'+esc(m.id)+'">').join('')+'</div>':'<div class="painting-version-placeholder">No image uploaded for this stage yet.</div>')+'<div class="painting-notes-grid">'+(v.comments?'<div><b>Comments</b><p>'+esc(v.comments)+'</p></div>':'')+(v.corrections?'<div><b>Corrections</b><p>'+esc(v.corrections)+'</p></div>':'')+(v.what_changed?'<div><b>What changed</b><p>'+esc(v.what_changed)+'</p></div>':'')+(v.what_learned?'<div><b>What I learned</b><p>'+esc(v.what_learned)+'</p></div>':'')+(v.next_steps?'<div><b>Next steps</b><p>'+esc(v.next_steps)+'</p></div>':'')+'</div></div></article>';
+        }).join(''):'<p class="habit-help">No progress stages saved yet. Add the first stage to begin this artwork’s timeline.</p>';
+
+        if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydratePaintingMedia(artworkMedia)));
+        return '<section class="painting-dashboard"><section class="painting-banner"><div><p class="page-kicker">Painting in Bloom</p><h2>'+esc(selected.title)+'</h2><p>'+esc(selected.medium||'Medium not entered')+' · '+esc(selected.status.replace('_',' '))+'</p></div>'+button('painting-back','← Portfolio')+'</section><section class="panel painting-detail-hero"><div class="painting-hero-media">'+(hero?(hero.mime_type==='application/pdf'?'<a class="painting-pdf" target="_blank" rel="noopener" data-painting-media-id="'+esc(hero.id)+'">Open latest PDF</a>':'<img alt="" data-painting-media-id="'+esc(hero.id)+'">'):'<div class="painting-empty-canvas">🎨</div>')+'</div><div><p class="page-kicker">Artwork record</p><h2>'+esc(selected.title)+'</h2><p class="habit-help">'+esc(selected.description||'No description yet.')+'</p><dl class="painting-meta"><div><dt>Started</dt><dd>'+esc(selected.started_on?dateLabel(selected.started_on):'Not entered')+'</dd></div><div><dt>Status</dt><dd>'+esc(selected.status.replace('_',' '))+'</dd></div><div><dt>Stages</dt><dd>'+artworkVersions.length+'</dd></div></dl><div class="habit-actions">'+button('painting-edit-artwork','Edit artwork',' data-id="'+esc(selected.id)+'"')+button('painting-add-version','+ Add progress stage','',true)+'</div></div></section>'+versionForm+'<section class="panel painting-timeline"><div class="habit-heading"><div><p class="page-kicker">Progress over time</p><h2>Artwork Timeline</h2><p class="habit-help">Every stage stays attached to this one piece, so you can see exactly how it changed from first version to finished work.</p></div></div><div class="painting-version-list">'+timeline+'</div></section></section>';
+      }
+
+      let artworkForm='';
+      if(paintingArtworkOpen){
+        const d=paintingArtworkDraft;
+        artworkForm='<form class="habit-form painting-inline-form" data-painting-artwork-form><div class="habit-form-grid"><label class="habit-field"><span>Artwork title</span><input required maxlength="240" data-painting-artwork-field="title" value="'+esc(d.title)+'"></label><label class="habit-field"><span>Medium</span><input maxlength="240" data-painting-artwork-field="medium" value="'+esc(d.medium)+'" placeholder="Oil, acrylic, watercolor..."></label><label class="habit-field"><span>Started</span><input type="date" data-painting-artwork-field="started_on" value="'+esc(d.started_on)+'"></label><label class="habit-field"><span>Completed</span><input type="date" data-painting-artwork-field="completed_on" value="'+esc(d.completed_on)+'"></label><label class="habit-field"><span>Status</span><select data-painting-artwork-field="status">'+['idea','in_progress','paused','finished'].map(v=>'<option value="'+v+'"'+(d.status===v?' selected':'')+'>'+v.replace('_',' ')+'</option>').join('')+'</select></label></div><label class="habit-field"><span>Description</span><textarea rows="3" data-painting-artwork-field="description">'+esc(d.description)+'</textarea></label><label class="habit-field"><span>Overall notes</span><textarea rows="4" data-painting-artwork-field="overall_notes">'+esc(d.overall_notes)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save artwork</button>'+button('painting-artwork-cancel','Cancel')+'</div></form>';
+      }
+      const cards=artworks.length?artworks.map(a=>{
+        const av=versions.filter(v=>v.artwork_id===a.id),am=media.filter(m=>m.artwork_id===a.id),thumb=am.slice().reverse()[0];
+        return '<article class="painting-portfolio-card"><button type="button" class="painting-card-open" data-habit-action="painting-open" data-id="'+esc(a.id)+'"><div class="painting-card-image">'+(thumb&&thumb.mime_type!=='application/pdf'?'<img alt="" data-painting-media-id="'+esc(thumb.id)+'">':'<span>🎨</span>')+'</div><div><h3>'+esc(a.title)+'</h3><p>'+esc(a.medium||'Medium not entered')+'</p><small>'+esc(a.status.replace('_',' '))+' · '+av.length+' stage'+(av.length===1?'':'s')+'</small></div></button>'+button('painting-edit-artwork','Edit',' data-id="'+esc(a.id)+'"')+'</article>';
+      }).join(''):'<div class="painting-empty"><span>🎨</span><h3>Your portfolio starts here</h3><p>Add an artwork, then keep uploading dated versions as you work on it.</p></div>';
+      if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydratePaintingMedia(media)));
+      return '<section class="painting-dashboard"><section class="painting-banner"><div><p class="page-kicker">Skills in Bloom · Painting</p><h2>Painting Portfolio</h2><p>Your artwork, your process, and your growth over time.</p></div><span>🖌️</span></section><section class="panel painting-summary"><div><strong>'+artworks.length+'</strong><small>artworks</small></div><div><strong>'+versions.length+'</strong><small>progress stages</small></div><div><strong>'+artworks.filter(a=>a.status==='finished').length+'</strong><small>finished pieces</small></div></section><section class="panel painting-portfolio"><div class="habit-heading"><div><p class="page-kicker">My Portfolio</p><h2>All Artwork</h2><p class="habit-help">Open any piece to see its complete progression from early stage to final work.</p></div>'+button('painting-add-artwork','+ Add artwork','',true)+'</div>'+artworkForm+'<div class="painting-portfolio-grid">'+cards+'</div></section></section>';
+    }
+
     function renderMathDashboard(current, skills, sessions, today) {
       const mathSkills=skills.filter(skill=>skill.category==='math');
       const ids=new Set(mathSkills.map(skill=>skill.id));
@@ -1053,6 +1111,7 @@
       if (selectedCategory === 'animation') return renderAnimationDashboard(current, today);
       if (selectedCategory === 'language') return renderSpanishDashboard(current, today);
       if (selectedCategory === 'writing') return renderDailyJournal(current, today);
+      if (selectedCategory === 'painting') return renderPaintingPortfolio(current, today);
       if (selectedCategory === 'math') return renderMathDashboard(current, skills, sessions, today);
       if (selectedCategory === 'engineering') html += renderEngineeringDashboard(current, skills, sessions, today);
       if (skillOpen) html += renderSkillForm(current);
