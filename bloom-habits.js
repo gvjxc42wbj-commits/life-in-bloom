@@ -1206,11 +1206,45 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-habit-action]') : null;
       const data = element && element.dataset, action = data && data.habitAction;
-      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete'].includes(action)) return false;
+      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete'].includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery' || action === 'money') { navigate(action); return true; }
         if (action === 'category') { if (data.category === 'all' || M.CATEGORIES.some(item => item.key === data.category)) selectedCategory = data.category; }
+        else if(action==='piano-log-practice'){pianoPracticeDraft={duration_minutes:'20',source:'independent',course_name:'',lesson_name:'',piece_name:'',accuracy_percent:'',notes:''};pianoPracticeOpen=true;refresh('.piano-today');return true;}
+        else if(action==='piano-cancel-practice'){pianoPracticeOpen=false;refresh('.piano-today');return true;}
+        else if(action==='piano-edit-app'){
+          const row=pianoRows(current,'pianoAppProgress').find(item=>item.id===data.id);
+          if(!row)throw new Error('Refresh to find that Piano course.');
+          pianoAppEditId=row.id;
+          pianoAppDraft={...row,progress_percent:row.progress_percent==null?'':row.progress_percent,accuracy_percent:row.accuracy_percent==null?'':row.accuracy_percent};
+          refresh('.piano-apps');return true;
+        }
+        else if(action==='piano-cancel-app'){pianoAppEditId='';pianoAppDraft=null;refresh('.piano-apps');return true;}
+        else if(action==='piano-add-repertoire'){pianoRepertoireDraft={title:'',kind:'piece',status:'learning',source:'',notes:''};pianoRepertoireOpen=true;refresh('.piano-repertoire');return true;}
+        else if(action==='piano-cancel-repertoire'){pianoRepertoireOpen=false;refresh('.piano-repertoire');return true;}
+        else if(action==='piano-midi-connect'){
+          Promise.resolve(connectPianoMidi()).then(name=>{notify('MIDI keyboard connected: '+name);refresh('.piano-midi');}).catch(error=>notify(error.message,true));
+          return true;
+        }
+        else if(action==='piano-midi-start'){
+          if(!pianoMidiConnected)throw new Error('Connect your MIDI keyboard first.');
+          resetPianoMidiCapture();pianoMidiRecording=true;pianoMidiStartedAt=Date.now();refresh('.piano-midi');return true;
+        }
+        else if(action==='piano-midi-stop'){
+          if(!pianoMidiRecording)return true;
+          pianoMidiRecording=false;
+          const seconds=Math.max(1,(Date.now()-pianoMidiStartedAt)/1000),minutes=Math.max(1,Math.round(seconds/60));
+          const payload={occurred_on:M.dayKey(getNow()),duration_minutes:minutes,source:'midi',course_name:'',lesson_name:'',piece_name:'',accuracy_percent:null,midi_note_count:pianoMidiNoteCount,midi_unique_notes:pianoMidiNotes.size,midi_low_note:pianoMidiLow,midi_high_note:pianoMidiHigh,notes:'USB/MIDI practice summary. Note counts show keyboard activity, not musical accuracy.'};
+          run('Saving MIDI practice…',()=>store.savePianoPracticeSession(payload),()=>{notify('MIDI practice session saved.');resetPianoMidiCapture();},null,'.piano-midi');
+          return true;
+        }
+        else if(action==='piano-media-delete'){
+          const row=pianoMediaRows(current).find(item=>item.id===data.id);
+          if(!row)throw new Error('Refresh to find that Piano recording.');
+          if(!confirm('Remove this private Piano practice file?'))return true;
+          run('Removing Piano media…',()=>store.deletePianoMedia(row),()=>notify('Piano practice file removed.'),null,'.piano-media');return true;
+        }
         else if(action==='engineering-homework-add'){engineeringHomeworkOpen=true;engineeringHomeworkDraft={title:'',due_on:'',notes:''};refresh('#engineering-homework');return true;}
         else if(action==='engineering-homework-cancel'){engineeringHomeworkOpen=false;engineeringHomeworkDraft={title:'',due_on:'',notes:''};refresh('#engineering-homework');return true;}
         else if(action==='engineering-homework-toggle'){
