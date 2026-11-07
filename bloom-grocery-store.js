@@ -1043,6 +1043,28 @@
       checkContext(current);await refresh();checkContext(current);return data&&data[0];
     }
     async function deleteReadingPageText(row){ return deleteReadingRow('readingPageText',row); }
+    async function saveReadingPageTexts(rows){
+      requireOnline();const current=context(true);
+      if(!Array.isArray(rows)||!rows.length||rows.length>100)throw new Error('Choose between 1 and 100 PDF pages at a time.');
+      const payload=rows.map(row=>{
+        const page=Number(row.page_number);
+        if(!row.book_id||!row.file_id||!Number.isInteger(page)||page<1||page>20000)throw new Error('A Bloom Reader page is invalid.');
+        const existing=(state.readingPageText||[]).find(item=>item.file_id===row.file_id&&Number(item.page_number)===page&&item.user_id===current.userId);
+        const raw=String(row.raw_text||''),verifiedText=String(row.verified_text||'');
+        return {id:existing&&existing.id||row.id||newUuid(),household_id:current.householdId,user_id:current.userId,book_id:row.book_id,file_id:row.file_id,page_number:page,
+          extraction_method:row.extraction_method==='ocr'?'ocr':'text_layer',raw_text:raw.slice(0,100000),verified_text:verifiedText.slice(0,100000),
+          verified:row.verified===true,char_count:raw.length,updated_at:new Date().toISOString()};
+      });
+      const data=assertResult(await client.from(TABLES.readingPageText).upsert(payload,{onConflict:'user_id,household_id,file_id,page_number'}).select('*'));
+      checkContext(current);await refresh();checkContext(current);return data||[];
+    }
+    async function setReadingFilePageCount(row,pageCount){
+      requireOnline();const current=context(true),count=Number(pageCount);
+      if(!row||!row.id||!Number.isInteger(count)||count<1||count>20000)throw new Error('The PDF page count is invalid.');
+      const data=assertResult(await client.from(TABLES.readingFiles).update({page_count:count}).eq('id',row.id).eq('user_id',current.userId).eq('household_id',current.householdId).select('*'));
+      checkContext(current);if(!Array.isArray(data)||data.length!==1)throw new Error('The Bloom Reader PDF metadata could not be updated.');
+      await refresh();checkContext(current);return data[0];
+    }
     function exportReadingRecords() {
       if(!state.user||!state.household||state.status!=='ready') throw new Error('Sign in before exporting Reading in Bloom.');
       const keys=['readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts'];
@@ -1113,7 +1135,7 @@
       saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, importFoodMaster, saveKitchenEquipment, deleteKitchenEquipment, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
       ...lifeSavers,saveLifeRecord,archiveLifeRecord,addDogSupplyToShopping,exportPersonalLifeRecords,importPersonalLifeRecords,
       uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveEngineeringHomework, deleteEngineeringHomework, uploadEngineeringFile, getEngineeringFileUrl, deleteEngineeringFile,
-      ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingRow, saveReadingPageText, deleteReadingPageText, exportReadingRecords, importReadingRecords,
+      ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingRow, saveReadingPageText, saveReadingPageTexts, deleteReadingPageText, setReadingFilePageCount, exportReadingRecords, importReadingRecords,
       saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };
