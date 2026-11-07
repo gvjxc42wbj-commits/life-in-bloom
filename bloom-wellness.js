@@ -3,6 +3,16 @@
   'use strict';
   const clone=value=>JSON.parse(JSON.stringify(value));
   const esc=value=>String(value==null?'':value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const DOG_IMAGE_KEY='life-in-bloom.dog-display-image.v1';
+  function dogImageSrc(){try{return root.localStorage&&root.localStorage.getItem(DOG_IMAGE_KEY)||'';}catch(_){return '';}}
+  function saveDogImageFile(file,done){
+    if(!file)return;
+    if(!['image/png','image/webp'].includes(file.type))throw new Error('Choose a transparent PNG or WebP image.');
+    if(Number(file.size)>2*1024*1024)throw new Error('Choose an image smaller than 2 MB.');
+    const reader=new FileReader();
+    reader.onload=()=>{try{root.localStorage&&root.localStorage.setItem(DOG_IMAGE_KEY,String(reader.result||''));done&&done();}catch(_){}};
+    reader.readAsDataURL(file);
+  }
   const fmt=value=>Number(value).toLocaleString('en-US',{maximumFractionDigits:2});
   const money=value=>value==null?'Not available':new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(value/100);
   const uuid=()=>root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : '10000000-1000-4000-8000-'.replace(/[18]/g,c=>(Number(c)^Math.random()*16>>Number(c)/4).toString(16))+Math.random().toString(16).slice(2,14).padEnd(12,'0');
@@ -313,7 +323,8 @@
 
         html+='<article class="bloom-dashboard-card card-cream reference-card"><span class="reference-icon" aria-hidden="true">📚</span><p class="page-kicker">Skills in Bloom</p><strong class="bloom-card-value">'+Number(h.dueSkills||0)+' reviews due</strong><p>'+Number(h.practiceMinutes||0)+' practice minutes logged today.</p>'+button('navigate','Choose a skill',' data-page="skills" class="reference-button"')+'</article>';
 
-        html+='<article class="bloom-dashboard-card card-pink reference-card"><img class="bloom-dog-avatar reference-dog-avatar" src="./icons/dog-dachshund-longhair-brown.png" onerror="this.onerror=null;this.src=\'./icons/dog-companion.jpeg\'" alt="Long-haired brown miniature dachshund"/><p class="page-kicker">Dog care</p><strong class="bloom-card-value">'+Number(dog.dueCount||0)+' care tasks due</strong><p>'+esc(dog.dogName||'Your dog')+' · '+Number(dog.completedCount||0)+' completed today.</p>'+button('navigate','Open Dog',' data-page="dog"')+'</article>';
+        const customDog=dogImageSrc();
+        html+='<article class="bloom-dashboard-card card-pink reference-card"><div class="home-dog-image-slot"><img class="bloom-dog-avatar reference-dog-avatar" src="'+esc(customDog||'./icons/dog-dachshund-longhair-brown.png')+'" onerror="this.onerror=null;this.src=\'./icons/dog-companion.jpeg\'" alt="Your dog"/><label class="dog-home-upload" title="Upload transparent dog image">✚<input type="file" accept="image/png,image/webp" data-home-dog-image-upload hidden></label></div><p class="page-kicker">Dog care</p><strong class="bloom-card-value">'+Number(dog.dueCount||0)+' care tasks due</strong><p>'+esc(dog.dogName||'Your dog')+' · '+Number(dog.completedCount||0)+' completed today.</p>'+button('navigate','Open Dog',' data-page="dog"')+'</article>';
 
         html+='<article class="bloom-dashboard-card card-sage reference-card"><span class="reference-icon" aria-hidden="true">🥣</span><p class="page-kicker">Food in Bloom</p><strong class="bloom-card-value">'+esc(context.grocerySummary&&context.grocerySummary.title||'0 items to buy')+'</strong><p>Food at home, grocery list, menu, recipes and cooking.</p>'+button('navigate','Open Food',' data-page="food"')+'</article>';
 
@@ -379,13 +390,22 @@
       if(name==='selectedDate'){if(validDate(target.value)&&target.value!==selectedDate){if(dirty()&&!confirm('Keep the water draft on its original date and view another day?')){target.value=selectedDate;return true;}selectedDate=target.value;viewSerial++;persist();if(options.onDateChange)options.onDateChange(selectedDate);refresh();}return true;}
       if(form&&['container_ml','goal_ml','occurred_on','amount_ml','notes'].includes(name)){form[name]=String(target.value);persist();}return true;
     }
+    function handleChange(event){
+      const target=event.target;
+      if(target&&target.dataset&&Object.hasOwn(target.dataset,'homeDogImageUpload')){
+        const file=target.files&&target.files[0]; target.value='';
+        try{saveDogImageFile(file,()=>{notify('Dog image updated on this device.');refresh('.card-pink');});}catch(error){notify(error.message,true);}
+        return true;
+      }
+      return handleInput(event);
+    }
     function handleSubmit(event) {
       const target=event.target;if(!target||!target.dataset||target.dataset.wellnessForm!=='water')return false;
       event.preventDefault&&event.preventDefault();snapshot();if(busy)return true;
       try {if(!pending){for(const name of ['container_ml','goal_ml','occurred_on','amount_ml','notes']){const element=target.elements&&target.elements.namedItem&&target.elements.namedItem(name);if(element&&form&&Object.hasOwn(form,name))form[name]=String(element.value);}pending={action:form.type,payload:payload(),viewSerial};persist();}submitAttempt();}catch(error){notify(error.message,true);}return true;
     }
     function setSelectedDate(date){snapshot();if(!validDate(date))return false;if(date===selectedDate)return true;selectedDate=date;viewSerial++;persist();return true;}
-    return {renderHome,renderWater,handleClick,handleInput,handleChange:handleInput,handleSubmit,isBusy:()=>busy,whenIdle:()=>promise,
+    return {renderHome,renderWater,handleClick,handleInput,handleChange,handleSubmit,isBusy:()=>busy,whenIdle:()=>promise,
       hasUnsavedDraft:()=>{snapshot();return Boolean(dirty()||pending||busy);},hasUnpersistedChanges:()=>{snapshot();return Boolean((dirty()||pending)&&!saved);},
       getSelectedDate:()=>{snapshot();return selectedDate;},setSelectedDate,trashReminderState,getHomeSummary:date=>{const c=snapshot(),day=validDate(date)?date:dayKey(getNow());return [1,2].map(person=>waterSummary(c,day,person));}};
   }
