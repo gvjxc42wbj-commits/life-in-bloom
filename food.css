@@ -654,3 +654,22 @@ linear-gradient(145deg,#fffdf8,#f6eee4);color:#2e292a}
 .food-cookbook-native-actions .button{
   width:100%;
 }
+
+
+/* Cookbook shopping-needs sort */
+.food-cookbook-sort{
+  min-width:220px;
+}
+.food-cookbook-sort select{
+  width:100%;
+  min-height:46px;
+  border:1px solid #ddbdcd;
+  border-radius:11px;
+  padding:10px 12px;
+  background:#fff;
+  color:#49303b;
+  font:inherit;
+}
+@media(max-width:760px){
+  .food-cookbook-sort{min-width:0}
+}
