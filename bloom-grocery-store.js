@@ -1025,6 +1025,17 @@
       const result=assertResult(await client.storage.from('bloom-reading-files').createSignedUrl(saved.path,120));checkContext(current);
       signedReadingFiles.set(saved.path,{url:result.signedUrl,expires:Date.now()+90000});return result.signedUrl;
     }
+    async function deleteReadingFile(row){
+      requireOnline();const current=context(true);
+      const saved=state.readingFiles.find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/'))throw new Error('Refresh the Reading files before removing one.');
+      if(saved.file_role==='book_pdf')throw new Error('Use the Bloom Reader book controls to manage a full-book PDF.');
+      assertResult(await client.storage.from('bloom-reading-files').remove([saved.path]));
+      checkContext(current);signedReadingFiles.delete(saved.path);
+      const deleted=assertResult(await client.from(TABLES.readingFiles).delete().eq('id',saved.id).eq('user_id',current.userId).eq('household_id',current.householdId).select('id'));
+      if(!Array.isArray(deleted)||deleted.length!==1)throw new Error('The Reading scan record could not be removed.');
+      await refresh();checkContext(current);return true;
+    }
     async function deleteReadingRow(key,row){
       requireOnline();const current=context(true);if(!row||!row.id)throw new Error('Choose a saved reading record.');
       const result=assertResult(await client.from(TABLES[key]).delete().eq('id',row.id).eq('user_id',current.userId).eq('household_id',current.householdId).select('id'));
@@ -1135,7 +1146,7 @@
       saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, importFoodMaster, saveKitchenEquipment, deleteKitchenEquipment, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
       ...lifeSavers,saveLifeRecord,archiveLifeRecord,addDogSupplyToShopping,exportPersonalLifeRecords,importPersonalLifeRecords,
       uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveEngineeringHomework, deleteEngineeringHomework, uploadEngineeringFile, getEngineeringFileUrl, deleteEngineeringFile,
-      ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingRow, saveReadingPageText, saveReadingPageTexts, deleteReadingPageText, setReadingFilePageCount, exportReadingRecords, importReadingRecords,
+      ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingFile, deleteReadingRow, saveReadingPageText, saveReadingPageTexts, deleteReadingPageText, setReadingFilePageCount, exportReadingRecords, importReadingRecords,
       saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };
