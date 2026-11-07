@@ -144,3 +144,77 @@
 .engineering-success-grid{display:flex;flex-wrap:wrap;gap:8px}.engineering-success-grid span{padding:9px 12px;border:1px solid #e8cfd9;border-radius:999px;background:#fff;color:#78445a;font-size:12px;font-weight:700}
 @media(max-width:950px){.engineering-roadmap-grid{grid-template-columns:1fr 1fr}.engineering-lab-grid{grid-template-columns:1fr 1fr}.engineering-project-grid{grid-template-columns:1fr 1fr}.engineering-two-col{grid-template-columns:1fr}}
 @media(max-width:620px){.engineering-metrics{grid-template-columns:1fr 1fr}.engineering-roadmap-grid,.engineering-lab-grid,.engineering-project-grid,.engineering-check-groups{grid-template-columns:1fr}}
+
+
+/* Engineering mockup-style dashboard v2 */
+.engineering-dashboard{display:grid;gap:14px;margin:14px 0 22px}
+.engineering-banner{
+  display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;
+  min-height:110px;padding:18px 22px;border:1px solid #d8bed3;border-radius:22px;
+  background:linear-gradient(105deg,#25365f 0%,#4d356d 58%,#7f466f 100%);
+  color:#fff;overflow:hidden;box-shadow:0 12px 28px rgba(80,48,82,.12)
+}
+.engineering-banner h2{margin:2px 0 4px;font-family:Georgia,serif;font-size:clamp(2.2rem,6vw,4rem);color:#fff}
+.engineering-banner p{margin:0;color:#f8edf4}.engineering-banner .page-kicker{color:#f5dbe9}
+.engineering-banner>span{font-size:58px;filter:drop-shadow(0 7px 8px rgba(0,0,0,.15))}
+.engineering-top-grid{display:grid;grid-template-columns:1.1fr .9fr .8fr;gap:12px}
+.engineering-three-col{display:grid;grid-template-columns:.85fr .85fr 1.3fr;gap:12px}
+.engineering-bottom-grid{display:grid;grid-template-columns:.9fr 1.15fr .95fr;gap:12px}
+.engineering-dashboard .panel{margin:0}
+.engineering-goal h2,.engineering-progress h2,.engineering-quick h2{margin:.2rem 0 .4rem}
+.engineering-progress-bar{height:16px;margin:12px 0 8px;border-radius:99px;background:#f3dce6;overflow:hidden}
+.engineering-progress-bar span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#a84a72,#d384a4)}
+.engineering-quick{display:grid;align-content:start;gap:8px}.engineering-quick .button{width:100%}
+.engineering-tutor-profile{display:flex;align-items:center;gap:12px;margin:10px 0 14px}
+.engineering-tutor-avatar{display:grid;place-items:center;width:76px;height:76px;border-radius:50%;border:4px solid #f3dce7;background:linear-gradient(135deg,#fff,#f6e2ec);font-size:42px;flex:none}
+.engineering-tutor-profile h2{margin:0 0 4px}.engineering-tutor-profile p{margin:0;color:#765665}
+.engineering-text-link{display:inline-block;margin-top:10px;color:#8f4164;font-weight:800}
+.engineering-proposal{background:linear-gradient(135deg,#fff8fb,#fffdf8)}
+.engineering-proposal-grid{display:grid;grid-template-columns:110px 1fr;gap:14px;align-items:center}
+.engineering-proposal-icon{display:grid;place-items:center;min-height:105px;border-radius:16px;background:linear-gradient(145deg,#f6ddea,#eee6ff);font-size:52px}
+.engineering-proposal ul{margin:0;padding-left:20px;color:#674b59;line-height:1.6;font-size:12px}
+.engineering-proposal details{margin-top:12px;padding:10px 12px;border:1px solid #ead7df;border-radius:12px;background:#fff}
+.engineering-proposal summary{cursor:pointer;color:#784358;font-weight:800}
+.engineering-proposal details p{margin:8px 0 0;color:#725966;font-size:12px;line-height:1.55}
+.engineering-timeline{display:grid;gap:3px;margin-top:8px}
+.engineering-timeline article{display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start;padding:8px 0;border-bottom:1px solid #f0dde4}
+.engineering-timeline article:last-child{border-bottom:0}
+.engineering-timeline b{display:grid;place-items:center;width:27px;height:27px;border-radius:50%;background:#f1d5e2;color:#8e4061}
+.engineering-timeline h3{margin:0 0 2px;font-size:13px}.engineering-timeline p{margin:0;color:#745966;font-size:11px;line-height:1.45}
+.engineering-homework{display:grid;gap:12px}
+.engineering-homework-actions{display:flex;flex-wrap:wrap;gap:8px}
+.engineering-upload-button{position:relative;cursor:pointer}
+.engineering-upload-button input:disabled{pointer-events:none}
+.engineering-homework-form{padding:12px;border:1px solid #ead5de;border-radius:14px;background:#fff9fb}
+.engineering-homework-list{display:grid;gap:7px}
+.engineering-homework-list article{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;border:1px solid #ead7df;border-radius:12px;background:#fff}
+.engineering-homework-list article label{display:flex;align-items:flex-start;gap:9px;min-width:0;cursor:pointer}
+.engineering-homework-list article input{margin-top:3px;accent-color:#a84a72}
+.engineering-homework-list article span{display:grid;gap:2px;min-width:0}.engineering-homework-list article small{color:#806675;overflow-wrap:anywhere}
+.engineering-homework-list article.is-done{opacity:.66;background:#f8f7f4}.engineering-homework-list article.is-done strong{text-decoration:line-through}
+.engineering-file-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.engineering-file-card{display:grid;gap:7px;padding:9px;border:1px solid #ead5de;border-radius:14px;background:#fff;min-width:0}
+.engineering-file-preview{display:grid;place-items:center;height:120px;border-radius:10px;background:#f5edf1;overflow:hidden;color:#8c4967;font-weight:900}
+.engineering-file-preview img{display:block;width:100%;height:100%;object-fit:cover}
+.engineering-file-preview.is-pdf{font-size:28px}
+.engineering-file-card strong{font-size:12px;overflow-wrap:anywhere}.engineering-file-card small{color:#7c6470}
+.engineering-file-card .habit-actions{display:grid;grid-template-columns:1fr 1fr;gap:5px}.engineering-file-card .button{padding:.45rem;font-size:11px}
+.engineering-focus label,.engineering-college label{display:flex;gap:8px;align-items:flex-start;margin:9px 0;color:#644956;font-size:12px}
+.engineering-focus input,.engineering-college input{accent-color:#a84a72;margin-top:2px}
+.engineering-stats .engineering-metrics{margin-top:0}
+@media(max-width:1150px){
+  .engineering-top-grid,.engineering-three-col,.engineering-bottom-grid{grid-template-columns:1fr 1fr}
+  .engineering-three-col .engineering-proposal,.engineering-bottom-grid .engineering-college{grid-column:1/-1}
+  .engineering-file-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:760px){
+  .engineering-top-grid,.engineering-three-col,.engineering-bottom-grid{grid-template-columns:1fr}
+  .engineering-three-col .engineering-proposal,.engineering-bottom-grid .engineering-college{grid-column:auto}
+  .engineering-banner{grid-template-columns:1fr}.engineering-banner>span{display:none}
+  .engineering-proposal-grid{grid-template-columns:1fr}.engineering-proposal-icon{min-height:80px}
+  .engineering-file-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:480px){
+  .engineering-file-grid{grid-template-columns:1fr}
+  .engineering-homework-list article{align-items:flex-start;flex-direction:column}
+}
