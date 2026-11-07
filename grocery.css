@@ -195,3 +195,15 @@
   color:#806673;
   font-weight:400;
 }
+
+
+/* Leave household */
+.grocery-leave-household{
+  margin-top:1rem;
+  padding:1rem;
+  border:1px solid #e4c7d3;
+  border-radius:16px;
+  background:#fff9fb;
+}
+.grocery-leave-household h3{margin:.1rem 0 .35rem}
+.grocery-leave-household .button{border-color:#c985a0;color:#7d3855;background:#fff}
