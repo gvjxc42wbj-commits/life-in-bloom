@@ -371,6 +371,34 @@
     batch.remaining = Math.max(0, tidy(batch.remaining - used));
     return true;
   }
+  function ingredientKey(value) {
+    const name = String(value || '').toLowerCase().replace(/[’']/g, "'").replace(/[^a-z0-9]+/g, ' ').trim();
+    if (/\boregano\b/.test(name)) return 'oregano';
+    if (/\bblack pepper\b/.test(name)) return 'black-pepper';
+    if (/\bpaprika\b/.test(name) && !/smoked/.test(name)) return 'paprika';
+    if (/\bgarlic powder\b/.test(name)) return 'garlic-powder';
+    if (/\bground cloves?\b/.test(name)) return 'ground-cloves';
+    if (/\bground cinnamon\b/.test(name)) return 'ground-cinnamon';
+    if (/\bground nutmeg\b/.test(name)) return 'ground-nutmeg';
+    if (/\bthyme\b/.test(name)) return 'thyme';
+    if (/\bparsley\b/.test(name) && /dried|flakes?/.test(name)) return 'dried-parsley';
+    if (/\bkosher salt\b/.test(name)) return 'kosher-salt';
+    if (/\b(?:iodized )?salt\b/.test(name) && !/seasoned/.test(name)) return 'table-salt';
+    if (/\bolive oil\b/.test(name)) return 'olive-oil';
+    return '';
+  }
+  function equivalentProductIds(row, product, catalog) {
+    const key = ingredientKey(row && row.name) || ingredientKey(product && product.name);
+    if (!key) return product && product.id ? new Set([product.id]) : new Set();
+    const ids = new Set();
+    for (const candidate of catalog.values()) {
+      if (!candidate || candidate.archived) continue;
+      const candidateKey = ingredientKey(candidate.name);
+      if (candidateKey === key || (key === 'table-salt' && candidateKey === 'kosher-salt') || (key === 'kosher-salt' && candidateKey === 'table-salt')) ids.add(candidate.id);
+    }
+    if (product && product.id) ids.add(product.id);
+    return ids;
+  }
   function recipeCost(recipe, products, inventory, today, servings) {
     const catalog = indexProducts(products);
     const yieldCount = positive(recipe && recipe.servings);
@@ -413,11 +441,13 @@
         makeKnown += item.make_cost_cents;
       }
       let needed = required, incompatibleStock = false;
-      for (const batch of pool.filter(value => value.product_id === product.id && value.remaining > 0)) {
-        const available = stockAmount(batch, product, row.unit);
+      const equivalentIds = equivalentProductIds(row, product, catalog);
+      for (const batch of pool.filter(value => equivalentIds.has(value.product_id) && value.remaining > 0)) {
+        const batchProduct = catalog.get(batch.product_id) || product;
+        const available = stockAmount(batch, batchProduct, row.unit);
         if (available == null) { incompatibleStock = true; continue; }
         const used = Math.min(needed, available);
-        if (used > 0) removeStock(batch, product, used, row.unit);
+        if (used > 0) removeStock(batch, batchProduct, used, row.unit);
         needed = Math.max(0, tidy(needed - used));
         if (needed <= 1e-9) break;
       }
