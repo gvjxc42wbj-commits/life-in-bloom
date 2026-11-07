@@ -92,6 +92,7 @@
     let identity = null, generation = 0, page = 'dog', tab = 'today', houseworkTab = 'today';
     let selectedDate = M.dayKey(getNow()), lastToday = selectedDate, person = '1', showDog = true, refillOnly = false;
     let opened = '', busy = null, pending = Promise.resolve(), attempt = null, problem = '', draftSaved = false, draftWarning = false;
+    let houseworkCategoryOpen = false;
     let drafts = Object.fromEntries(GROUPS.map(group => [group, blank(group, selectedDate)])), baselines = copy(drafts);
     const dirty = group => JSON.stringify(drafts[group]) !== JSON.stringify(baselines[group]);
     const anyDirty = () => GROUPS.some(dirty);
@@ -123,7 +124,7 @@
       if (key !== identity) {
         identity = key; generation++; busy = null; page = 'dog'; tab = 'today'; houseworkTab = 'today'; selectedDate = today; lastToday = today;
         person = (current.members || []).some(member => member.user_id === (current.user || {}).id && member.role === 'member') ? '2' : '1';
-        showDog = true; refillOnly = false; opened = ''; attempt = null; problem = ''; draftSaved = false; draftWarning = false;
+        showDog = true; refillOnly = false; opened = ''; houseworkCategoryOpen = false; attempt = null; problem = ''; draftSaved = false; draftWarning = false;
         drafts = Object.fromEntries(GROUPS.map(group => [group, blank(group, selectedDate)])); baselines = copy(drafts);
         if (draftStore && current.user && current.household) {
           try { const saved = draftStore.read(current.user.id, current.household.id, 'dog'); draftSaved = Boolean(saved && restore(saved.data)); }
@@ -180,6 +181,16 @@
     }
     function select(group, name, label, rows) {
       return '<label class="dog-field" for="dog-' + group + '-' + name + '"><span>' + label + '</span><select id="dog-' + group + '-' + name + '" name="' + name + '" data-dog-field="' + group + '.' + name + '"' + (busy || attempt ? ' disabled' : '') + '>' + rows.map(([value, title]) => '<option value="' + esc(value) + '"' + (String(drafts[group][name]) === String(value) ? ' selected' : '') + '>' + esc(title) + '</option>').join('') + '</select></label>';
+    }
+    function houseworkCategoryPicker() {
+      const selected=M.HOUSEWORK_CATEGORIES.find(row=>row[0]===drafts.task.category)||M.HOUSEWORK_CATEGORIES[0];
+      return '<div class="dog-field housework-category-picker"><span>Category</span>'
+        + '<button type="button" class="housework-category-trigger" data-dog-action="housework-category-toggle" aria-haspopup="listbox" aria-expanded="'+houseworkCategoryOpen+'"' + (busy||attempt?' disabled':'') + '>'
+        + '<span class="housework-category-icon" aria-hidden="true">'+selected[2]+'</span><strong>'+esc(selected[1])+'</strong><span class="housework-category-chevron" aria-hidden="true">'+(houseworkCategoryOpen?'⌃':'⌄')+'</span></button>'
+        + (houseworkCategoryOpen?'<div class="housework-category-menu" role="listbox" aria-label="Housework category">'
+          + M.HOUSEWORK_CATEGORIES.map(row=>'<button type="button" role="option" aria-selected="'+(row[0]===selected[0])+'" data-dog-action="housework-category-choice" data-category="'+esc(row[0])+'"><span aria-hidden="true">'+row[2]+'</span><strong>'+esc(row[1])+'</strong>'+(row[0]===selected[0]?'<b aria-hidden="true">✓</b>':'')+'</button>').join('')
+          + '</div>':'')
+        + '</div>';
     }
     function checkbox(group, name, label) {
       return '<label class="dog-check"><input type="checkbox" name="' + name + '" data-dog-field="' + group + '.' + name + '"' + (drafts[group][name] ? ' checked' : '') + (busy || attempt ? ' disabled' : '') + '><span>' + label + '</span></label>';
@@ -265,7 +276,7 @@
       if (group === 'profile') html += '<div class="dog-form-grid">' + field(group, 'name', 'Dog’s name', 'text', ' required maxlength="160"') + field(group, 'breed', 'Breed (optional)', 'text', ' maxlength="160"') + field(group, 'birth_on', 'Date of birth (optional)', 'date', ' min="1900-01-01" max="' + today + '"') + '</div>' + textarea(group, 'notes', 'Profile notes (optional)', 4000);
       if (group === 'weight') html += '<div class="dog-form-grid">' + field(group, 'occurred_on', 'Date measured', 'date', ' required min="1900-01-01" max="' + today + '"') + field(group, 'weight', 'Measured weight', 'number', ' required min="0.001" max="661.3867865" step="any" inputmode="decimal"') + select(group, 'weight_unit', 'Unit', [['lb', 'Pounds (lb)'], ['kg', 'Kilograms (kg)']]) + '</div>' + textarea(group, 'notes', 'Notes (optional)', 4000);
       if (group === 'task') {
-        html += '<div class="dog-form-grid">' + field(group, 'name', 'Task name', 'text', ' required maxlength="160"') + select(group, 'domain', 'Where it belongs', [['dog', 'Dog care · also shown in Housework'], ['housework', 'Housework']]) + select(group, 'category', 'Category', (value.domain === 'housework' ? M.HOUSEWORK_CATEGORIES : M.CATEGORIES).map(row => [row[0], row[1]])) + select(group, 'frequency', 'Repeat', [['daily', 'Every day'], ['interval', 'Every set number of days'], ['monthly', 'Every calendar month'], ['once', 'One time']]) + '</div>';
+        html += '<div class="dog-form-grid">' + field(group, 'name', 'Task name', 'text', ' required maxlength="160"') + select(group, 'domain', 'Where it belongs', [['dog', 'Dog care · also shown in Housework'], ['housework', 'Housework']]) + (value.domain === 'housework' ? houseworkCategoryPicker() : select(group, 'category', 'Category', M.CATEGORIES.map(row => [row[0], row[1]]))) + select(group, 'frequency', 'Repeat', [['daily', 'Every day'], ['interval', 'Every set number of days'], ['monthly', 'Every calendar month'], ['once', 'One time']]) + '</div>';
         if (value.frequency === 'interval') html += '<div class="dog-form-grid">' + field(group, 'interval_days', 'Days between care', 'number', ' required min="1" max="3650" step="1"') + '</div>' + checkbox(group, 'rolling', 'Start the next interval after this task is completed') + '<p class="dog-help">For tasks with several times, every time must be checked off on a completion day before the next interval begins.</p>';
         if (value.frequency === 'monthly') html += field(group, 'interval_months', 'Months between care', 'number', ' required min="1" max="120" step="1"') + '<p class="dog-help">Monthly care follows the starting day of the month. A shorter month uses its last day.</p>';
         html += '<div class="dog-form-grid">' + field(group, 'anchor_on', value.frequency === 'once' ? 'Scheduled date' : 'First care date', 'date', ' required min="1900-01-01" max="2200-12-31"') + field(group, 'end_on', 'End date (optional)', 'date', ' min="1900-01-01" max="2200-12-31"') + '</div>' + field(group, 'times_text', 'Times (optional, 24-hour format)', 'text', ' maxlength="64" placeholder="07:30, 18:00"') + '<p class="dog-help">Leave blank for any time. You can enter up to eight times separated by commas.</p>';
@@ -310,7 +321,11 @@
       if (dirty(group) && row && drafts[group].id === row.id) { opened = group; persist(); refresh('#dog-editor'); return true; }
       if (dirty(group) && !confirm('Replace your current ' + group + ' draft? Saved records will stay unchanged.')) return false;
       let value = editable(group, row, selectedDate);
-      if (group === 'task' && !row) value.domain = page === 'housework' ? 'housework' : 'dog';
+      if (group === 'task' && !row) {
+        value.domain = page === 'housework' ? 'housework' : 'dog';
+        value.category = value.domain === 'housework' ? 'cleaning_shared_spaces' : 'other';
+      }
+      houseworkCategoryOpen = false;
       if (template) value = { ...value, ...copy(template), times_text: (template.times || []).join(', ') };
       delete value.key; delete value.times;
       reset(group, value); opened = group; problem = ''; persist(); refresh('#dog-editor'); return true;
@@ -488,12 +503,16 @@
       const current = snapshot();
       if (busy || attempt) return true;
       drafts[group][name] = ['rolling', 'active', 'needs_refill'].includes(name) ? element.checked === true : String(element.value == null ? '' : element.value);
+      if (group === 'task' && name === 'domain') {
+        drafts.task.category = drafts.task.domain === 'housework' ? 'cleaning_shared_spaces' : 'other';
+        houseworkCategoryOpen = false;
+      }
       if (group === 'supply' && name === 'product_id' && drafts.supply.product_id) {
         const product = (current.products || []).find(row => row.id === drafts.supply.product_id && row.category === 'household');
         if (product) { if (!drafts.supply.name.trim()) drafts.supply.name = product.name; if (!String(drafts.supply.reference_price).trim() && product.price_cents != null) drafts.supply.reference_price = (product.price_cents / 100).toFixed(2); }
       }
       persist();
-      if (group === 'task' && ['frequency', 'category'].includes(name) || group === 'supply' && name === 'product_id') refresh('#dog-' + group + '-' + name);
+      if (group === 'task' && ['frequency', 'category', 'domain'].includes(name) || group === 'supply' && name === 'product_id') refresh('#dog-editor');
       return true;
     }
     function handleChange(event) { return handleInput({ ...event, type: 'change', target: event.target }); }
@@ -509,7 +528,7 @@
       const element = event && event.target && event.target.closest && event.target.closest('[data-dog-action]');
       if (!element || !element.dataset) return false;
       const data = element.dataset, action = data.dogAction;
-      const allowed = ['tab', 'today', 'person', 'grocery', 'dog-page', 'housework', 'edit-profile', 'new-weight', 'edit-weight', 'new-task', 'task-template', 'edit-task', 'new-note', 'edit-note', 'new-supply', 'edit-supply', 'purchase-supply', 'add-supply-shopping', 'archive-record', 'undo-log', 'care-calendar', 'open-receipt', 'close-form', 'resume-form', 'discard-form', 'reload-form', 'retry', 'check-result'];
+      const allowed = ['tab', 'today', 'person', 'grocery', 'dog-page', 'housework', 'edit-profile', 'new-weight', 'edit-weight', 'new-task', 'task-template', 'edit-task', 'new-note', 'edit-note', 'new-supply', 'edit-supply', 'purchase-supply', 'add-supply-shopping', 'archive-record', 'undo-log', 'care-calendar', 'open-receipt', 'close-form', 'resume-form', 'discard-form', 'reload-form', 'retry', 'check-result', 'housework-category-toggle', 'housework-category-choice'];
       if (!allowed.includes(action)) return false;
       if (event.preventDefault) event.preventDefault();
       const current = snapshot();
@@ -522,6 +541,23 @@
           if (allowedTabs.includes(data.tab)) { if (page === 'dog') tab = data.tab; else houseworkTab = data.tab; }
         } else if (action === 'today') selectedDate = M.dayKey(getNow());
         else if (action === 'person') { if (!attempt && ['1', '2'].includes(data.person)) person = data.person; }
+        else if (action === 'housework-category-toggle') {
+          if (!attempt && drafts.task.domain === 'housework') {
+            houseworkCategoryOpen = !houseworkCategoryOpen;
+            refresh('#dog-editor');
+          }
+          return true;
+        }
+        else if (action === 'housework-category-choice') {
+          const choice=M.HOUSEWORK_CATEGORIES.find(row=>row[0]===data.category);
+          if (choice && !attempt) {
+            drafts.task.category=choice[0];
+            houseworkCategoryOpen=false;
+            persist();
+            refresh('#dog-editor');
+          }
+          return true;
+        }
         else if (action === 'edit-profile') { openForm('profile', M.usable(current.dogProfiles)[0]); return true; }
         else if (action === 'new-weight') { openForm('weight'); return true; }
         else if (action === 'new-task') { openForm('task'); return true; }
@@ -535,7 +571,7 @@
           const group = action.slice(5), row = (current[LISTS[group]] || []).find(item => item.id === data.id && item.archived !== true);
           if (!row) throw new Error('Refresh to find that saved record.');
           openForm(group, row); return true;
-        } else if (action === 'close-form') opened = '';
+        } else if (action === 'close-form') { opened = ''; houseworkCategoryOpen = false; }
         else if (action === 'resume-form') { if (GROUPS.includes(data.group)) opened = data.group; }
         else if (action === 'discard-form') {
           if (!GROUPS.includes(data.group)) throw new Error('Choose a draft to discard.');
