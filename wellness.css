@@ -89,3 +89,14 @@
   .bloom-trash-reminder{grid-template-columns:auto 1fr}
   .bloom-trash-countdown{grid-column:1/-1;min-width:0;text-align:left}
 }
+
+
+/* Home household shortcut */
+.bloom-household-strip .button{
+  margin-left:auto;
+  flex:0 0 auto;
+}
+@media(max-width:560px){
+  .bloom-household-strip{flex-wrap:wrap}
+  .bloom-household-strip .button{width:100%;margin-left:0}
+}
