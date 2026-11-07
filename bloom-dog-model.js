@@ -66,6 +66,16 @@
     ['grooming', 'Grooming', '🧴'], ['medication', 'Medication', '💊'], ['vet', 'Veterinary care', '🩺'],
     ['training', 'Training', '⭐'], ['other', 'Other care', '🌿']
   ];
+  const HOUSEWORK_CATEGORIES = [
+    ['cleaning_shared_spaces', 'Cleaning Shared Spaces', '🧹'],
+    ['kitchen_duties', 'Kitchen Duties', '🍽️'],
+    ['trash', 'Trash', '🗑️'],
+    ['repairs', 'Repairs', '🛠️'],
+    ['laundry', 'Laundry', '🧺'],
+    ['outdoor_seasonal', 'Outdoor & Seasonal Tasks', '🌿'],
+    ['household_management', 'Household Management', '📋'],
+    ['other_housework', 'Other Household Task', '🏠']
+  ];
   const TEMPLATES = [
     { key: 'morning-meal', name: 'Morning meal', category: 'feeding', frequency: 'daily', times: ['07:30'], notes: 'Record the food and measured portion you use for your dog.' },
     { key: 'evening-meal', name: 'Evening meal', category: 'feeding', frequency: 'daily', times: ['18:00'], notes: 'Record the food and measured portion you use for your dog.' },
@@ -84,7 +94,10 @@
     const values = Array.isArray(task && task.times) ? [...new Set(task.times.filter(validTime))].sort() : [];
     return values.length ? values : [''];
   }
-  function categoryInfo(value) { const entry = CATEGORIES.find(row => row[0] === value) || CATEGORIES.at(-1); return { value: entry[0], label: entry[1], icon: entry[2] }; }
+  function categoryInfo(value) {
+    const entry = [...CATEGORIES, ...HOUSEWORK_CATEGORIES].find(row => row[0] === value) || CATEGORIES.at(-1);
+    return { value: entry[0], label: entry[1], icon: entry[2] };
+  }
   function taskLogs(task, logs, through) {
     return usable(logs).filter(log => log.task_id === task.id && dateNumber(log.occurred_on) != null && (!through || log.occurred_on <= through));
   }
@@ -231,7 +244,7 @@
       'TRANSP:TRANSPARENT', 'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + calendarEscape(title), 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].map(foldCalendar).join('\r\n') + '\r\n';
   }
 
-  const api = { DAY, ZONE, CATEGORIES, TEMPLATES, clone, dayKey, dateNumber, dateFromNumber, addDays, addMonths, dateLabel, validTime, timeLabel, ageLabel, money, format, usable, slots, categoryInfo, snapshotBody, completionDays, nextAfter, taskOccurrences, dueTasks, nextDue, frequencyLabel, needsRefill, purchaseHistory, expenses, latestWeight, summary, careInstant, calendarForOccurrence };
+  const api = { DAY, ZONE, CATEGORIES, HOUSEWORK_CATEGORIES, TEMPLATES, clone, dayKey, dateNumber, dateFromNumber, addDays, addMonths, dateLabel, validTime, timeLabel, ageLabel, money, format, usable, slots, categoryInfo, snapshotBody, completionDays, nextAfter, taskOccurrences, dueTasks, nextDue, frequencyLabel, needsRefill, purchaseHistory, expenses, latestWeight, summary, careInstant, calendarForOccurrence };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.BloomDogModel = api;
 })(typeof window !== 'undefined' ? window : globalThis);
