@@ -596,3 +596,61 @@ linear-gradient(145deg,#fffdf8,#f6eee4);color:#2e292a}
   .food-cookbook-workspace .food-cookbook-native-grid{grid-template-columns:1fr}
   .food-cook-tools{grid-template-columns:1fr}
 }
+
+
+/* Cookbook public recipe photos */
+.food-cookbook-native-thumb.is-photo{
+  position:relative;
+  min-height:145px;
+  border:1px solid #e7d9df;
+  border-radius:14px;
+  overflow:hidden;
+  background:
+    linear-gradient(135deg,#f8e8ef 0 34%,#f4efe8 34% 70%,#dce9dc 70% 100%);
+}
+.food-cookbook-native-thumb.is-photo img{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  min-height:145px;
+  object-fit:cover;
+  display:block;
+  opacity:0;
+  transition:opacity .22s ease;
+}
+.food-cookbook-native-thumb.is-photo img[src]{
+  opacity:1;
+}
+.food-cookbook-native-thumb.is-photo>span{
+  position:absolute;
+  z-index:2;
+  top:8px;
+  left:8px;
+  padding:.24rem .42rem;
+  border-radius:8px;
+  background:rgba(255,255,255,.92);
+  box-shadow:0 2px 8px rgba(44,29,35,.08);
+  color:#82425e;
+  font-size:.62rem;
+  font-weight:800;
+}
+.food-cookbook-native-thumb.is-photo.is-large{
+  min-height:220px;
+}
+.food-cookbook-native-thumb.is-photo.is-large img{
+  min-height:220px;
+}
+.food-image-credit{
+  margin:-.2rem 0 .15rem;
+  color:#87717a;
+  font-size:.66rem;
+  line-height:1.35;
+}
+.food-image-credit a{
+  color:#80445f;
+  font-weight:700;
+}
+.food-cookbook-native-actions .button{
+  width:100%;
+}
