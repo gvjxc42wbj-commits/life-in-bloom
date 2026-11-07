@@ -916,3 +916,41 @@
   .journal-history-list button{grid-template-columns:1fr}
   .journal-entry-panel textarea{min-height:300px}
 }
+
+
+/* Painting Portfolio */
+.painting-dashboard{display:grid;gap:14px;margin:14px 0 24px}
+.painting-banner{
+  display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;
+  padding:20px 24px;border:1px solid #e6d2dd;border-radius:22px;
+  background:linear-gradient(110deg,#f9e4ed,#fffafc 58%,#f6f1ff);
+  box-shadow:0 10px 24px rgba(82,50,70,.07)
+}
+.painting-banner h2{margin:.1rem 0 .25rem;font-family:Georgia,serif;font-size:clamp(2.2rem,6vw,3.8rem);color:#583449}
+.painting-banner p{margin:0;color:#775c6b}.painting-banner>span{font-size:56px}
+.painting-dashboard .panel{margin:0}
+.painting-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:0;padding:0;overflow:hidden}
+.painting-summary>div{display:grid;gap:2px;padding:15px 17px;border-right:1px solid #eddde4}.painting-summary>div:last-child{border-right:0}
+.painting-summary strong{font-size:22px;color:#81445f}.painting-summary small{color:#806775}
+.painting-inline-form{margin:12px 0;padding:13px;border:1px solid #e7ced9;border-radius:14px;background:#fff9fb}
+.painting-portfolio-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.painting-portfolio-card{display:grid;gap:7px;padding:9px;border:1px solid #ead6df;border-radius:14px;background:#fff}
+.painting-card-open{display:grid;gap:8px;border:0;background:transparent;padding:0;color:#5f394b;text-align:left;cursor:pointer}
+.painting-card-image{display:grid;place-items:center;height:220px;border-radius:11px;overflow:hidden;background:#f3e8ee}
+.painting-card-image img{width:100%;height:100%;object-fit:cover}.painting-card-image span{font-size:48px}
+.painting-portfolio-card h3{margin:0;font-family:Georgia,serif;font-size:18px}.painting-portfolio-card p{margin:2px 0;color:#735a67}.painting-portfolio-card small{color:#876b78}
+.painting-empty{display:grid;place-items:center;gap:5px;grid-column:1/-1;padding:34px;border:1px dashed #dfc5d0;border-radius:14px;text-align:center;background:#fff9fb}.painting-empty>span{font-size:42px}.painting-empty h3,.painting-empty p{margin:0}
+.painting-detail-hero{display:grid;grid-template-columns:minmax(260px,.8fr) 1.2fr;gap:18px;align-items:center}
+.painting-hero-media{min-height:320px;border-radius:16px;overflow:hidden;background:#f2e7ec}.painting-hero-media img{width:100%;height:100%;max-height:520px;object-fit:contain;background:#fff}.painting-empty-canvas{display:grid;place-items:center;min-height:320px;font-size:64px}
+.painting-pdf{display:grid;place-items:center;min-height:160px;border-radius:12px;background:#f0e6eb;color:#80445f;font-weight:900;text-decoration:none}
+.painting-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.painting-meta div{padding:9px;border:1px solid #ead7df;border-radius:11px;background:#fff}.painting-meta dt{color:#8c6c7a;font-size:10px}.painting-meta dd{margin:3px 0 0;color:#623f50;font-weight:800}
+.painting-version-list{display:grid;gap:16px;position:relative}
+.painting-version-list:before{content:"";position:absolute;left:17px;top:0;bottom:0;width:2px;background:#ead4de}
+.painting-version-card{position:relative;display:grid;grid-template-columns:36px 1fr;gap:12px}
+.painting-version-marker{position:relative;z-index:1;display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#a94b72;color:#fff;font-weight:900}
+.painting-version-content{padding:13px;border:1px solid #ead6df;border-radius:14px;background:#fff}
+.painting-version-media{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.painting-version-media img{width:100%;height:220px;object-fit:contain;border-radius:10px;background:#f4eef1}
+.painting-version-placeholder{padding:18px;margin:10px 0;border:1px dashed #dfc5d0;border-radius:11px;background:#fff9fb;color:#806775;text-align:center;font-size:11px}
+.painting-notes-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.painting-notes-grid>div{padding:10px;border-radius:11px;background:#fff7fa;border:1px solid #f0dfe6}.painting-notes-grid b{display:block;margin-bottom:4px;color:#754158}.painting-notes-grid p{margin:0;color:#6d5360;font-size:11px;line-height:1.5}
+@media(max-width:900px){.painting-portfolio-grid{grid-template-columns:1fr 1fr}.painting-detail-hero{grid-template-columns:1fr}.painting-version-media{grid-template-columns:1fr 1fr}}
+@media(max-width:580px){.painting-banner{grid-template-columns:1fr}.painting-banner>span{display:none}.painting-summary,.painting-portfolio-grid,.painting-meta,.painting-version-media,.painting-notes-grid{grid-template-columns:1fr}.painting-card-image{height:260px}}
