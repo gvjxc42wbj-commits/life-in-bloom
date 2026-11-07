@@ -437,3 +437,162 @@ linear-gradient(145deg,#fffdf8,#f6eee4);color:#2e292a}
 .food-plan-dropdown-body>.food-plan-panel{margin:0;border:0;box-shadow:none;padding:.5rem 0;background:transparent}
 .food-upcoming-primary{margin:0}
 .food-upcoming-primary> .food-heading{margin-bottom:.4rem}
+
+
+/* Cooking-first cookbook workspace */
+@media (min-width:1100px){
+  .food-page:has(.food-cookbook-workspace){overflow:visible}
+  .food-cookbook-workspace{
+    width:min(95vw,1760px);
+    max-width:none;
+    position:relative;
+    left:50%;
+    transform:translateX(-50%);
+  }
+}
+.food-cookbook-workspace .food-digital-cookbook-layout{
+  grid-template-columns:minmax(0,1fr) minmax(430px,.68fr);
+}
+.food-cookbook-workspace .food-cookbook-native-grid{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+.food-cookbook-workspace .food-cookbook-native-card{
+  padding:.7rem;
+  min-height:190px;
+}
+.food-cookbook-workspace .food-cookbook-native-select{
+  grid-template-columns:1fr;
+  gap:.55rem;
+}
+.food-cookbook-workspace .food-cookbook-native-thumb{
+  min-height:125px;
+}
+.food-cookbook-workspace .food-cookbook-native-copy h3{
+  font-size:1.05rem;
+}
+.food-readiness-pill{
+  display:inline-flex;
+  align-items:center;
+  width:max-content;
+  margin-top:.35rem;
+  padding:.28rem .5rem;
+  border-radius:999px;
+  background:#f2e8ed;
+  color:#775565;
+  font-size:.68rem;
+  font-weight:800;
+}
+.food-readiness-pill.is-ready{background:#e4f3e7;color:#2f6f3b}
+.food-readiness-pill.is-almost{background:#fff1d8;color:#8a5b16}
+.food-readiness-pill.is-need{background:#fbe5e8;color:#923c50}
+.food-cook-tools{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:.65rem;
+}
+.food-cook-tools>div{
+  display:grid;
+  gap:.2rem;
+  padding:.75rem;
+  border:1px solid #ead5de;
+  border-radius:15px;
+  background:#fffafd;
+}
+.food-cook-tools>div>span{
+  color:#806171;
+  font-size:.72rem;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.food-cook-tools>div>strong{color:#5a3345}
+.food-cook-tools>div>small{color:#806a74;line-height:1.35}
+.food-serving-stepper{
+  display:grid;
+  grid-template-columns:40px 1fr 40px;
+  gap:.4rem;
+  align-items:center;
+  margin:.2rem 0;
+}
+.food-serving-stepper .button{
+  min-height:38px;
+  padding:.35rem;
+}
+.food-serving-stepper strong{
+  display:grid;
+  place-items:center;
+  min-height:38px;
+  border:1px solid #e5ced8;
+  border-radius:10px;
+  background:#fff;
+  color:#6c3d52;
+}
+.food-mise-en-place{
+  border:1px solid #e7d0da;
+  border-radius:16px;
+  overflow:hidden;
+  background:#fffdfd;
+}
+.food-mise-heading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.75rem;
+  padding:.75rem .85rem;
+  background:linear-gradient(90deg,#fff4f8,#fff);
+  border-bottom:1px solid #efdee5;
+}
+.food-mise-heading h3{margin:.1rem 0}
+.food-mise-heading>span{
+  padding:.3rem .5rem;
+  border-radius:999px;
+  background:#f7e6ed;
+  color:#7e4560;
+  font-size:.72rem;
+  font-weight:800;
+}
+.food-mise-en-place ul{
+  list-style:none;
+  padding:0;
+  margin:0;
+}
+.food-mise-en-place li+li{border-top:1px solid #f0e2e8}
+.food-mise-en-place label{
+  display:flex;
+  align-items:flex-start;
+  gap:.65rem;
+  padding:.68rem .8rem;
+  cursor:pointer;
+}
+.food-mise-en-place input{
+  width:20px;
+  height:20px;
+  margin-top:.05rem;
+  accent-color:#a6476d;
+  flex:0 0 20px;
+}
+.food-mise-en-place label>span{
+  display:grid;
+  gap:.1rem;
+}
+.food-mise-en-place small{color:#7c6670}
+.food-cookbook-missing{
+  border-color:#ead8bc!important;
+  background:#fffaf2!important;
+}
+.food-cookbook-native-detail{
+  max-height:calc(100vh - 24px);
+  overflow:auto;
+  scrollbar-width:thin;
+}
+@media(max-width:1350px){
+  .food-cookbook-workspace .food-cookbook-native-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:1050px){
+  .food-cookbook-workspace .food-digital-cookbook-layout{grid-template-columns:1fr}
+  .food-cookbook-native-detail{max-height:none;overflow:visible}
+}
+@media(max-width:700px){
+  .food-cookbook-workspace .food-cookbook-native-grid{grid-template-columns:1fr}
+  .food-cook-tools{grid-template-columns:1fr}
+}
