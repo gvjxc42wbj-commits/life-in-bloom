@@ -125,6 +125,46 @@
       if(archived.length)html+='<details><summary>Archived water entries · '+archived.length+'</summary><ul class="water-history">'+archived.map(row=>'<li><div><strong>Person '+Number(row.person_slot)+' · '+fmt(row.amount_ml)+' mL</strong><p>Removed from daily totals.</p>'+(row.notes?'<p>'+esc(row.notes)+'</p>':'')+'</div></li>').join('')+'</ul></details>';
       return html+'</section></section>';
     }
+    function nyParts(date) {
+      const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(date);
+      return Object.fromEntries(parts.filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));
+    }
+    function nyLocalDate(year,month,day,hour,minute,second) {
+      const targetUtc=Date.UTC(year,month-1,day,hour,minute,second||0);
+      let guess=targetUtc;
+      for(let attempt=0;attempt<3;attempt++) {
+        const p=nyParts(new Date(guess));
+        const shownUtc=Date.UTC(Number(p.year),Number(p.month)-1,Number(p.day),Number(p.hour),Number(p.minute),Number(p.second));
+        guess += targetUtc-shownUtc;
+      }
+      return new Date(guess);
+    }
+    function trashReminderState(now) {
+      now=now||getNow();
+      const p=nyParts(now),weekday={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6}[p.weekday];
+      const hour=Number(p.hour),minute=Number(p.minute),year=Number(p.year),month=Number(p.month),day=Number(p.day);
+      let addDays=null;
+      if(weekday===0 && (hour>18 || hour===18)) addDays=1;
+      else if(weekday===1 && hour<10) addDays=0;
+      else if(weekday===3 && (hour>18 || hour===18)) addDays=1;
+      else if(weekday===4 && hour<10) addDays=0;
+      if(addDays==null) return null;
+      const base=new Date(Date.UTC(year,month-1,day+addDays,12,0,0));
+      const bp=nyParts(base);
+      const deadline=nyLocalDate(Number(bp.year),Number(bp.month),Number(bp.day),10,0,0);
+      const remaining=Math.max(0,deadline.getTime()-now.getTime());
+      if(remaining<=0) return null;
+      const urgent=remaining<=60*60*1000;
+      const trashDay=addDays===0;
+      return {
+        deadline:deadline.toISOString(),
+        remaining,
+        urgent,
+        trashDay,
+        title:urgent?'Trash man’s coming — almost 10 a.m.':trashDay?'Trash day is today':'Trash day is tomorrow',
+        detail:trashDay?'Trash needs to be out before 10:00 a.m.':'Trash pickup is Monday/Thursday. Put it out before 10:00 a.m.'
+      };
+    }
     function renderHome(context) {
       context=context||{};const current=snapshot(),today=dayKey(getNow());
       const hour=Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',hourCycle:'h23'}).format(getNow()));
@@ -132,6 +172,8 @@
       let html='<div class="bloom-dashboard"><section class="bloom-home-hero"><p class="page-kicker">Your day, in bloom</p><h1 id="home-dashboard-heading" tabindex="-1">'+greeting+' <span aria-hidden="true">'+(hour<18?'☀':'☾')+'</span></h1><p>'+esc(dateLabel(today))+'</p><p class="bloom-home-gentle">A little care. A little practice.<br>Room for the day you’re having.</p></section>';
       if(ready(current)) {
         html+='<section class="bloom-household-strip"><span aria-hidden="true">⌂</span><div><strong>'+esc(current.household.name||'Your household')+'</strong><small>'+(current.members||[]).length+' of 2 household members · shared Food, Money, Dog & Housework</small></div></section>';
+        const trash=trashReminderState(getNow());
+        if(trash)html+='<section class="bloom-trash-reminder'+(trash.urgent?' is-urgent':'')+'" data-trash-reminder data-trash-deadline="'+esc(trash.deadline)+'"><span class="bloom-trash-icon" aria-hidden="true">🗑️</span><div><p class="page-kicker">Trash reminder</p><strong data-trash-title>'+esc(trash.title)+'</strong><p>'+esc(trash.detail)+'</p></div><div class="bloom-trash-countdown"><span>Time left</span><strong data-trash-countdown aria-live="polite"></strong><small>Deadline · 10:00 a.m.</small></div></section>';
         const todaysMeals=sharedRows(current,'cookingPlans').filter(row=>row.status==='planned'&&row.cook_on===today).sort((a,b)=>String(a.meal_type||'').localeCompare(String(b.meal_type||'')));
         if(todaysMeals.length)html+='<section class="bloom-meal-reminder"><span class="bloom-card-icon" aria-hidden="true">🍽️</span><div><p class="page-kicker">Today’s planned meal'+(todaysMeals.length===1?'':'s')+'</p><strong>'+todaysMeals.map(row=>esc(row.recipe_name||'Planned meal')).join(' · ')+'</strong><p>'+todaysMeals.map(row=>esc((row.meal_type||'dinner').replace(/^./,c=>c.toUpperCase()))+' · '+fmt(row.servings)+' servings').join(' &nbsp; • &nbsp; ')+'</p></div>'+button('meal-plans','Open today’s menu','',true)+'</section>';
         const h=options.getHabitsSummary?options.getHabitsSummary(today):{},dog=options.getDogSummary?options.getDogSummary(today):{};
@@ -201,7 +243,7 @@
     function setSelectedDate(date){snapshot();if(!validDate(date))return false;if(date===selectedDate)return true;selectedDate=date;viewSerial++;persist();return true;}
     return {renderHome,renderWater,handleClick,handleInput,handleChange:handleInput,handleSubmit,isBusy:()=>busy,whenIdle:()=>promise,
       hasUnsavedDraft:()=>{snapshot();return Boolean(dirty()||pending||busy);},hasUnpersistedChanges:()=>{snapshot();return Boolean((dirty()||pending)&&!saved);},
-      getSelectedDate:()=>{snapshot();return selectedDate;},setSelectedDate,getHomeSummary:date=>{const c=snapshot(),day=validDate(date)?date:dayKey(getNow());return [1,2].map(person=>waterSummary(c,day,person));}};
+      getSelectedDate:()=>{snapshot();return selectedDate;},setSelectedDate,trashReminderState,getHomeSummary:date=>{const c=snapshot(),day=validDate(date)?date:dayKey(getNow());return [1,2].map(person=>waterSummary(c,day,person));}};
   }
   const api={createController,waterSummary,boostSummary,dayKey,validDate};if(typeof module==='object'&&module.exports)module.exports=api;root.BloomWellness=api;
 })(typeof window!=='undefined'?window:globalThis);
