@@ -134,6 +134,68 @@
     if (water.length) nutrition.values.fluid_ml = Number(nutrition.values.fluid_ml || 0) + waterMl;
     return { actual, water, waterMl, nutrition };
   }
+
+  const COOKBOOK_IMAGE_CACHE_KEY = 'life-in-bloom-cookbook-images-v1';
+  const COOKBOOK_IMAGE_QUERIES = {
+    1:'Italian chicken sandwich peppers',
+    2:'baked fish potatoes green beans',
+    3:'orange rosemary roasted chicken thighs',
+    4:'pork chops carrot puree',
+    5:'braised chicken sweet potatoes',
+    6:'stuffed bell peppers ground beef',
+    7:'sheet pan chicken vegetables rosemary',
+    8:'chili bowl beef beans',
+    9:'beef stew potatoes carrots',
+    10:'meatloaf dinner',
+    11:'egg breakfast sandwich',
+    12:'mocha frappe coffee',
+    13:'spaghetti tomato sauce',
+    14:'chicken fried steak gravy',
+    15:'sirloin steak farro',
+    16:'pork tenderloin vegetable salad',
+    17:'lemon chicken potatoes green beans',
+    18:'mushroom chicken mashed potatoes',
+    19:'steak teriyaki stir fry',
+    20:'bulgogi meatballs rice',
+    21:'bruschetta chicken',
+    22:'grilled chicken salad corn peppers',
+    23:'pork schnitzel potatoes',
+    24:'beef bibimbap',
+    25:'chicken meatloaf apple',
+    26:'meatloaf cupcakes mashed potato',
+    27:'beef bulgogi bowl rice',
+    28:'mushroom swiss burger',
+    29:'sweet chili pork rice bowl',
+    30:'beef cheese tostadas',
+    31:'balsamic pork carrots potatoes',
+    32:'pulled chicken sandwich coleslaw',
+    33:'barbecue pork burger fries',
+    34:'duck orange mashed potatoes',
+    35:'chicken creole rice',
+    36:'mozzarella stuffed burger',
+    37:'chicken and rice one pot',
+    38:'bruschetta chicken bake',
+    39:'brown sugar chicken',
+    40:'foil packet chicken potatoes bacon cheese',
+    41:'chicken cordon bleu casserole',
+    42:'pork bibimbap rice',
+    43:'minestrone soup',
+    44:'garlic roasted cauliflower',
+    45:'strawberry cake'
+  };
+  function readCookbookImageCache() {
+    try {
+      const parsed = JSON.parse(root.localStorage && root.localStorage.getItem(COOKBOOK_IMAGE_CACHE_KEY) || '{}');
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (_) { return {}; }
+  }
+  function writeCookbookImageCache(cache) {
+    try { if (root.localStorage) root.localStorage.setItem(COOKBOOK_IMAGE_CACHE_KEY, JSON.stringify(cache)); } catch (_) {}
+  }
+  function cleanCommonsText(value) {
+    return String(value || '').replace(/<[^>]*>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/\s+/g,' ').trim();
+  }
+
   function createController(options) {
     if (!M) throw new Error('Food calculations could not load. Please refresh.');
     const store = options.store;
@@ -154,6 +216,8 @@
     let liveCookTimerHandle = null;
     let cookbookPdfPage = 1;
     let cookbookServingTarget = null;
+    let cookbookImageCache = readCookbookImageCache();
+    let cookbookImageHydrating = false;
     const COOKBOOK_PAGES = {1:4,2:6,3:7,4:8,5:9,6:10,7:11,8:12,9:13,10:14,11:15,12:16,13:17,14:18,15:20,16:21,17:22,18:23,19:24,20:25,21:26,22:27,23:29,24:30,25:31,26:33,27:35,28:36,29:37,30:38,31:40,32:41,33:42,34:43,35:44,36:45,37:46,38:47,39:48,40:49,41:50,42:51,43:52,44:54,45:55};
     const COOKBOOK_SECTIONS = [
       ['Main Dishes',1,7],['Family Recipes',8,10],['Breakfast',11,11],['Drinks',12,12],
@@ -541,6 +605,72 @@
       const col = index % 5, row = Math.floor(index / 5);
       return '--cookbook-x:' + (col * 25) + '%;--cookbook-y:' + (row * 12.5) + '%;';
     }
+
+    function cookbookImageEntry(recipe) {
+      return recipe && cookbookImageCache[recipe.id] && cookbookImageCache[recipe.id].url ? cookbookImageCache[recipe.id] : null;
+    }
+    function cookbookImageMarkup(recipe, number, large) {
+      const entry = cookbookImageEntry(recipe);
+      return '<div class="food-cookbook-native-thumb is-photo' + (large ? ' is-large' : '') + '">'
+        + '<img data-cookbook-image-id="' + esc(recipe.id) + '"' + (entry ? ' src="' + esc(entry.url) + '"' : '') + ' alt="' + esc(recipe.name) + '" loading="' + (large ? 'eager' : 'lazy') + '">'
+        + '<span>Recipe ' + String(number).padStart(2,'0') + '</span>'
+        + '</div>';
+    }
+    function updateCookbookImageNodes(recipe, entry) {
+      if (!root.document || !entry || !entry.url) return;
+      for (const image of root.document.querySelectorAll('[data-cookbook-image-id="' + recipe.id + '"]')) {
+        image.src = entry.url;
+        image.classList.add('is-loaded');
+      }
+      for (const credit of root.document.querySelectorAll('[data-cookbook-image-credit="' + recipe.id + '"]')) {
+        const author = entry.artist || 'Wikimedia Commons contributor';
+        credit.innerHTML = 'Image: <a href="' + esc(entry.source) + '" target="_blank" rel="noopener noreferrer">' + esc(author) + '</a>' + (entry.license ? ' · ' + esc(entry.license) : '');
+      }
+    }
+    async function resolveCookbookImage(recipe) {
+      if (!recipe || cookbookImageEntry(recipe) || typeof root.fetch !== 'function') return cookbookImageEntry(recipe);
+      const number = cookbookNumber(recipe);
+      const query = COOKBOOK_IMAGE_QUERIES[number] || recipe.name;
+      const params = new URLSearchParams({
+        action:'query', format:'json', origin:'*', generator:'search',
+        gsrsearch:query + ' food', gsrnamespace:'6', gsrlimit:'4',
+        prop:'imageinfo', iiprop:'url|extmetadata', iiurlwidth:'900',
+        iiextmetadatafilter:'Artist|LicenseShortName'
+      });
+      try {
+        const response = await root.fetch('https://commons.wikimedia.org/w/api.php?' + params.toString(), { credentials:'omit' });
+        if (!response.ok) return null;
+        const payload = await response.json();
+        const pages = Object.values(payload && payload.query && payload.query.pages || {});
+        const page = pages.find(item => item && item.imageinfo && item.imageinfo[0] && (item.imageinfo[0].thumburl || item.imageinfo[0].url));
+        if (!page) return null;
+        const info = page.imageinfo[0], metadata = info.extmetadata || {};
+        const entry = {
+          url: info.thumburl || info.url,
+          source: info.descriptionurl || ('https://commons.wikimedia.org/wiki/' + encodeURIComponent(page.title || '')),
+          artist: cleanCommonsText(metadata.Artist && metadata.Artist.value),
+          license: cleanCommonsText(metadata.LicenseShortName && metadata.LicenseShortName.value),
+          query
+        };
+        cookbookImageCache[recipe.id] = entry; writeCookbookImageCache(cookbookImageCache); updateCookbookImageNodes(recipe, entry);
+        return entry;
+      } catch (_) { return null; }
+    }
+    function hydrateCookbookImages(recipes) {
+      if (cookbookImageHydrating || !Array.isArray(recipes) || !recipes.length || typeof root.fetch !== 'function') return;
+      const queue = recipes.filter(recipe => !cookbookImageEntry(recipe));
+      if (!queue.length) return;
+      cookbookImageHydrating = true;
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < queue.length) {
+          const recipe = queue[cursor++];
+          await resolveCookbookImage(recipe);
+        }
+      };
+      Promise.all([worker(),worker(),worker()]).finally(() => { cookbookImageHydrating = false; });
+    }
+
     function renderCookbook(current) {
       const cookbook = (current.recipes || [])
         .filter(recipe => !recipe.archived && cookbookNumber(recipe))
@@ -578,18 +708,19 @@
         const quickLabel = quickReadiness ? quickReadiness.status === 'ready' ? 'Ready' : quickReadiness.status === 'almost' ? 'Almost ready' : 'Needs ingredients' : '';
         return '<article class="food-cookbook-native-card' + (recipe.id === selected.id ? ' is-selected' : '') + '">'
           + '<button type="button" class="food-cookbook-native-select" data-food-action="cookbook-select" data-id="' + esc(recipe.id) + '">'
-          + '<div class="food-cookbook-native-thumb" style="' + cookbookThumbStyle(n) + '"><span>Recipe ' + String(n).padStart(2,'0') + '</span></div>'
+          + cookbookImageMarkup(recipe,n,false)
           + '<div class="food-cookbook-native-copy"><small>' + esc(recipe.category_label || 'Cookbook') + ' · p. ' + esc(p) + '</small><h3>' + esc(recipe.name) + '</h3><p>' + esc(fmt(recipe.servings)) + ' servings' + (recipe.time_text ? ' · ' + esc(recipe.time_text) : '') + '</p>' + (quickLabel ? '<span class="food-readiness-pill is-' + esc(quickReadiness.status) + '">' + esc(quickLabel) + '</span>' : '') + '</div></button>'
-          + '<div class="food-cookbook-native-actions">' + button('cookbook-recipe','View recipe',' data-id="' + esc(recipe.id) + '"') + button('cook-recipe','▶ Cook',' data-id="' + esc(recipe.id) + '"',true) + '</div></article>';
+          + '<div class="food-cookbook-native-actions">' + button('cookbook-recipe','View recipe',' data-id="' + esc(recipe.id) + '"',true) + '</div></article>';
       }).join('');
       if (!matches.length) html += '<div class="food-empty"><h3>No cookbook recipes match that search</h3><p>Try another recipe name, source, or category.</p></div>';
       html += '</div></div><aside class="food-cookbook-native-detail">'
-        + '<div class="food-cookbook-detail-hero"><div class="food-cookbook-native-thumb is-large" style="' + cookbookThumbStyle(number) + '"></div>'
+        + '<div class="food-cookbook-detail-hero">' + cookbookImageMarkup(selected,number,true)
         + '<div><span class="food-date-badge">Recipe ' + String(number).padStart(2,'0') + ' · Original page ' + esc(page) + '</span><h2>' + esc(selected.name) + '</h2><p>' + esc(selected.category_label || '') + (selected.time_text ? ' · ' + esc(selected.time_text) : '') + '</p><span class="food-readiness-pill' + statusClass + '">' + esc(statusLabel) + '</span></div></div>'
+        + '<p class="food-image-credit" data-cookbook-image-credit="' + esc(selected.id) + '">' + (cookbookImageEntry(selected) ? 'Image: <a href="' + esc(cookbookImageEntry(selected).source) + '" target="_blank" rel="noopener noreferrer">' + esc(cookbookImageEntry(selected).artist || 'Wikimedia Commons contributor') + '</a>' + (cookbookImageEntry(selected).license ? ' · ' + esc(cookbookImageEntry(selected).license) : '') : 'Finding an open image…') + '</p>'
         + '<section class="food-cook-tools"><div><span>Servings</span><div class="food-serving-stepper">' + button('cookbook-serving-down','−',' data-id="' + esc(selected.id) + '"',false,servingTarget <= .5) + '<strong>' + esc(fmt(servingTarget)) + '</strong>' + button('cookbook-serving-up','+',' data-id="' + esc(selected.id) + '"') + '</div><small>Original recipe: ' + esc(fmt(baseServings)) + '</small></div>'
         + '<div><span>Pantry check</span><strong>' + esc(statusLabel) + '</strong><small>' + (readiness && readiness.missing && readiness.missing.length ? readiness.missing.length + ' item' + (readiness.missing.length === 1 ? '' : 's') + ' to buy or review' : readiness && readiness.status === 'ready' ? 'Recorded inventory covers linked ingredients' : 'Check linked inventory') + '</small></div></section>'
         + recipeCostMarkup(selected,current,true)
-        + '<div class="food-cookbook-detail-actions">' + button('cook-recipe','▶ Start Cook Live',' data-id="' + esc(selected.id) + '"',true) + button('plan-recipe','Plan this meal',' data-id="' + esc(selected.id) + '"') + button('cookbook-recipe','Full recipe',' data-id="' + esc(selected.id) + '"') + '</div>';
+        + '<div class="food-cookbook-detail-actions">' + button('cook-recipe','Cook Live',' data-id="' + esc(selected.id) + '"',true) + button('plan-recipe','Plan this meal',' data-id="' + esc(selected.id) + '"') + button('cookbook-recipe','Full recipe',' data-id="' + esc(selected.id) + '"') + '</div>';
       if (planningRows.length) {
         html += '<section class="food-mise-en-place"><div class="food-mise-heading"><div><p class="page-kicker">Mise en place</p><h3>Prep checklist</h3></div><span>' + esc(fmt(servingTarget)) + ' servings</span></div><ul>';
         for (const row of planningRows) {
@@ -608,6 +739,8 @@
         + (selected.source_name ? '<p class="food-help"><strong>Source:</strong> ' + esc(selected.source_name) + '</p>' : '')
         + (selected.notes ? '<p class="food-help food-prose">' + esc(selected.notes) + '</p>' : '')
         + '</aside></div></section>';
+      if (root.requestAnimationFrame) root.requestAnimationFrame(() => root.requestAnimationFrame(() => hydrateCookbookImages(cookbook)));
+      else hydrateCookbookImages(cookbook);
       return html;
     }
 
