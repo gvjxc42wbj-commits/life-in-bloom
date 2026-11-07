@@ -385,13 +385,19 @@
       const all = [...(current.cookingPlans || [])].sort((left, right) => String(left.cook_on).localeCompare(String(right.cook_on)) || String(left.id).localeCompare(String(right.id)));
       const upcoming = all.filter(plan => plan.status === 'planned' && plan.cook_on >= today);
       const history = all.filter(plan => plan.status !== 'planned' || plan.cook_on < today);
-      let html = '<section class="panel" id="food-plans"><div class="food-heading"><div><p class="page-kicker">A meal, a date, a ready list</p><h2>Your meal plan</h2></div>' + button('new-plan', '+ Plan a meal', '', true, Boolean(planAttempt)) + '</div><p class="food-help">Plan ahead from your saved recipes. Food at home is shared across planned meals so the same stock is counted once. Saving or changing a plan updates its unpurchased grocery needs.</p><div class="food-actions">' + button('grocery', 'Open grocery list', ' data-tab="list"') + button('refresh-meal-shopping', 'Check groceries against food at home', '', false, current.offline || Boolean(planAttempt)) + (dirty('plan') && !planning ? button('resume-plan', 'Resume meal draft') : '') + '</div></section>';
-      if (planAttempt) html += '<section class="panel food-plan-pending"><h3>' + (planAttempt.action === 'cancel' ? 'Confirming your cancellation' : 'Confirming your saved meal') + '</h3><p class="food-help">The last request has not been confirmed on this device. Retry keeps the exact same request, so it cannot create a second meal or duplicate groceries.</p><div class="food-actions">' + button('retry-plan', 'Retry the same request', '', true, current.offline) + button('reload-plan', 'Check saved result', '', false, current.offline) + '</div></section>';
-      if (planning) html += renderPlanForm(current);
-      html += '<section class="panel"><h2>Upcoming meals</h2>' + (upcoming.length ? '<div class="food-meal-list">' + upcoming.map(plan => renderPlanCard(plan, current, false)).join('') + '</div>' : '<div class="food-empty"><h3>Choose your first meal</h3><p>Open a saved recipe and tap Plan this meal, or choose Plan a meal above.</p></div>') + '</section>';
-      if (history.length) html += '<section class="panel"><details><summary>Saved meal history · ' + history.length + '</summary><div class="food-meal-list">' + history.reverse().map(plan => renderPlanCard(plan, current, true)).join('') + '</div></details></section>';
-      return html;
+      let html = '<section class="food-menu-page" id="food-plans"><div class="food-menu-heading"><div><p class="page-kicker">Cook on a day you choose</p><h2>Food planning</h2><p>Plan meals ahead, prep with confidence, and keep your grocery list in sync.</p></div></div>'
+        + '<details class="food-plan-dropdown"' + (planning ? ' open' : '') + '><summary><span>🗓️</span><strong>' + (planning ? 'Plan this meal' : 'Plan a meal') + '</strong><small>Choose a recipe, date, servings, and meal type</small><b>⌄</b></summary>'
+        + '<div class="food-plan-dropdown-body"><div class="food-actions">' + (!planning ? button('new-plan','Start a new meal plan','',true,Boolean(planAttempt)) : button('close-plan','Close planner')) + '</div>'
+        + (planAttempt ? '<section class="food-plan-pending"><h3>' + (planAttempt.action === 'cancel' ? 'Confirming your cancellation' : 'Confirming your saved meal') + '</h3><p class="food-help">The last request has not been confirmed on this device. Retry keeps the exact same request, so it cannot create a second meal or duplicate groceries.</p><div class="food-actions">' + button('retry-plan','Retry the same request','',true,current.offline) + button('reload-plan','Check saved result','',false,current.offline) + '</div></section>' : '')
+        + (planning ? renderPlanForm(current) : '')
+        + '</div></details>'
+        + '<section class="panel food-upcoming-primary"><div class="food-heading"><div><p class="page-kicker">Your menu</p><h2>Upcoming meals</h2></div><div class="food-actions">' + button('grocery','Open grocery list',' data-tab="list"') + button('refresh-meal-shopping','Check groceries','',false,current.offline || Boolean(planAttempt)) + '</div></div>'
+        + (upcoming.length ? '<div class="food-meal-list">' + upcoming.map(plan => renderPlanCard(plan,current,false)).join('') + '</div>' : '<div class="food-empty"><h3>No meals planned yet</h3><p>Use the Plan a meal dropdown above or plan directly from any cookbook recipe.</p></div>') + '</section>';
+      if (dirty('plan') && !planning) html += '<section class="panel"><p>You have a meal-plan draft saved on this device.</p>' + button('resume-plan','Resume meal draft','',true) + '</section>';
+      if (history.length) html += '<section class="panel"><details><summary>Saved meal history · ' + history.length + '</summary><div class="food-meal-list">' + history.reverse().map(plan => renderPlanCard(plan,current,true)).join('') + '</div></details></section>';
+      return html + '</section>';
     }
+
     function renderRecipeDetail(current, recipe) {
       const products = new Map((current.products || []).map(product => [product.id, product]));
       const backLabel = recipeReturn && recipeReturn.tab === 'cookbook' ? '← Back to Cookbook' : '← Back';
@@ -529,28 +535,55 @@
         + recipeCostMarkup(recipe, current, true)
         + '<div class="food-preview-actions">' + button('cook-recipe', '▶ Cook Live', ' data-id="' + esc(recipe.id) + '"', true) + button('cookbook-recipe', 'Open full recipe', ' data-id="' + esc(recipe.id) + '"') + '</div></aside>';
     }
+    function cookbookThumbStyle(number) {
+      const index = Math.max(0, Math.min(44, Number(number) - 1));
+      const col = index % 5, row = Math.floor(index / 5);
+      return '--cookbook-x:' + (col * 25) + '%;--cookbook-y:' + (row * 12.5) + '%;';
+    }
     function renderCookbook(current) {
-      const page = Math.max(1, Math.min(56, Number(cookbookPdfPage) || 1));
-      cookbookPdfPage = page;
-      const src = './Food-In-Bloom-Cookbook.pdf#page=' + page + '&zoom=page-width&view=FitH';
-      return '<section class="food-pdf-cookbook" id="food-cookbook-top">'
-        + '<div class="food-pdf-toolbar" aria-label="Cookbook PDF controls">'
-        + '<div class="food-pdf-title"><strong>Food In Bloom</strong><small>Original 56-page cookbook PDF</small></div>'
-        + '<div class="food-pdf-page-controls">'
-        + button('cookbook-pdf-prev','← Previous','',false,page <= 1)
-        + '<label>Page <input type="number" min="1" max="56" value="' + page + '" data-food-pdf-page> of 56</label>'
-        + button('cookbook-pdf-next','Next →','',false,page >= 56)
-        + '</div>'
-        + '<div class="food-pdf-actions">'
-        + button('cookbook-pdf-cover','Cover')
-        + button('cookbook-pdf-contents','Contents')
-        + '<a class="button primary" href="./Food-In-Bloom-Cookbook.pdf" target="_blank" rel="noopener">Open full screen ↗</a>'
-        + '</div></div>'
-        + '<div class="food-pdf-frame-wrap">'
-        + '<iframe class="food-pdf-frame" title="Food In Bloom cookbook PDF" src="' + src + '"></iframe>'
-        + '</div>'
-        + '<p class="food-pdf-help">Use the PDF viewer controls to zoom, search, print, or download. On a phone or tablet, pinch to zoom or use Open full screen for the largest reading view.</p>'
-        + '</section>';
+      const cookbook = (current.recipes || [])
+        .filter(recipe => !recipe.archived && cookbookNumber(recipe))
+        .sort((a,b) => cookbookNumber(a) - cookbookNumber(b));
+      if (!cookbook.length) {
+        return '<section class="panel"><div class="food-empty"><h2>Cookbook is still loading</h2><p>The digital cookbook uses the saved Food In Bloom recipes. Refresh after the cookbook recipes finish importing.</p></div></section>';
+      }
+      const selected = cookbook.find(recipe => recipe.id === cookbookSelectedRecipeId) || cookbook[0];
+      cookbookSelectedRecipeId = selected.id;
+      const number = cookbookNumber(selected);
+      const page = COOKBOOK_PAGES[number] || '';
+      const categories = [...new Set(cookbook.map(recipe => recipe.category_label || 'Other'))];
+      let html = '<section class="food-digital-cookbook" id="food-cookbook-top">'
+        + '<header class="food-digital-cookbook-header"><div><p class="page-kicker">Food In Bloom · Digital Cookbook</p><h1>Cookbook</h1><p>All 45 cookbook recipes, rebuilt as a readable part of the app. Choose a recipe to see the full ingredients, directions, nutrition, source notes, planning tools, and live cooking.</p></div>'
+        + '<div class="food-digital-cookbook-stats"><strong>45</strong><span>recipes</span><strong>56</strong><span>original pages</span></div></header>'
+        + '<div class="food-digital-cookbook-tools"><label class="food-field"><span>Find a cookbook recipe</span><input type="search" data-food-search value="' + esc(search) + '" placeholder="Search title, category, or recipe"></label>'
+        + '<div class="food-cookbook-category-pills">' + categories.map(category => '<button type="button" data-food-action="cookbook-category" data-category="' + esc(category) + '">' + esc(category) + '</button>').join('') + '</div></div>'
+        + '<div class="food-digital-cookbook-layout"><div class="food-digital-cookbook-list"><div class="food-cookbook-native-grid">';
+      const matches = cookbook.filter(recipe => {
+        const q = String(search || '').trim().toLowerCase();
+        if (!q) return true;
+        return [recipe.name, recipe.category_label, recipe.source_name, recipe.notes].some(value => String(value || '').toLowerCase().includes(q));
+      });
+      html += matches.map(recipe => {
+        const n = cookbookNumber(recipe), p = COOKBOOK_PAGES[n] || '';
+        return '<article class="food-cookbook-native-card' + (recipe.id === selected.id ? ' is-selected' : '') + '">'
+          + '<button type="button" class="food-cookbook-native-select" data-food-action="cookbook-select" data-id="' + esc(recipe.id) + '">'
+          + '<div class="food-cookbook-native-thumb" style="' + cookbookThumbStyle(n) + '"><span>Recipe ' + String(n).padStart(2,'0') + '</span></div>'
+          + '<div class="food-cookbook-native-copy"><small>' + esc(recipe.category_label || 'Cookbook') + ' · Original p. ' + esc(p) + '</small><h3>' + esc(recipe.name) + '</h3><p>' + esc(fmt(recipe.servings)) + ' servings' + (recipe.time_text ? ' · ' + esc(recipe.time_text) : '') + '</p></div></button>'
+          + '<div class="food-cookbook-native-actions">' + button('cookbook-recipe','Recipe',' data-id="' + esc(recipe.id) + '"') + button('cook-recipe','▶ Cook',' data-id="' + esc(recipe.id) + '"',true) + '</div></article>';
+      }).join('');
+      if (!matches.length) html += '<div class="food-empty"><h3>No cookbook recipes match that search</h3><p>Try another recipe name or clear the search box.</p></div>';
+      html += '</div></div><aside class="food-cookbook-native-detail">'
+        + '<div class="food-cookbook-detail-hero"><div class="food-cookbook-native-thumb is-large" style="' + cookbookThumbStyle(number) + '"></div>'
+        + '<div><span class="food-date-badge">Recipe ' + String(number).padStart(2,'0') + ' · Original page ' + esc(page) + '</span><h2>' + esc(selected.name) + '</h2><p>' + esc(selected.category_label || '') + (selected.time_text ? ' · ' + esc(selected.time_text) : '') + '</p></div></div>'
+        + recipeCostMarkup(selected,current,true)
+        + '<div class="food-cookbook-detail-actions">' + button('cookbook-recipe','Open full recipe',' data-id="' + esc(selected.id) + '"') + button('cook-recipe','▶ Cook Live',' data-id="' + esc(selected.id) + '"',true) + button('plan-recipe','Plan this meal',' data-id="' + esc(selected.id) + '"') + '</div>'
+        + '<details open><summary>Ingredients</summary><p class="food-prose">' + esc(selected.ingredient_text || 'Ingredient list is not recorded.') + '</p></details>'
+        + '<details open><summary>Cooking instructions</summary><p class="food-prose">' + esc(selected.instructions || 'Instructions are not recorded.') + '</p></details>'
+        + nutritionTable(M.recipeNutrition(selected,current.products || [],1),'Nutrition per serving')
+        + (selected.source_name ? '<p class="food-help"><strong>Source:</strong> ' + esc(selected.source_name) + '</p>' : '')
+        + (selected.notes ? '<p class="food-help food-prose">' + esc(selected.notes) + '</p>' : '')
+        + '</aside></div></section>';
+      return html;
     }
 
     function renderRecipes(current) {
@@ -996,11 +1029,12 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-food-action]') : null;
       const data = element && element.dataset, action = data && data.foodAction;
-      const actions = ['grocery', 'food-home', 'wellness', 'tab', 'cookbook-pdf-prev', 'cookbook-pdf-next', 'cookbook-pdf-cover', 'cookbook-pdf-contents', 'cookbook-recipe', 'cookbook-select', 'cookbook-jump-browse', 'cook-recipe', 'cook-open-recipe', 'cook-exit', 'cook-next', 'cook-prev', 'cook-speak', 'cook-replay', 'cook-start-timer', 'cook-stop-timer', 'recipe-back', 'scroll-top', 'new-recipe', 'resume-recipe', 'view-recipe', 'edit-recipe', 'discard-recipe', 'archive-recipe', 'add-ingredient', 'remove-ingredient', 'add-shopping-ingredient', 'remove-shopping-ingredient', 'toggle-plan-ingredients', 'new-plan', 'plan-recipe', 'resume-plan', 'edit-plan', 'cancel-plan', 'close-plan', 'discard-plan', 'retry-plan', 'reload-plan', 'reload-plan-recipe', 'refresh-meal-shopping', 'new-log', 'resume-log', 'log-recipe', 'edit-log', 'eaten-from-plan', 'discard-log', 'choose-person', 'delete-log', 'calendar', 'upload-file', 'view-file', 'remove-file'];
+      const actions = ['grocery', 'food-home', 'wellness', 'tab', 'cookbook-category', 'cookbook-pdf-prev', 'cookbook-pdf-next', 'cookbook-pdf-cover', 'cookbook-pdf-contents', 'cookbook-recipe', 'cookbook-select', 'cookbook-jump-browse', 'cook-recipe', 'cook-open-recipe', 'cook-exit', 'cook-next', 'cook-prev', 'cook-speak', 'cook-replay', 'cook-start-timer', 'cook-stop-timer', 'recipe-back', 'scroll-top', 'new-recipe', 'resume-recipe', 'view-recipe', 'edit-recipe', 'discard-recipe', 'archive-recipe', 'add-ingredient', 'remove-ingredient', 'add-shopping-ingredient', 'remove-shopping-ingredient', 'toggle-plan-ingredients', 'new-plan', 'plan-recipe', 'resume-plan', 'edit-plan', 'cancel-plan', 'close-plan', 'discard-plan', 'retry-plan', 'reload-plan', 'reload-plan-recipe', 'refresh-meal-shopping', 'new-log', 'resume-log', 'log-recipe', 'edit-log', 'eaten-from-plan', 'discard-log', 'choose-person', 'delete-log', 'calendar', 'upload-file', 'view-file', 'remove-file'];
       if (!actions.includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery') { openGrocery(data.tab || 'list', data.month || undefined); return true; }
+        if (action === 'cookbook-category') { search = String(data.category || ''); refresh('#food-cookbook-top'); return true; }
         if (action === 'food-home' || action === 'wellness') { navigate(action === 'food-home' ? 'food' : 'wellness'); return true; }
         if (action === 'tab') { if (['home','cookbook','recipes','plans','cooking','soon','log'].includes(data.tab)) tab = data.tab; }
         else if (action === 'cookbook-pdf-prev') { cookbookPdfPage = Math.max(1, cookbookPdfPage - 1); refresh('#food-cookbook-top'); return true; }
