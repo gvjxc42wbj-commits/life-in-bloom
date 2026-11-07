@@ -1359,6 +1359,67 @@
     }
 
 
+
+    function renderSewingDashboard(current,skills,sessions,today){
+      const sewingSkills=skills.filter(s=>s.category==='sewing'),ids=new Set(sewingSkills.map(s=>s.id));
+      const weekAgo=M.addDays(today,-6),weekMinutes=sessions.filter(s=>ids.has(s.skill_id)&&s.occurred_on>=weekAgo&&s.occurred_on<=today).reduce((sum,s)=>sum+Number(s.minutes||0),0);
+      const concepts=[
+        ['Grainline','The direction the fabric threads run. Sewing with the grain helps fabric hang and behave predictably.'],
+        ['Selvage','The finished woven edge running along both long sides of many fabrics.'],
+        ['Right side / wrong side','The right side is the side meant to show. The wrong side is usually the inside.'],
+        ['Seam allowance','The distance between the stitching line and the raw fabric edge.'],
+        ['Straight stitch','The most basic machine stitch and the usual starting stitch for woven fabric.'],
+        ['Backstitch','A few reverse stitches at the beginning and end of a seam to help secure it.'],
+        ['Basting','Long temporary stitches used to hold pieces before final sewing.'],
+        ['Hemming','Finishing the bottom edge of fabric by folding and stitching it.'],
+        ['Pressing','Using an iron to shape seams and fabric as you sew; different from simply ironing wrinkles.'],
+        ['Seam finish','A method for keeping raw edges from fraying, such as zigzag stitching or pinking.'],
+        ['Bias','The diagonal direction across woven fabric, which has more stretch than straight grain.'],
+        ['Notch','A small pattern mark used to line pieces up correctly.']
+      ];
+      const machine=[
+        ['🧵','Spool pin','Holds the upper thread spool.'],
+        ['↘️','Thread guide','Keeps the upper thread moving through the correct path.'],
+        ['⚙️','Tension control','Adjusts how tightly the upper thread is pulled through the stitch.'],
+        ['🪡','Needle','Carries the upper thread through the fabric.'],
+        ['⬇️','Presser foot','Holds fabric against the feed dogs while sewing.'],
+        ['🦷','Feed dogs','Small teeth under the presser foot that move fabric through the machine.'],
+        ['🧶','Bobbin','Small lower-thread spool under the needle plate.'],
+        ['↩️','Reverse / backstitch control','Runs a short section backward to secure a seam.'],
+        ['📏','Seam guides','Marks near the needle plate that help maintain a consistent seam allowance.'],
+        ['🎚️','Stitch length control','Changes how long each stitch is.']
+      ];
+      const ideas=[
+        ['Practice sampler','Use scraps to practice straight lines, corners, curves, backstitching, and different stitch lengths.','Very first project'],
+        ['Simple napkins','Cut squares or rectangles and practice folded hems around the edges.','Beginner'],
+        ['Pillow cover','Learn straight seams, seam allowance, turning corners, and pressing.','Beginner'],
+        ['Drawstring bag','Practice seams, hems/casings, and threading a cord.','Beginner'],
+        ['Simple tote bag','Practice straight seams, handles, seam finishing, and reinforcing stress points.','Beginner'],
+        ['Basic apron','A larger project for hems, straps, and keeping long seams straight.','Next step']
+      ];
+      const firstSteps=[
+        'Learn how to safely thread your Singer machine.',
+        'Wind and insert the bobbin correctly.',
+        'Identify the presser foot, needle, feed dogs, reverse control, and seam guides.',
+        'Practice on scrap fabric before cutting into your four yards.',
+        'Sew straight lines while watching the seam guide rather than staring only at the needle.',
+        'Practice starting and ending seams with a short backstitch.',
+        'Learn to pivot at a corner with the needle down.',
+        'Press each practice seam so you can see how pressing changes the result.'
+      ];
+      return '<section class="sewing-dashboard">'
+        +'<section class="sewing-banner"><div><p class="page-kicker">Skills in Bloom · Sewing</p><h2>Sewing in Bloom</h2><p>Start with the machine, the fabric, and the language of sewing.</p></div><span>🪡</span></section>'
+        +'<section class="panel sewing-start"><div class="habit-heading"><div><p class="page-kicker">What you have now</p><h2>Your Beginner Setup</h2></div>'+button('new-skill','+ Log a sewing skill','',true,Boolean(attempt))+'</div><div class="sewing-setup-grid"><article><span>🧵</span><strong>Singer traditional sewing machine</strong><small>Your main machine for learning threading, bobbin use, straight stitching, seam control, and basic projects.</small></article><article><span>🧶</span><strong>4 yards of fabric</strong><small>Enough material for practice plus several small beginner projects depending on width and project size.</small></article><article><span>⏱️</span><strong>'+weekMinutes+' minutes this week</strong><small>Your saved Sewing practice sessions automatically count here and in Skills in Bloom · Me.</small></article></div></section>'
+        +'<section class="panel sewing-first"><p class="page-kicker">Start here</p><h2>First Skills to Learn</h2><div class="sewing-checklist">'+firstSteps.map((x,i)=>'<article><b>'+(i+1)+'</b><p>'+esc(x)+'</p></article>').join('')+'</div></section>'
+        +'<section class="panel sewing-machine"><div class="habit-heading"><div><p class="page-kicker">Know your machine</p><h2>Basic Singer Machine Parts</h2><p class="habit-help">Exact controls vary by Singer model, but these are the core parts and ideas you will see on a traditional machine.</p></div></div><div class="sewing-machine-grid">'+machine.map(x=>'<article><span>'+x[0]+'</span><div><strong>'+esc(x[1])+'</strong><p>'+esc(x[2])+'</p></div></article>').join('')+'</div></section>'
+        +'<section class="panel sewing-terms"><div class="habit-heading"><div><p class="page-kicker">Terminology</p><h2>Words to Know</h2><p class="habit-help">Learning the vocabulary makes patterns, tutorials, and sewing videos much easier to follow.</p></div></div><div class="sewing-term-grid">'+concepts.map(x=>'<details><summary>'+esc(x[0])+'</summary><p>'+esc(x[1])+'</p></details>').join('')+'</div></section>'
+        +'<section class="panel sewing-fabric"><p class="page-kicker">Before cutting your fabric</p><h2>Basic Fabric Concepts</h2><div class="sewing-fabric-grid"><article><h3>Prewash first</h3><p>If the fabric is washable, wash and dry it the way you expect to treat the finished item. This helps prevent surprise shrinkage later.</p></article><article><h3>Find the grain</h3><p>The selvage edges usually show the lengthwise grain. Keeping pieces aligned with grain helps them hang and sew more predictably.</p></article><article><h3>Use scraps for practice</h3><p>Do not begin by cutting all four yards. Save a small section for threading tests, tension checks, seam practice, and mistakes.</p></article><article><h3>Measure twice, cut once</h3><p>Mark carefully and confirm dimensions before cutting. Fabric cannot be put back after a cut.</p></article></div></section>'
+        +'<section class="panel sewing-projects"><div class="habit-heading"><div><p class="page-kicker">Beginner project ideas</p><h2>What You Could Make First</h2><p class="habit-help">These are deliberately simple projects that teach useful techniques without requiring advanced pattern fitting.</p></div></div><div class="sewing-project-grid">'+ideas.map(x=>'<article><span>✂️</span><div><strong>'+esc(x[0])+'</strong><p>'+esc(x[1])+'</p><small>'+esc(x[2])+'</small></div></article>').join('')+'</div></section>'
+        +'<section class="panel sewing-rules"><p class="page-kicker">Beginner reminders</p><h2>Good Habits From Day One</h2><ul><li>Keep fingers away from the moving needle.</li><li>Turn the machine off before changing the needle or working around the needle area.</li><li>Do not pull fabric through the machine; let the feed dogs move it.</li><li>Test stitch length and tension on scrap fabric first.</li><li>Press seams as you work instead of waiting until the end.</li><li>Use a fresh, suitable needle when stitching quality suddenly becomes poor.</li></ul></section>'
+        +'<section class="panel sewing-practice"><div class="habit-heading"><div><p class="page-kicker">Your Sewing Practice</p><h2>Saved Skills & Sessions</h2></div>'+button('new-skill','+ Add Sewing Topic','',true,Boolean(attempt))+'</div>'+(sewingSkills.length?'<div class="habit-skill-grid">'+sewingSkills.map(skill=>renderSkillCard(skill,current)).join('')+'</div>':'<p class="habit-help">You have not added a specific Sewing practice topic yet. Good first topics would be “Threading my Singer,” “Straight seams,” “Backstitching,” or “Basic hems.”</p>')+'</section>'
+        +'</section>';
+    }
+
     function renderMeDashboard(current,skills,sessions,today){
       const state=loadMeState(current),weekStart=mondayKey(today),weekEnd=sundayKey(today),week=sessionTrackMinutes(skills,sessions,weekStart,weekEnd);
       const totalWeek=Object.values(week).reduce((a,b)=>a+b,0),goal=Math.max(60,Number(state.weeklyGoalMinutes||600)),progress=Math.min(100,totalWeek/goal*100);
@@ -1407,6 +1468,7 @@
       if (selectedCategory === 'writing') return renderDailyJournal(current, today);
       if (selectedCategory === 'painting') return renderPaintingPortfolio(current, today);
       if (selectedCategory === 'cooking') return renderPlantLog(current, today);
+      if (selectedCategory === 'sewing') return renderSewingDashboard(current, skills, sessions, today);
       if (selectedCategory === 'me') return renderMeDashboard(current, skills, sessions, today);
       if (selectedCategory === 'science') return renderScienceDashboard(current, skills, sessions, today);
       if (selectedCategory === 'math') return renderMathDashboard(current, skills, sessions, today);
