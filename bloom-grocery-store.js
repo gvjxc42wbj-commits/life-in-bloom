@@ -11,7 +11,9 @@
     mealEntries: 'bloom_meal_entries', foodFiles: 'bloom_food_files',
     cookingPlans: 'bloom_cooking_plans', mealShoppingLinks: 'bloom_meal_shopping_links',
     lifeRecords: 'bloom_life_records', dogStockEffects: 'bloom_dog_stock_effects', kitchenEquipment: 'bloom_kitchen_equipment',
-    engineeringHomework: 'bloom_engineering_homework', engineeringFiles: 'bloom_engineering_files'
+    engineeringHomework: 'bloom_engineering_homework', engineeringFiles: 'bloom_engineering_files',
+    readingBooks: 'bloom_reading_books', readingSessions: 'bloom_reading_sessions', readingNotes: 'bloom_reading_notes',
+    readingVocabulary: 'bloom_reading_vocabulary', readingQuizAttempts: 'bloom_reading_quiz_attempts', readingFiles: 'bloom_reading_files'
   };
   const PRIVATE_FIELDS = ['display_name', 'age_years', 'height_cm', 'weight_kg', 'activity_level', 'notes'];
   const DIET_FIELDS = ['display_name', 'color', 'calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'allergies', 'restrictions', 'preferences', 'notes'];
@@ -26,7 +28,7 @@
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles'];
   const LIFE_COLLECTIONS = {
     hydrationSettings:'hydration_settings', hydrationEntries:'hydration_entry',
     skills:'skill', skillSessions:'skill_session', smokingSettings:'smoking_settings', smokingDays:'smoking_day',
@@ -143,6 +145,7 @@
     const uploads = new Map();
     const signedFiles = new Map();
     const signedEngineeringFiles = new Map();
+    const signedReadingFiles = new Map();
     let client = options.client || null;
     let state = emptyState('loading');
     let generation = 0;
@@ -204,7 +207,7 @@
         const cached = JSON.parse(cacheStorage.getItem(cachePrefix + user.id) || 'null');
         if (!cached || cached.version !== 1 || cached.user.id !== user.id || !cached.household || !cached.members.some(row=>row.user_id===user.id && row.household_id===cached.household.id)) return false;
         if (verifiedHouseholdId !== undefined && cached.household.id !== verifiedHouseholdId) { clearCache(user.id); return false; }
-        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles']) if (!Object.hasOwn(cached, key)) cached[key] = [];
+        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles']) if (!Object.hasOwn(cached, key)) cached[key] = [];
         if (!SHARED_LISTS.every(key=>Array.isArray(cached[key]))) return false;
         state = { ...emptyState('ready'), user:userSummary(user), household:cached.household,
           ...Object.fromEntries(SHARED_LISTS.map(key=>[key,cached[key]])), offline:true, cachedAt:cached.savedAt,
@@ -258,6 +261,7 @@
         if (state.user) clearCache(state.user.id);
         signedFiles.clear();
         signedEngineeringFiles.clear();
+        signedReadingFiles.clear();
         uploads.clear();
         generation++;
         requestNumber++;
@@ -919,6 +923,111 @@
       if(!Array.isArray(deleted)||deleted.length!==1) throw new Error('The Engineering file record could not be removed.');
       await refresh(); checkContext(current); return true;
     }
+    async function ensureReadingStarterBooks() {
+      requireOnline();
+      const current=context(true);
+      const starters=[
+        {title:'Cold Sassy Tree',author:'Olive Ann Burns'},
+        {title:'The Book Thief',author:'Markus Zusak'},
+        {title:'Fever 1793',author:'Laurie Halse Anderson'}
+      ];
+      const rows=starters.map(item=>({id:newUuid(),household_id:current.householdId,user_id:current.userId,title:item.title,author:item.author,status:'not_started',isbn:'',edition:'',current_section:'',cover_url:'',notes:''}));
+      try{
+        assertResult(await client.from(TABLES.readingBooks).upsert(rows,{onConflict:'user_id,household_id,title,author',ignoreDuplicates:true}));
+        checkContext(current); await refresh(); checkContext(current); return true;
+      }catch(error){if(current.generation===generation)throw fail(error);throw error;}
+    }
+    async function saveReadingBook(row){
+      requireOnline(); const current=context(true); row=row||{};
+      const title=String(row.title||'').trim(),author=String(row.author||'').trim();
+      if(!title||title.length>240)throw new Error('Enter a book title up to 240 characters.');
+      if(author.length>240)throw new Error('Author is too long.');
+      const total=row.total_pages==null||row.total_pages===''?null:Number(row.total_pages);
+      const page=row.current_page==null||row.current_page===''?null:Number(row.current_page);
+      if(total!=null&&(!Number.isInteger(total)||total<1||total>10000))throw new Error('Total pages must be a whole number from 1 to 10,000.');
+      if(page!=null&&(!Number.isInteger(page)||page<0||page>10000))throw new Error('Current page must be a whole number from 0 to 10,000.');
+      if(total!=null&&page!=null&&page>total)throw new Error('Current page cannot be greater than total pages.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,title,author,isbn:String(row.isbn||'').trim().slice(0,40),
+        edition:String(row.edition||'').trim().slice(0,240),total_pages:total,current_page:page,current_section:String(row.current_section||'').trim().slice(0,240),
+        status:['not_started','reading','completed','archived'].includes(row.status)?row.status:'not_started',started_on:row.started_on||null,completed_on:row.completed_on||null,
+        cover_url:String(row.cover_url||'').trim().slice(0,1000),notes:String(row.notes||'').trim().slice(0,5000),updated_at:new Date().toISOString()};
+      try{
+        const data=assertResult(await client.from(TABLES.readingBooks).upsert(payload,{onConflict:'id'}).select('*'));
+        checkContext(current); if(!Array.isArray(data)||data.length!==1)throw new Error('The book could not be saved.');
+        await refresh();checkContext(current);return data[0];
+      }catch(error){if(current.generation===generation)throw fail(error);throw error;}
+    }
+    async function saveReadingSession(row){
+      requireOnline(); const current=context(true);
+      if(!row||!row.book_id||!state.readingBooks.some(b=>b.id===row.book_id&&b.user_id===current.userId))throw new Error('Choose one of your saved books.');
+      const minutes=Number(row.minutes||0),start=row.start_page===''||row.start_page==null?null:Number(row.start_page),end=row.end_page===''||row.end_page==null?null:Number(row.end_page);
+      if(!Number.isInteger(minutes)||minutes<0||minutes>1440)throw new Error('Reading minutes must be a whole number from 0 to 1,440.');
+      for(const [value,label] of [[start,'Start page'],[end,'End page']])if(value!=null&&(!Number.isInteger(value)||value<0||value>10000))throw new Error(label+' must be a whole number.');
+      if(start!=null&&end!=null&&end<start)throw new Error('End page cannot be before start page.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,book_id:row.book_id,occurred_on:row.occurred_on,
+        minutes,start_page:start,end_page:end,section:String(row.section||'').slice(0,240),notes:String(row.notes||'').slice(0,5000)};
+      try{
+        const data=assertResult(await client.from(TABLES.readingSessions).upsert(payload,{onConflict:'id'}).select('*'));
+        checkContext(current); if(end!=null){const book=state.readingBooks.find(b=>b.id===row.book_id);if(book)await saveReadingBook({...book,current_page:end,status:'reading',started_on:book.started_on||row.occurred_on});}
+        else await refresh();
+        return data&&data[0];
+      }catch(error){if(current.generation===generation)throw fail(error);throw error;}
+    }
+    async function saveReadingNote(row){
+      requireOnline(); const current=context(true);
+      if(!row||!row.book_id)throw new Error('Choose a book.');
+      const body=String(row.body||'').trim();if(!body||body.length>8000)throw new Error('Enter a note up to 8,000 characters.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,book_id:row.book_id,
+        page_number:row.page_number===''||row.page_number==null?null:Number(row.page_number),section:String(row.section||'').slice(0,240),
+        note_type:['note','quote','question','character','theme'].includes(row.note_type)?row.note_type:'note',body,updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.readingNotes).upsert(payload,{onConflict:'id'}).select('*'));checkContext(current);await refresh();return data&&data[0];
+    }
+    async function saveReadingVocabulary(row){
+      requireOnline(); const current=context(true);
+      if(!row||!row.book_id)throw new Error('Choose a book.');
+      const word=String(row.word||'').trim();if(!word||word.length>120)throw new Error('Enter a vocabulary word.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,book_id:row.book_id,word,
+        part_of_speech:String(row.part_of_speech||'').slice(0,60),definition:String(row.definition||'').slice(0,1000),example_sentence:String(row.example_sentence||'').slice(0,1200),
+        source_label:['coach_suggested','confirmed_from_book','manual'].includes(row.source_label)?row.source_label:'manual',
+        page_number:row.page_number===''||row.page_number==null?null:Number(row.page_number),section:String(row.section||'').slice(0,240),
+        spelling_enabled:row.spelling_enabled===true,correct_count:Number(row.correct_count||0),incorrect_count:Number(row.incorrect_count||0),last_practised_on:row.last_practised_on||null};
+      const data=assertResult(await client.from(TABLES.readingVocabulary).upsert(payload,{onConflict:'id'}).select('*'));checkContext(current);await refresh();return data&&data[0];
+    }
+    async function saveReadingQuizAttempt(row){
+      requireOnline(); const current=context(true);
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,book_id:row.book_id,scope_label:String(row.scope_label||'').slice(0,240),
+        score:row.score==null?null:Number(row.score),total_questions:Number(row.total_questions||0),correct_questions:Number(row.correct_questions||0),answers:Array.isArray(row.answers)?row.answers:[]};
+      const data=assertResult(await client.from(TABLES.readingQuizAttempts).insert(payload).select('*'));checkContext(current);await refresh();return data&&data[0];
+    }
+    async function uploadReadingFile(value){
+      requireOnline();const current=context(true),file=value&&value.file;
+      if(!file||!file.size||file.size>10*1024*1024||!['image/jpeg','image/png','image/webp','application/pdf'].includes(file.type))throw new Error('Choose a JPG, PNG, WebP, or PDF up to 10 MB.');
+      if(value.book_id&&!state.readingBooks.some(b=>b.id===value.book_id&&b.user_id===current.userId))throw new Error('Choose a saved book first.');
+      const bytes=new Uint8Array(await file.slice(0,12).arrayBuffer());checkContext(current);
+      const magic=file.type==='image/jpeg'?bytes[0]===255&&bytes[1]===216&&bytes[2]===255:file.type==='image/png'?bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71:
+        file.type==='application/pdf'?String.fromCharCode(...bytes.slice(0,5))==='%PDF-':String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&String.fromCharCode(...bytes.slice(8,12))==='WEBP';
+      if(!magic)throw new Error('The selected file does not match its file type.');
+      const id=newUuid(),ext={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','application/pdf':'pdf'}[file.type],path=current.userId+'/'+id+'.'+ext;
+      const uploaded=await client.storage.from('bloom-reading-files').upload(path,file,{contentType:file.type,upsert:false,cacheControl:'3600'});if(uploaded.error)throw errorOf(uploaded.error);
+      checkContext(current);
+      try{
+        const meta={id,household_id:current.householdId,user_id:current.userId,book_id:value.book_id||null,name:String(file.name||'Reading scan').slice(0,240),path,mime_type:file.type,size_bytes:file.size,
+          page_from:value.page_from===''||value.page_from==null?null:Number(value.page_from),page_to:value.page_to===''||value.page_to==null?null:Number(value.page_to),section:String(value.section||'').slice(0,240)};
+        const saved=assertResult(await client.from(TABLES.readingFiles).insert(meta).select('*'));checkContext(current);await refresh();return saved&&saved[0];
+      }catch(error){try{await client.storage.from('bloom-reading-files').remove([path]);}catch(_){ }throw error;}
+    }
+    async function getReadingFileUrl(row){
+      requireOnline();const current=context(true),saved=state.readingFiles.find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/'))throw new Error('This reading file is not available.');
+      const prior=signedReadingFiles.get(saved.path);if(prior&&prior.expires>Date.now())return prior.url;
+      const result=assertResult(await client.storage.from('bloom-reading-files').createSignedUrl(saved.path,120));checkContext(current);
+      signedReadingFiles.set(saved.path,{url:result.signedUrl,expires:Date.now()+90000});return result.signedUrl;
+    }
+    async function deleteReadingRow(key,row){
+      requireOnline();const current=context(true);if(!row||!row.id)throw new Error('Choose a saved reading record.');
+      const result=assertResult(await client.from(TABLES[key]).delete().eq('id',row.id).eq('user_id',current.userId).eq('household_id',current.householdId).select('id'));
+      if(!Array.isArray(result)||result.length!==1)throw new Error('That reading record changed or was already removed.');await refresh();return true;
+    }
     function exportHousehold() {
       if(!state.user || !state.household || state.status!=='ready') throw new Error('Open your household before exporting a backup.');
       return { app:'Life in Bloom Household',version:1,household_id:state.household.id,exported_at:new Date().toISOString(),
@@ -967,6 +1076,7 @@
       saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, importFoodMaster, saveKitchenEquipment, deleteKitchenEquipment, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
       ...lifeSavers,saveLifeRecord,archiveLifeRecord,addDogSupplyToShopping,exportPersonalLifeRecords,importPersonalLifeRecords,
       uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveEngineeringHomework, deleteEngineeringHomework, uploadEngineeringFile, getEngineeringFileUrl, deleteEngineeringFile,
+      ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingRow,
       saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };
