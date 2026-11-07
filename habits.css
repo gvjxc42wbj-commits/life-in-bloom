@@ -282,3 +282,55 @@
   .reading-spelling-list article{grid-template-columns:1fr auto}.reading-spelling-list input{grid-column:1/-1}
   .reading-file-grid{grid-template-columns:1fr}
 }
+
+
+/* Bloom Reader */
+.reading-reader-launch{background:linear-gradient(135deg,#fff8fb,#f8f3ff)}
+.bloom-reader .reading-banner{position:sticky;top:0;z-index:4}
+.reader-toolbar{
+  position:sticky;top:6px;z-index:5;
+  display:flex;justify-content:space-between;gap:10px;align-items:center;
+  padding:10px 12px;background:rgba(255,250,252,.96);backdrop-filter:blur(12px)
+}
+.reader-page-controls,.reader-view-controls{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.reader-page-controls label{display:flex;align-items:center;gap:5px;color:#684456;font-weight:700}
+.reader-page-controls input,.reader-range input{
+  width:74px;min-height:38px;padding:6px 8px;border:1px solid #ddbccb;border-radius:9px;background:#fff;color:#553443;font:inherit
+}
+.reader-workspace{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:14px;align-items:start}
+.reader-page-panel{min-width:0;padding:12px;background:#efe9ec}
+.reader-canvas-wrap{display:flex;justify-content:center;overflow:auto;max-height:75vh;padding:8px}
+.reader-canvas-wrap canvas{display:block;max-width:none;background:#fff;box-shadow:0 8px 24px rgba(55,32,43,.16)}
+.reader-text-view{
+  max-width:760px;min-height:65vh;margin:0 auto;padding:34px 42px;border-radius:10px;background:#fffaf4;
+  color:#332b2e;font-family:Georgia,'Times New Roman',serif;font-size:18px;line-height:1.75;box-shadow:0 8px 22px rgba(55,32,43,.08)
+}
+.reader-text-view p{margin:0 0 1em}
+.reader-coach-panel{position:sticky;top:82px}
+.reader-range{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.reader-range label{display:grid;gap:4px;color:#714b5c;font-weight:700;font-size:12px}
+.reader-range input{width:100%}
+.reader-status{min-height:38px;margin:10px 0;padding:9px 10px;border-radius:10px;background:#fff1f6;color:#754459;font-size:12px;line-height:1.45}
+.reader-review textarea{
+  width:100%;min-height:300px;padding:14px;border:1px solid #dfbdcb;border-radius:13px;background:#fffdfd;color:#3d3036;
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;line-height:1.55;resize:vertical
+}
+.reader-page-cache{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.reader-page-cache button{
+  display:grid;gap:2px;min-width:62px;padding:7px 9px;border:1px solid #e3cbd5;border-radius:10px;background:#fff;color:#724357;text-align:center
+}
+.reader-page-cache button.is-verified{border-color:#9dbca1;background:#eef7ef;color:#396344}
+.reader-page-cache small{font-size:9px}
+.reader-lesson-draft{background:linear-gradient(135deg,#fff9fc,#f9fff8)}
+.reader-prompts{padding-left:22px;color:#644b57;line-height:1.6}
+.reader-prompts li{margin:7px 0}
+@media(max-width:900px){
+  .reader-workspace{grid-template-columns:1fr}
+  .reader-coach-panel{position:static}
+  .reader-toolbar{position:static}
+}
+@media(max-width:560px){
+  .reader-toolbar{align-items:flex-start;flex-direction:column}
+  .reader-text-view{padding:22px 18px;font-size:17px}
+  .reader-range{grid-template-columns:1fr}
+}
