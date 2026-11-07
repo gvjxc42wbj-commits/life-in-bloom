@@ -300,6 +300,7 @@
         html+='<section class="bloom-household-strip reference-household-strip"><span aria-hidden="true">⌂</span><div><strong>'+esc(current.household.name||'Life in Bloom Household')+'</strong><small>'+(current.members||[]).length+' of 2 household members · shared Food, Money, Dog & Housework</small></div>'+button('household','Household / sign out')+'</section>';
         const trash=trashReminderState(getNow());
         if(trash)html+='<section class="bloom-trash-reminder reference-trash-reminder'+(trash.urgent?' is-urgent':'')+'" data-trash-reminder data-trash-deadline="'+esc(trash.deadline)+'"><span class="bloom-trash-icon" aria-hidden="true">🗑️</span><div><p class="page-kicker">Trash reminder</p><strong data-trash-title>'+esc(trash.title)+'</strong><p>'+esc(trash.detail)+'</p></div><div class="bloom-trash-countdown"><span>Time left</span><strong data-trash-countdown aria-live="polite"></strong><small>Deadline · 10:00 a.m.</small></div></section>';
+        html+='<section class="home-shopping-print"><span aria-hidden="true">🛒</span><div><strong>Printable Shopping List</strong><small>Large print · uses your active saved shopping list</small></div>'+button('shopping-pdf','Open PDF','',true,current.offline)+'</section>';
         const h=options.getHabitsSummary?options.getHabitsSummary(today):{},dog=options.getDogSummary?options.getDogSummary(today):{};
         const boost=boostSummary(current,today,1);
         html+='<div class="bloom-dashboard-grid bloom-dashboard-six">';
@@ -333,6 +334,7 @@
         if(action==='water-page'){navigate('wellness');return true;}
         if(action==='meal-plans'){if(options.openFoodPlans)options.openFoodPlans();else navigate('food');return true;}
         if(action==='household'){if(options.openHousehold)options.openHousehold();else navigate('grocery');return true;}
+        if(action==='shopping-pdf'){if(options.openShoppingListPdf)options.openShoppingListPdf();return true;}
         if(action==='boost-plus'){
           if(!target.dataset.product)throw new Error('Add a saved Boost product to Food in Bloom first.');
           if(!options.quickConsumeBoost)throw new Error('Refresh Life in Bloom to load quick Boost logging.');
