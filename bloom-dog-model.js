@@ -77,6 +77,9 @@
     ['other_housework', 'Other Household Task', '🏠']
   ];
   const TEMPLATES = [
+    { key: 'potty-daily', name: 'Potty break', category: 'movement', frequency: 'daily', times: ['09:00','13:00','18:00','22:00'], notes: 'Daily potty breaks.' },
+    { key: 'breakfast-daily', name: 'Breakfast', category: 'feeding', frequency: 'daily', times: ['13:00'], notes: 'Daily breakfast.' },
+    { key: 'dinner-daily', name: 'Dinner', category: 'feeding', frequency: 'daily', times: ['20:00'], notes: 'Daily dinner.' },
     { key: 'morning-meal', name: 'Morning meal', category: 'feeding', frequency: 'daily', times: ['07:30'], notes: 'Record the food and measured portion you use for your dog.' },
     { key: 'evening-meal', name: 'Evening meal', category: 'feeding', frequency: 'daily', times: ['18:00'], notes: 'Record the food and measured portion you use for your dog.' },
     { key: 'movement', name: 'Walk & movement', category: 'movement', frequency: 'daily', times: ['14:00'], notes: 'Use the activity and duration that suit your dog’s care plan.' },
