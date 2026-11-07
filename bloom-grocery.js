@@ -395,6 +395,11 @@
     function productChoices(current) {
       return [['', 'Enter an item manually'], ...(current.products || []).filter(row => !row.archived).map(row => [row.id, row.name + (row.brand ? ' · ' + row.brand : '')])];
     }
+    function productSearch(group, current) {
+      const selected = drafts[group] && drafts[group].product_id;
+      const product = (current.products || []).find(row => row.id === selected && !row.archived);
+      return '<label class="grocery-field grocery-product-search"><span>Type to find a saved product <small>(optional)</small></span><input type="search" autocomplete="off" placeholder="Start typing a product or brand" data-grocery-product-search="' + group + '" value="' + escapeText(product ? product.name + (product.brand ? ' · ' + product.brand : '') : '') + '"><small>Typing filters the saved-product dropdown below. You can still choose Enter an item manually.</small></label>';
+    }
     function purchaseReceipt(current, item) {
       if (!item) return null;
       return (current.receipts || []).filter(receipt => !receipt.voided_at).slice().reverse().find(receipt =>
@@ -420,7 +425,7 @@
       const needsPurchase = items.filter(item => item.checked && !purchaseReceipt(current, item));
       if (needsPurchase.length) html += '<div class="grocery-purchase-notice"><strong>' + needsPurchase.length + ' previously checked item' + (needsPurchase.length === 1 ? '' : 's') + ' need purchase details.</strong><p>Confirm the amount paid and food quantities to save them in inventory, shopping trips, and your budget.</p>' + button('record-checked-trip', 'Finish saving checked items', '', true) + '</div>';
       html += '<div class="grocery-actions">' + button('meal-plans', 'Meal plans ›') + '</div></section>' + (commerce && commerce.renderPurchase ? commerce.renderPurchase() : '') + '<section class="panel">';
-      html += form('shopping', '<div class="grocery-form-grid">' + select('shopping', 'product_id', 'Saved product <small>(optional)</small>', productChoices(current)) + input('shopping', 'name', editing ? 'Edit item' : 'Item to buy', 'type="text" required maxlength="160" autocomplete="off"') + input('shopping', 'quantity', 'Quantity or size <small>(optional)</small>', 'type="text" maxlength="120" autocomplete="off" placeholder="For example, 2 cartons"') + input('shopping', 'packs', 'Packages planned <small>(optional)</small>', 'type="number" min="0" step="any" max="1000000000" inputmode="decimal"') + select('shopping', 'category', 'Budget category', [['food', 'Food'], ['household', 'Household']]) + input('shopping', 'estimate', 'Estimated total for this item (USD)', 'type="text" inputmode="decimal" maxlength="12" placeholder="Leave blank if unknown"') + '</div><div class="grocery-actions">' + submit(editing ? 'Save item changes' : '+ Add to shared list') + button('clear-shopping', editing ? 'Discard changes' : 'Clear form') + '</div>');
+      html += form('shopping', productSearch('shopping', current) + '<div class="grocery-form-grid">' + select('shopping', 'product_id', 'Saved product <small>(optional)</small>', productChoices(current)) + input('shopping', 'name', editing ? 'Edit item' : 'Item to buy', 'type="text" required maxlength="160" autocomplete="off"') + input('shopping', 'quantity', 'Quantity or size <small>(optional)</small>', 'type="text" maxlength="120" autocomplete="off" placeholder="For example, 2 cartons"') + input('shopping', 'packs', 'Packages planned <small>(optional)</small>', 'type="number" min="0" step="any" max="1000000000" inputmode="decimal"') + select('shopping', 'category', 'Budget category', [['food', 'Food'], ['household', 'Household']]) + input('shopping', 'estimate', 'Estimated total for this item (USD)', 'type="text" inputmode="decimal" maxlength="12" placeholder="Leave blank if unknown"') + '</div><div class="grocery-actions">' + submit(editing ? 'Save item changes' : '+ Add to shared list') + button('clear-shopping', editing ? 'Discard changes' : 'Clear form') + '</div>');
       if (!items.length) html += '<div class="grocery-empty"><span aria-hidden="true">✦</span><h3>A little room for your next shop</h3><p>This month’s household list is empty. Add an item above, browse products, or review your recurring monthly quantities.</p></div>';
       else html += '<ul class="grocery-items">' + items.map(item => {
         const receipt = purchaseReceipt(current, item);
@@ -429,7 +434,7 @@
         const status = receipt ? 'Purchase saved' : pending ? 'Finish purchase above' : item.checked ? 'Purchase details needed' : 'To buy';
         const cost = receipt && line ? money(Number(line.line_total_cents)) + ' paid' : item.estimate_cents == null ? 'Price needed' : money(Number(item.estimate_cents)) + ' estimated';
         const mealLink = mealShoppingLink(current, item);
-        return '<li class="grocery-item' + (receipt ? ' is-checked' : '') + '"><label class="grocery-item-check" for="grocery-check-' + escapeText(item.id) + '"><input id="grocery-check-' + escapeText(item.id) + '" type="checkbox" data-grocery-shopping-toggle="' + escapeText(item.id) + '" aria-label="' + escapeText((receipt ? 'View saved purchase for ' : 'Record purchase for ') + item.name) + '"' + (receipt ? ' checked' : '') + (busy || (commerce && commerce.isBusy()) ? ' disabled' : '') + '><span><strong>' + escapeText(item.name) + '</strong>' + (item.quantity ? '<small>' + escapeText(item.quantity) + '</small>' : '') + '<small>' + status + ' · ' + (item.category === 'household' ? 'Household' : 'Food') + ' · ' + cost + '</small>' + mealSourceLabel(mealLink) + '</span></label>' + (receipt ? button('view-shopping-receipt', 'View purchase', ' data-id="' + escapeText(receipt.id) + '"') : mealLink && mealLink.managed ? button('meal-plans', 'Change meal plan') : deleteControls('shopping', item)) + '</li>';
+        return '<li class="grocery-item' + (receipt ? ' is-checked' : '') + '"><label class="grocery-item-check" for="grocery-check-' + escapeText(item.id) + '"><input id="grocery-check-' + escapeText(item.id) + '" type="checkbox" data-grocery-shopping-toggle="' + escapeText(item.id) + '" aria-label="' + escapeText((receipt ? 'View saved purchase for ' : 'Record purchase for ') + item.name) + '"' + (receipt || item.checked ? ' checked' : '') + (busy ? ' disabled' : '') + '><span><strong>' + escapeText(item.name) + '</strong>' + (item.quantity ? '<small>' + escapeText(item.quantity) + '</small>' : '') + '<small>' + status + ' · ' + (item.category === 'household' ? 'Household' : 'Food') + ' · ' + cost + '</small>' + mealSourceLabel(mealLink) + '</span></label>' + (receipt ? button('view-shopping-receipt', 'View purchase', ' data-id="' + escapeText(receipt.id) + '"') : mealLink && mealLink.managed ? button('meal-plans', 'Change meal plan') : deleteControls('shopping', item)) + '</li>';
       }).join('') + '</ul>';
       return html + '<p class="grocery-help grocery-footnote">Check an item when you buy it, then confirm its actual cost and food quantity once. Saving updates food inventory, shopping trips, Money in Bloom, and this month’s budget together. Household supplies stay in their own spending category.</p></section>' + renderImport(current);
     }
@@ -475,7 +480,7 @@
       const today = monthKey(getNow()) + '-' + String(getNow().getDate()).padStart(2, '0');
       const due = model && model.dueItems ? model.dueItems(all, today) : [];
       let html = renderMasterImport(current) + '<section class="panel"><div class="panel-title-row"><div><p class="page-kicker">Food inventory</p><h2>Food already at home</h2></div>' + button('use-soon', 'Use-soon food & recipes ›') + '</div><p class="grocery-help">Track each package or batch, its remaining amount, and the dates printed on it. Food carries forward when a new month starts.</p><div class="grocery-location-tabs" aria-label="Food storage locations">' + [['all', 'All food'], ...LOCATIONS].map(([value, label]) => '<button type="button" data-grocery-action="filter-location" data-location="' + value + '" aria-pressed="' + (inventoryFilter === value) + '"' + disabled() + '><span>' + label + '</span><strong>' + (value === 'all' ? all.length : all.filter(row => row.location === value).length) + '</strong></button>').join('') + '</div>';
-      html += '<h3>' + (editing ? 'Update this food' : 'Add food you already have') + '</h3>' + form('inventory', select('inventory', 'product_id', 'Link to a saved product <small>(optional)</small>', productChoices(current)) + '<div class="grocery-form-grid">' + input('inventory', 'name', 'Food or product name', 'type="text" required maxlength="160" autocomplete="off"') + input('inventory', 'brand', 'Brand <small>(optional)</small>', 'type="text" maxlength="120" autocomplete="off"') + input('inventory', 'quantity', 'Amount remaining', 'type="number" min="0" max="1000000000" step="any" inputmode="decimal" required') + input('inventory', 'unit', 'Unit', 'type="text" list="grocery-unit-options" maxlength="30" required autocomplete="off"') + select('inventory', 'location', 'Stored in', LOCATIONS) + '</div><datalist id="grocery-unit-options"><option value="each"><option value="g"><option value="kg"><option value="oz"><option value="lb"><option value="ml"><option value="l"><option value="fl_oz"><option value="cup"><option value="packages"></datalist><fieldset class="grocery-date-fields"><legend>Expiration, freezing & reminders</legend><div class="grocery-form-grid">' + input('inventory', 'expires_on', 'Expiration / printed package date', 'type="date" min="1900-01-01" max="2200-12-31"') + select('inventory', 'date_type', 'What does that date say?', DATE_TYPES) + input('inventory', 'opened_on', 'Date opened <small>(optional)</small>', 'type="date" min="1900-01-01" max="2200-12-31"') + input('inventory', 'frozen_on', 'Date frozen <small>(optional)</small>', 'type="date" min="1900-01-01" max="2200-12-31"') + input('inventory', 'freezer_use_by', 'Your freezer reminder date <small>(optional)</small>', 'type="date" min="1900-01-01" max="2200-12-31"') + input('inventory', 'reminder_days', 'Show a reminder this many days before', 'type="number" min="0" max="30" step="1" inputmode="numeric" required') + '</div><p class="grocery-help">A frozen date records what you did. It does not automatically extend the printed date or determine food safety. Leave dates blank when you do not know them.</p></fieldset>' + textarea('inventory', 'notes', 'Notes <small>(optional)</small>', 2000) + '<div class="grocery-actions">' + submit(editing ? 'Save food changes' : '+ Add to inventory') + button('clear-inventory', editing ? 'Discard changes' : 'Clear form') + '</div>') + '</section>';
+      html += '<h3>' + (editing ? 'Update this food' : 'Add food you already have') + '</h3>' + form('inventory', productSearch('inventory', current) + select('inventory', 'product_id', 'Link to a saved product <small>(optional)</small>', productChoices(current)) + '<div class="grocery-form-grid">' + input('inventory', 'name', 'Food or product name', 'type="text" required maxlength="160" autocomplete="off"') + input('inventory', 'brand', 'Brand <small>(optional)</small>', 'type="text" maxlength="120" autocomplete="off"') + input('inventory', 'quantity', 'Amount remaining', 'type="number" min="0" max="1000000000" step="any" inputmode="decimal" required') + input('inventory', 'unit', 'Unit', 'type="text" list="grocery-unit-options" maxlength="30" required autocomplete="off"') + select('inventory', 'location', 'Stored in', LOCATIONS) + '</div><datalist id="grocery-unit-options"><option value="each"><option value="g"><option value="kg"><option value="oz"><option value="lb"><option value="ml"><option value="l"><option value="fl_oz"><option value="cup"><option value="packages"></datalist><fieldset class="grocery-date-fields"><legend>Expiration, freezing & reminders</legend><div class="grocery-form-grid">' + input('inventory', 'expires_on', 'Expiration / printed package date', 'type="date" min="1900-01-01" max="2200-12-31"') + select('inventory', 'date_type', 'What does that date say?', DATE_TYPES) + input('inventory', 'opened_on', 'Date opened <small>(optional)</small>', 'type="date" min="1900-01-01" max="2200-12-31"') + input('inventory', 'frozen_on', 'Date frozen <small>(optional)</small>', 'type="date" min="1900-01-01" max="2200-12-31"') + input('inventory', 'freezer_use_by', 'Your freezer reminder date <small>(optional)</small>', 'type="date" min="1900-01-01" max="2200-12-31"') + input('inventory', 'reminder_days', 'Show a reminder this many days before', 'type="number" min="0" max="30" step="1" inputmode="numeric" required') + '</div><p class="grocery-help">A frozen date records what you did. It does not automatically extend the printed date or determine food safety. Leave dates blank when you do not know them.</p></fieldset>' + textarea('inventory', 'notes', 'Notes <small>(optional)</small>', 2000) + '<div class="grocery-actions">' + submit(editing ? 'Save food changes' : '+ Add to inventory') + button('clear-inventory', editing ? 'Discard changes' : 'Clear form') + '</div>') + '</section>';
       html += '<section class="panel"><div class="panel-title-row"><h3>' + (inventoryFilter === 'all' ? 'Your food inventory' : LOCATIONS.find(entry => entry[0] === inventoryFilter)[1]) + '</h3><span class="pill">' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + '</span></div>';
       if (!rows.length) html += '<div class="grocery-empty"><p>No food recorded here yet. Add what you have above, using the amount and unit on your package.</p></div>';
       else html += '<ul class="grocery-stock-list">' + rows.map(row => {
@@ -564,6 +569,23 @@
       if (commerce && commerce.handleInput(event)) return true;
       snapshot();
       const field = event.target;
+      if (field && field.dataset && field.dataset.groceryProductSearch) {
+        const group = field.dataset.groceryProductSearch;
+        if (!['shopping','inventory'].includes(group)) return true;
+        const formElement = field.form || (typeof field.closest === 'function' ? field.closest('form') : null);
+        const selectElement = formElement && formElement.elements && formElement.elements.namedItem('product_id');
+        if (!selectElement) return true;
+        const query = String(field.value || '').trim().toLowerCase();
+        let visibleMatches = 0;
+        for (const option of Array.from(selectElement.options || [])) {
+          if (!option.value) { option.hidden = false; continue; }
+          const match = !query || String(option.textContent || '').toLowerCase().includes(query);
+          option.hidden = !match;
+          if (match) visibleMatches++;
+        }
+        field.setAttribute('aria-label', visibleMatches ? visibleMatches + ' saved products match' : 'No saved products match');
+        return true;
+      }
       const key = field && field.dataset && field.dataset.groceryField;
       if (!key) return false;
       const [group, name, extra] = key.split('.');
@@ -756,15 +778,37 @@
         const row = (current.shoppingItems || []).find(item => item.id === field.dataset.groceryShoppingToggle);
         if (!row) return true;
         const receipt = purchaseReceipt(current, row);
-        field.checked = Boolean(receipt);
-        if (busy || (commerce && commerce.isBusy()) || !requireReady(current)) return true;
-        try {
-          if (!commerce || !commerce.startPurchase) throw new Error('The purchase tools did not finish loading. Refresh the app before checking off an item.');
-          if (receipt) {
-            if (!commerce.openReceipt) throw new Error('Open Grocery receipts to review this saved purchase.');
-            commerce.openReceipt(receipt.id);
-          } else if (commerce.startPurchase(row, selectedMonth)) refresh('#commerce-purchase-line-total');
-        } catch (error) { announce(errorMessage(error), true); refresh(); }
+        if (receipt) {
+          field.checked = true;
+          if (commerce && commerce.openReceipt) commerce.openReceipt(receipt.id);
+          return true;
+        }
+        if (busy || !requireReady(current)) { field.checked = Boolean(row.checked); return true; }
+        const nextChecked = Boolean(field.checked);
+        const payload = {
+          id: row.id,
+          request_id: row.request_id,
+          revision: row.revision,
+          checked: nextChecked,
+          name: row.name,
+          quantity: row.quantity || '',
+          month: row.month || selectedMonth + '-01',
+          product_id: row.product_id || null,
+          packs: row.packs == null ? null : Number(row.packs),
+          estimate_cents: row.estimate_cents == null ? null : Number(row.estimate_cents),
+          category: row.category === 'household' ? 'household' : 'food'
+        };
+        run(nextChecked ? 'Checking off ' + row.name + '…' : 'Putting ' + row.name + ' back on the list…',
+          () => store.saveShoppingItem(payload),
+          savedRow => {
+            announce(nextChecked ? row.name + ' is checked. Add purchase details now or finish it later.' : row.name + ' is back on your shopping list.');
+            if (nextChecked && commerce && commerce.startPurchase && !(commerce.getPendingPurchaseId && commerce.getPendingPurchaseId())) {
+              const latest = savedRow && savedRow.id ? savedRow : { ...row, checked: true, revision: (Number(row.revision) || 0) + 1 };
+              commerce.startPurchase(latest, selectedMonth);
+            }
+          },
+          '#grocery-check-' + row.id
+        );
         return true;
       }
       return handleInput(event);
