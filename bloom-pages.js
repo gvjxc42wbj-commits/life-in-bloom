@@ -225,7 +225,7 @@
       html += '</div>';
       if (options.renderDashboard) {
         const dashboard = options.renderDashboard({ personalAvailable, grocerySummary, today, sleepText, moodCount, noteCount, now });
-        if (dashboard) html = '<section class="bloom-page">' + dashboard;
+        if (dashboard) html = '<section class="bloom-page home-reference-page">' + dashboard;
       }
       if (personalAvailable) {
       html += '<section class="panel"><div class="panel-title-row"><h2>Coming up</h2>' + linkButton('sleep-mood', 'Sleep & Mood') + '</div><p class="caption">Up to three appointments in the next seven days. Tap one to open its Daily Log.</p>';
