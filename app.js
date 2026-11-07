@@ -944,7 +944,11 @@ function renderCircle(){
   $('#close-menu-btn').addEventListener('click', () => appMenu.close());
   appMenu.addEventListener('close', () => menuButton.setAttribute('aria-expanded', 'false'));
   for (const button of document.querySelectorAll('[data-page]')) button.addEventListener('click', () => {
-    if (navigate(button.dataset.page) && appMenu.open) appMenu.close();
+    const destination = button.dataset.page;
+    if (destination === 'food' && button.classList.contains('bottom-nav-button') && food && food.selectTab) {
+      food.selectTab('home');
+    }
+    if (navigate(destination) && appMenu.open) appMenu.close();
   });
   $('#menu-help-btn').addEventListener('click', () => {
     appMenu.close();
