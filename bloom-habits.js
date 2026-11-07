@@ -82,6 +82,11 @@
     let readerTextSize=18, readerLineHeight=1.75, readerSpeechRate=1;
     let readingAssignmentOpen=false, readingAssignmentDraft={id:'',title:'',prompt:'',body:'',tutor_questions:'',due_on:'',status:'draft'};
     let readAloudRecorder=null, readAloudStream=null, readAloudChunks=[], readAloudStartedAt=0, readAloudBlob=null, readAloudDuration=0, readAloudPreviewUrl='', readAloudClarity='', readAloudConfidence='', readAloudNotes='';
+    let pianoSeedChecked='', pianoPracticeOpen=false, pianoRepertoireOpen=false, pianoAppEditId='';
+    let pianoPracticeDraft={duration_minutes:'20',source:'independent',course_name:'',lesson_name:'',piece_name:'',accuracy_percent:'',notes:''};
+    let pianoRepertoireDraft={title:'',kind:'piece',status:'learning',source:'',notes:''};
+    let pianoMediaMeta={title:'Practice sample',piece_name:'',notes:''};
+    let pianoMidiAccess=null, pianoMidiConnected=false, pianoMidiRecording=false, pianoMidiStartedAt=0, pianoMidiNoteCount=0, pianoMidiNotes=new Set(), pianoMidiLow=null, pianoMidiHigh=null;
     let readingBookDraft={id:'',title:'',author:'',isbn:'',edition:'',total_pages:'',current_page:'',current_section:'',status:'not_started',cover_url:'',notes:''};
     let readingSessionDraft={minutes:'20',start_page:'',end_page:'',section:'',notes:''};
     let readingNoteDraft={page_number:'',section:'',note_type:'note',body:''};
@@ -326,6 +331,70 @@
     function stopReadAloudRecording() {
       if(readAloudRecorder&&readAloudRecorder.state==='recording')readAloudRecorder.stop();
     }
+    function pianoRows(current,key) {
+      const user=current.user&&current.user.id, household=current.household&&current.household.id;
+      return (current[key]||[]).filter(row=>row&&row.user_id===user&&row.household_id===household);
+    }
+    function pianoAbilityInfo(key){
+      return {
+        sheet_music:['🎼','Reading sheet music','Recognizing notes in treble and bass clefs'],
+        rhythm:['🥁','Rhythm & timing','Maintaining a steady beat and understanding note durations'],
+        technique:['✋','Keyboard technique','Finger control, coordination, relaxed posture and hand position'],
+        chords:['🎹','Chords & harmony','Recognizing, forming, and changing chords'],
+        repertoire:['🎵','Repertoire','Playing complete pieces accurately and independently'],
+        expression:['✨','Musical expression','Dynamics, articulation, phrasing, and expressive playing']
+      }[key]||['🎹',key,''];
+    }
+    function pianoStateLabel(value){
+      return {
+        not_assessed:'Not Assessed',not_started:'Not Started',developing:'Developing',
+        practicing:'Practicing',consistent:'Consistent',demonstrated:'Demonstrated'
+      }[value]||'Not Assessed';
+    }
+    function pianoMediaRows(current){
+      return pianoRows(current,'pianoMedia').slice().sort((a,b)=>String(b.recorded_on||'').localeCompare(String(a.recorded_on||''))||String(b.created_at||'').localeCompare(String(a.created_at||'')));
+    }
+    function hydratePianoMedia(rows){
+      if(!root.document||!store.getPianoMediaUrl)return;
+      for(const row of rows){
+        const media=root.document.querySelector('[data-piano-media-id="'+row.id+'"]');
+        if(!media||media.dataset.loaded==='true')continue;
+        Promise.resolve(store.getPianoMediaUrl(row)).then(url=>{
+          const live=root.document&&root.document.querySelector('[data-piano-media-id="'+row.id+'"]');
+          if(live){live.src=url;live.dataset.loaded='true';}
+        }).catch(()=>{});
+      }
+    }
+    function midiName(number){
+      if(number==null)return '—';
+      const names=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+      return names[number%12]+(Math.floor(number/12)-1);
+    }
+    function onPianoMidiMessage(event){
+      const data=event&&event.data;if(!pianoMidiRecording||!data||data.length<3)return;
+      const status=data[0]&0xf0,note=Number(data[1]),velocity=Number(data[2]);
+      if(status===0x90&&velocity>0){
+        pianoMidiNoteCount++;
+        pianoMidiNotes.add(note);
+        pianoMidiLow=pianoMidiLow==null?note:Math.min(pianoMidiLow,note);
+        pianoMidiHigh=pianoMidiHigh==null?note:Math.max(pianoMidiHigh,note);
+        const count=root.document&&root.document.querySelector('[data-piano-midi-count]');
+        if(count)count.textContent=String(pianoMidiNoteCount);
+      }
+    }
+    async function connectPianoMidi(){
+      if(!root.isSecureContext)throw new Error('MIDI keyboard access requires the app to be opened over HTTPS or localhost.');
+      if(!root.navigator||typeof root.navigator.requestMIDIAccess!=='function')throw new Error('This browser does not support Web MIDI. Try a browser with Web MIDI support, or continue using manual practice logging.');
+      pianoMidiAccess=await root.navigator.requestMIDIAccess({sysex:false});
+      const inputs=Array.from(pianoMidiAccess.inputs.values());
+      if(!inputs.length)throw new Error('No MIDI input was detected. Connect and power on your keyboard, then try again.');
+      for(const input of inputs)input.onmidimessage=onPianoMidiMessage;
+      pianoMidiConnected=true;
+      return inputs.map(input=>input.name||'MIDI keyboard').join(', ');
+    }
+    function resetPianoMidiCapture(){
+      pianoMidiNoteCount=0;pianoMidiNotes=new Set();pianoMidiLow=null;pianoMidiHigh=null;pianoMidiStartedAt=0;
+    }
     function bookProgress(book) {
       const total=Number(book&&book.total_pages), page=Number(book&&book.current_page);
       return Number.isFinite(total)&&total>0&&Number.isFinite(page)&&page>=0?Math.max(0,Math.min(100,Math.round(page/total*100))):null;
@@ -554,6 +623,60 @@
       if(readingView==='coach'&&selected)return renderReadingCoach(current,selected);
       return renderReadingHome(current);
     }
+    function renderPianoDashboard(current,today) {
+      const apps=pianoRows(current,'pianoAppProgress').slice().sort((a,b)=>String(a.app_name).localeCompare(String(b.app_name))||String(a.course_name).localeCompare(String(b.course_name)));
+      const sessions=pianoRows(current,'pianoPracticeSessions').slice().sort((a,b)=>String(b.occurred_on).localeCompare(String(a.occurred_on))||String(b.created_at||'').localeCompare(String(a.created_at||'')));
+      const abilities=pianoRows(current,'pianoAbilities');
+      const repertoire=pianoRows(current,'pianoRepertoire').slice().sort((a,b)=>String(a.status).localeCompare(String(b.status))||String(a.title).localeCompare(String(b.title)));
+      const media=pianoMediaRows(current);
+      if(current.user&&current.household&&!current.offline&&current.status==='ready'&&pianoSeedChecked!==current.user.id+':'+current.household.id&&store.ensurePianoDefaults){
+        pianoSeedChecked=current.user.id+':'+current.household.id;
+        Promise.resolve(store.ensurePianoDefaults()).catch(()=>{pianoSeedChecked='';});
+      }
+      const weekStart=M.addDays(today,-6),weekMinutes=sessions.filter(row=>row.occurred_on>=weekStart&&row.occurred_on<=today).reduce((sum,row)=>sum+Number(row.duration_minutes||0),0);
+      const monthMinutes=sessions.filter(row=>String(row.occurred_on||'').slice(0,7)===today.slice(0,7)).reduce((sum,row)=>sum+Number(row.duration_minutes||0),0);
+      const mastered=repertoire.filter(row=>row.status==='mastered').length;
+      const pianoSessionsUrl='https://www.pianosessions.com/';
+      const playgroundUrl='https://www.playgroundsessions.com/learning';
+      const appCards=apps.length?apps.map(row=>'<article class="piano-app-card"><div class="piano-app-icon">'+(row.app_name==='PianoSessions'?'🎹':'🎧')+'</div><div><p class="page-kicker">'+esc(row.app_name)+'</p><h3>'+esc(row.course_name)+'</h3><p>'+esc(row.lesson_name||'Lesson not entered')+'</p><small>'+esc(row.status.replace('_',' '))+(row.progress_percent!=null?' · '+Math.round(Number(row.progress_percent))+'% progress':' · progress not entered')+(row.accuracy_percent!=null?' · '+Math.round(Number(row.accuracy_percent))+'% accuracy':'')+'</small></div>'+button('piano-edit-app','Log progress',' data-id="'+esc(row.id)+'"')+'</article>').join(''):'<p class="habit-help">Setting up your learning-app records…</p>';
+      let appForm='';
+      if(pianoAppEditId){
+        const row=apps.find(item=>item.id===pianoAppEditId);
+        if(row)appForm='<form class="habit-form piano-inline-form" data-piano-app-form><input type="hidden" data-piano-app-field="id" value="'+esc(row.id)+'"><div class="habit-form-grid"><label class="habit-field"><span>App</span><input disabled value="'+esc(row.app_name)+'"></label><label class="habit-field"><span>Course</span><input disabled value="'+esc(row.course_name)+'"></label><label class="habit-field"><span>Current lesson / exercise</span><input maxlength="240" data-piano-app-field="lesson_name" value="'+esc(row.lesson_name||'')+'"></label><label class="habit-field"><span>Progress %</span><input type="number" min="0" max="100" step="any" data-piano-app-field="progress_percent" value="'+esc(row.progress_percent==null?'':row.progress_percent)+'"></label><label class="habit-field"><span>Accuracy % (if app reports it)</span><input type="number" min="0" max="100" step="any" data-piano-app-field="accuracy_percent" value="'+esc(row.accuracy_percent==null?'':row.accuracy_percent)+'"></label><label class="habit-field"><span>Status</span><select data-piano-app-field="status">'+['not_started','started','active','completed'].map(v=>'<option value="'+v+'"'+(row.status===v?' selected':'')+'>'+esc(v.replace('_',' '))+'</option>').join('')+'</select></label></div><label class="habit-field"><span>Notes</span><textarea rows="3" data-piano-app-field="notes">'+esc(row.notes||'')+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save progress</button>'+button('piano-cancel-app','Cancel')+'</div></form>';
+      }
+      let practiceForm='';
+      if(pianoPracticeOpen){
+        const d=pianoPracticeDraft;
+        practiceForm='<form class="habit-form piano-inline-form" data-piano-practice-form><div class="habit-form-grid"><label class="habit-field"><span>Minutes</span><input type="number" min="1" max="1440" required data-piano-practice-field="duration_minutes" value="'+esc(d.duration_minutes)+'"></label><label class="habit-field"><span>Source</span><select data-piano-practice-field="source">'+['PianoSessions','Playground Sessions','independent'].map(v=>'<option value="'+v+'"'+(d.source===v?' selected':'')+'>'+esc(v)+'</option>').join('')+'</select></label><label class="habit-field"><span>Course</span><input data-piano-practice-field="course_name" value="'+esc(d.course_name)+'"></label><label class="habit-field"><span>Lesson</span><input data-piano-practice-field="lesson_name" value="'+esc(d.lesson_name)+'"></label><label class="habit-field"><span>Piece / chord / exercise</span><input data-piano-practice-field="piece_name" value="'+esc(d.piece_name)+'"></label><label class="habit-field"><span>Accuracy % (optional)</span><input type="number" min="0" max="100" step="any" data-piano-practice-field="accuracy_percent" value="'+esc(d.accuracy_percent)+'"></label></div><label class="habit-field"><span>Practice notes</span><textarea rows="3" data-piano-practice-field="notes">'+esc(d.notes)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save session</button>'+button('piano-cancel-practice','Cancel')+'</div></form>';
+      }
+      let repertoireForm='';
+      if(pianoRepertoireOpen){
+        const d=pianoRepertoireDraft;
+        repertoireForm='<form class="habit-form piano-inline-form" data-piano-repertoire-form><div class="habit-form-grid"><label class="habit-field"><span>Piece / chord / skill</span><input required maxlength="240" data-piano-repertoire-field="title" value="'+esc(d.title)+'"></label><label class="habit-field"><span>Type</span><select data-piano-repertoire-field="kind">'+['piece','chord','pattern','exercise'].map(v=>'<option value="'+v+'"'+(d.kind===v?' selected':'')+'>'+v+'</option>').join('')+'</select></label><label class="habit-field"><span>Status</span><select data-piano-repertoire-field="status">'+['learning','practicing','independent','mastered'].map(v=>'<option value="'+v+'"'+(d.status===v?' selected':'')+'>'+v+'</option>').join('')+'</select></label><label class="habit-field"><span>Learned from</span><input data-piano-repertoire-field="source" value="'+esc(d.source)+'"></label></div><label class="habit-field"><span>Notes</span><textarea rows="3" data-piano-repertoire-field="notes">'+esc(d.notes)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save repertoire item</button>'+button('piano-cancel-repertoire','Cancel')+'</div></form>';
+      }
+      const abilityCards=['sheet_music','rhythm','technique','chords','repertoire','expression'].map(key=>{
+        const info=pianoAbilityInfo(key),row=abilities.find(item=>item.ability_key===key)||{ability_key:key,state:'not_assessed',evidence:''};
+        return '<article class="piano-ability-card"><span>'+info[0]+'</span><div><strong>'+esc(info[1])+'</strong><small>'+esc(info[2])+'</small></div><select data-piano-ability data-key="'+key+'">'+['not_assessed','not_started','developing','practicing','consistent','demonstrated'].map(v=>'<option value="'+v+'"'+(row.state===v?' selected':'')+'>'+pianoStateLabel(v)+'</option>').join('')+'</select></article>';
+      }).join('');
+      const repCards=repertoire.length?repertoire.map(row=>'<article><span>'+(row.kind==='chord'?'🎹':row.kind==='pattern'?'🔁':row.kind==='exercise'?'🎼':'🎵')+'</span><div><strong>'+esc(row.title)+'</strong><small>'+esc(row.status)+' · '+esc(row.source||'source not entered')+'</small>'+(row.notes?'<p>'+esc(row.notes)+'</p>':'')+'</div></article>').join(''):'<p class="habit-help">Nothing in your repertoire yet. Add pieces, chords, accompaniment patterns, or exercises only when you actually begin working on them.</p>';
+      const history=sessions.length?sessions.slice(0,12).map(row=>'<article><strong>'+esc(dateLabel(row.occurred_on))+' · '+row.duration_minutes+' min</strong><small>'+esc(row.source)+(row.course_name?' · '+esc(row.course_name):'')+(row.piece_name?' · '+esc(row.piece_name):'')+(row.accuracy_percent!=null?' · '+Math.round(Number(row.accuracy_percent))+'% accuracy':'')+'</small>'+(row.source==='midi'?'<p>'+Number(row.midi_note_count||0)+' note-ons · '+Number(row.midi_unique_notes||0)+' unique notes · range '+esc(midiName(row.midi_low_note))+'–'+esc(midiName(row.midi_high_note))+'</p>':'')+(row.notes?'<p>'+esc(row.notes)+'</p>':'')+'</article>').join(''):'<p class="habit-help">No piano practice sessions logged yet.</p>';
+      const mediaCards=media.length?media.slice(0,12).map(row=>'<article class="piano-media-card"><div class="piano-media-preview">'+(row.media_type==='video'?'<video controls preload="metadata" data-piano-media-id="'+esc(row.id)+'"></video>':'<audio controls preload="none" data-piano-media-id="'+esc(row.id)+'"></audio>')+'</div><div><strong>'+esc(row.title)+'</strong><small>'+esc(dateLabel(row.recorded_on))+(row.piece_name?' · '+esc(row.piece_name):'')+'</small>'+(row.notes?'<p>'+esc(row.notes)+'</p>':'')+'</div>'+button('piano-media-delete','Remove',' data-id="'+esc(row.id)+'"')+'</article>').join(''):'<p class="habit-help">No private practice recordings saved yet. Upload an early sample now so future-you has something real to compare against.</p>';
+      if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydratePianoMedia(media)));
+      return '<section class="piano-dashboard">'
+        + '<section class="piano-banner"><div><p class="page-kicker">Skills in Bloom · Music</p><h2>Piano in Bloom</h2><p>A place for every note you learn to play.</p></div><span>🎹</span></section>'
+        + '<section class="piano-summary panel"><div><strong>Beginner</strong><small>Self-directed learning</small></div><div><strong>'+apps.filter(row=>row.status!=='not_started').length+'</strong><small>courses started</small></div><div><strong>'+monthMinutes+'</strong><small>minutes logged this month</small></div><div><strong>'+mastered+'</strong><small>pieces / skills mastered</small></div></section>'
+        + '<section class="panel piano-today"><div class="habit-heading"><div><p class="page-kicker">Today’s piano practice</p><h2>20 Minutes</h2><p class="habit-help">5 min warm-up & note recognition · 10 min current app lesson · 5 min independent playing and review.</p></div><div class="habit-actions">'+button('piano-log-practice','Log practice','',true)+button('piano-midi-connect',pianoMidiConnected?'MIDI Connected ✓':'Connect MIDI Keyboard')+'</div></div>'+practiceForm+'</section>'
+        + '<section class="piano-apps panel"><div class="habit-heading"><div><p class="page-kicker">My learning apps</p><h2>Current Records</h2></div></div><div class="piano-app-grid">'+appCards+'</div>'+appForm+'<div class="piano-app-links"><a href="'+pianoSessionsUrl+'" target="_blank" rel="noopener noreferrer">Open PianoSessions ↗</a><a href="'+playgroundUrl+'" target="_blank" rel="noopener noreferrer">Open Playground Sessions ↗</a></div></section>'
+        + '<section class="panel piano-midi"><div class="habit-heading"><div><p class="page-kicker">USB / MIDI keyboard</p><h2>Live MIDI Practice</h2><p class="habit-help">MIDI can confirm keyboard activity and note range. It does not by itself prove musical accuracy, rhythm quality, posture, or expression.</p></div><span class="habit-badge">'+(pianoMidiConnected?'Connected':'Not connected')+'</span></div><div class="piano-midi-metrics"><span><strong data-piano-midi-count>'+pianoMidiNoteCount+'</strong><small>note-ons</small></span><span><strong>'+pianoMidiNotes.size+'</strong><small>unique notes</small></span><span><strong>'+esc(midiName(pianoMidiLow))+'</strong><small>lowest</small></span><span><strong>'+esc(midiName(pianoMidiHigh))+'</strong><small>highest</small></span></div><div class="habit-actions">'+button('piano-midi-connect','Connect keyboard','',false,pianoMidiConnected)+button(pianoMidiRecording?'piano-midi-stop':'piano-midi-start',pianoMidiRecording?'Stop & save MIDI session':'Start MIDI session','',true,!pianoMidiConnected)+'</div></section>'
+        + '<section class="panel piano-abilities"><div class="habit-heading"><div><p class="page-kicker">Six musical abilities</p><h2>Skill Progress</h2><p class="habit-help">Starting a course does not automatically establish ability. Update a state only when your own playing provides evidence.</p></div></div><div class="piano-ability-grid">'+abilityCards+'</div></section>'
+        + '<div class="piano-two-col"><section class="panel piano-repertoire"><div class="habit-heading"><div><p class="page-kicker">My repertoire</p><h2>What I Can Play</h2></div>'+button('piano-add-repertoire','+ Add item','',true)+'</div>'+repertoireForm+'<div class="piano-repertoire-list">'+repCards+'</div></section>'
+        + '<section class="panel piano-weekly"><p class="page-kicker">Manageable weekly plan</p><h2>65 Minutes / Week</h2><article><strong>Session A · Classical 1</strong><span>20 min</span><p>5 min warm-up · 10 min lesson · 5 min independent playing</p></article><article><strong>Session B · Pop Chords 1</strong><span>20 min</span><p>5 min chord review · 10 min lesson · 5 min chord changes</p></article><article><strong>Session C · Playground Sessions</strong><span>25 min</span><p>5 min warm-up · 15 min Rookie Bootcamp · 5 min review</p></article><p class="habit-help">This week: '+weekMinutes+' minutes logged.</p></section></div>'
+        + '<section class="panel piano-media"><div class="habit-heading"><div><p class="page-kicker">Practice journal · private files</p><h2>Audio & Video Progress</h2><p class="habit-help">Save recordings over time so you can hear rhythm, confidence, smoothness, dynamics, and independence improve. Video can also help you review hands, tension, and posture.</p></div><label class="button primary">Upload audio / video<input type="file" accept="audio/*,video/*" data-piano-media-upload hidden></label></div><div class="piano-media-meta"><label>Title<input data-piano-media-field="title" value="'+esc(pianoMediaMeta.title)+'"></label><label>Piece / exercise<input data-piano-media-field="piece_name" value="'+esc(pianoMediaMeta.piece_name)+'"></label><label>Notes<input data-piano-media-field="notes" value="'+esc(pianoMediaMeta.notes)+'"></label></div><div class="piano-media-list">'+mediaCards+'</div></section>'
+        + '<section class="panel piano-milestones"><p class="page-kicker">First three months</p><h2>Learning Milestones</h2><div class="piano-milestone-grid"><article><b>Month 1</b><h3>Establish foundations</h3><p>Identify keys, begin basic notation/rhythm, learn simple chord shapes, and save your first independent playing sample.</p></article><article><b>Month 2</b><h3>Develop coordination</h3><p>Play a simple melody at a steady tempo, change between familiar chords, and begin two-hand coordination.</p></article><article><b>Month 3</b><h3>Demonstrate progress</h3><p>Record one simple classical piece and one basic pop accompaniment pattern independently with reasonably steady rhythm.</p></article></div></section>'
+        + '<section class="panel piano-history"><div class="habit-heading"><div><p class="page-kicker">Practice journal</p><h2>Recent Sessions</h2></div></div><div class="piano-session-list">'+history+'</div></section>'
+        + '</section>';
+    }
+
     function renderMathDashboard(current, skills, sessions, today) {
       const mathSkills=skills.filter(skill=>skill.category==='math');
       const ids=new Set(mathSkills.map(skill=>skill.id));
@@ -713,6 +836,7 @@
         html += '<section class="panel habit-area-header"><div class="habit-heading"><div><p class="page-kicker">Skills in Bloom · '+esc(area.label)+'</p><h2><span aria-hidden="true">'+area.icon+'</span> '+esc(area.label)+'</h2><p class="habit-help">Your saved '+esc(area.label.toLowerCase())+' topics, practice records, and review reminders.</p></div>'+button('category','← All Skills',' data-category="all"')+'</div></section>';
       }
       if (selectedCategory === 'reading') return renderReading(current);
+      if (selectedCategory === 'piano') return renderPianoDashboard(current, today);
       if (selectedCategory === 'math') return renderMathDashboard(current, skills, sessions, today);
       if (selectedCategory === 'engineering') html += renderEngineeringDashboard(current, skills, sessions, today);
       if (skillOpen) html += renderSkillForm(current);
