@@ -13,7 +13,8 @@
     lifeRecords: 'bloom_life_records', dogStockEffects: 'bloom_dog_stock_effects', kitchenEquipment: 'bloom_kitchen_equipment',
     engineeringHomework: 'bloom_engineering_homework', engineeringFiles: 'bloom_engineering_files',
     readingBooks: 'bloom_reading_books', readingSessions: 'bloom_reading_sessions', readingNotes: 'bloom_reading_notes',
-    readingVocabulary: 'bloom_reading_vocabulary', readingQuizAttempts: 'bloom_reading_quiz_attempts', readingFiles: 'bloom_reading_files'
+    readingVocabulary: 'bloom_reading_vocabulary', readingQuizAttempts: 'bloom_reading_quiz_attempts', readingFiles: 'bloom_reading_files',
+    readingPageText: 'bloom_reading_page_text'
   };
   const PRIVATE_FIELDS = ['display_name', 'age_years', 'height_cm', 'weight_kg', 'activity_level', 'notes'];
   const DIET_FIELDS = ['display_name', 'color', 'calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'allergies', 'restrictions', 'preferences', 'notes'];
@@ -28,7 +29,7 @@
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText'];
   const LIFE_COLLECTIONS = {
     hydrationSettings:'hydration_settings', hydrationEntries:'hydration_entry',
     skills:'skill', skillSessions:'skill_session', smokingSettings:'smoking_settings', smokingDays:'smoking_day',
@@ -207,7 +208,7 @@
         const cached = JSON.parse(cacheStorage.getItem(cachePrefix + user.id) || 'null');
         if (!cached || cached.version !== 1 || cached.user.id !== user.id || !cached.household || !cached.members.some(row=>row.user_id===user.id && row.household_id===cached.household.id)) return false;
         if (verifiedHouseholdId !== undefined && cached.household.id !== verifiedHouseholdId) { clearCache(user.id); return false; }
-        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles']) if (!Object.hasOwn(cached, key)) cached[key] = [];
+        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText']) if (!Object.hasOwn(cached, key)) cached[key] = [];
         if (!SHARED_LISTS.every(key=>Array.isArray(cached[key]))) return false;
         state = { ...emptyState('ready'), user:userSummary(user), household:cached.household,
           ...Object.fromEntries(SHARED_LISTS.map(key=>[key,cached[key]])), offline:true, cachedAt:cached.savedAt,
@@ -1001,7 +1002,7 @@
     }
     async function uploadReadingFile(value){
       requireOnline();const current=context(true),file=value&&value.file;
-      if(!file||!file.size||file.size>10*1024*1024||!['image/jpeg','image/png','image/webp','application/pdf'].includes(file.type))throw new Error('Choose a JPG, PNG, WebP, or PDF up to 10 MB.');
+      if(!file||!file.size||file.size>75*1024*1024||!['image/jpeg','image/png','image/webp','application/pdf'].includes(file.type))throw new Error('Choose a JPG, PNG, WebP, or PDF up to 75 MB.');
       if(value.book_id&&!state.readingBooks.some(b=>b.id===value.book_id&&b.user_id===current.userId))throw new Error('Choose a saved book first.');
       const bytes=new Uint8Array(await file.slice(0,12).arrayBuffer());checkContext(current);
       const magic=file.type==='image/jpeg'?bytes[0]===255&&bytes[1]===216&&bytes[2]===255:file.type==='image/png'?bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71:
@@ -1012,7 +1013,8 @@
       checkContext(current);
       try{
         const meta={id,household_id:current.householdId,user_id:current.userId,book_id:value.book_id||null,name:String(file.name||'Reading scan').slice(0,240),path,mime_type:file.type,size_bytes:file.size,
-          page_from:value.page_from===''||value.page_from==null?null:Number(value.page_from),page_to:value.page_to===''||value.page_to==null?null:Number(value.page_to),section:String(value.section||'').slice(0,240)};
+          page_from:value.page_from===''||value.page_from==null?null:Number(value.page_from),page_to:value.page_to===''||value.page_to==null?null:Number(value.page_to),section:String(value.section||'').slice(0,240),
+          file_role:value.file_role==='book_pdf'?'book_pdf':'scan',page_count:value.page_count==null?null:Number(value.page_count)};
         const saved=assertResult(await client.from(TABLES.readingFiles).insert(meta).select('*'));checkContext(current);await refresh();return saved&&saved[0];
       }catch(error){try{await client.storage.from('bloom-reading-files').remove([path]);}catch(_){ }throw error;}
     }
@@ -1028,6 +1030,19 @@
       const result=assertResult(await client.from(TABLES[key]).delete().eq('id',row.id).eq('user_id',current.userId).eq('household_id',current.householdId).select('id'));
       if(!Array.isArray(result)||result.length!==1)throw new Error('That reading record changed or was already removed.');await refresh();return true;
     }
+    async function saveReadingPageText(row){
+      requireOnline(); const current=context(true);
+      if(!row||!row.book_id||!row.file_id)throw new Error('Choose a saved book PDF.');
+      const page=Number(row.page_number);if(!Number.isInteger(page)||page<1||page>20000)throw new Error('Choose a valid PDF page.');
+      const method=row.extraction_method==='ocr'?'ocr':'text_layer',raw=String(row.raw_text||''),verifiedText=String(row.verified_text||'');
+      if(raw.length>100000||verifiedText.length>100000)throw new Error('This page text is too large to save.');
+      const existing=(state.readingPageText||[]).find(item=>item.file_id===row.file_id&&Number(item.page_number)===page&&item.user_id===current.userId);
+      const payload={id:existing&&existing.id||row.id||newUuid(),household_id:current.householdId,user_id:current.userId,book_id:row.book_id,file_id:row.file_id,
+        page_number:page,extraction_method:method,raw_text:raw,verified_text:verifiedText,verified:row.verified===true,char_count:raw.length,updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.readingPageText).upsert(payload,{onConflict:'user_id,household_id,file_id,page_number'}).select('*'));
+      checkContext(current);await refresh();checkContext(current);return data&&data[0];
+    }
+    async function deleteReadingPageText(row){ return deleteReadingRow('readingPageText',row); }
     function exportReadingRecords() {
       if(!state.user||!state.household||state.status!=='ready') throw new Error('Sign in before exporting Reading in Bloom.');
       const keys=['readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts'];
@@ -1098,7 +1113,7 @@
       saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, importFoodMaster, saveKitchenEquipment, deleteKitchenEquipment, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
       ...lifeSavers,saveLifeRecord,archiveLifeRecord,addDogSupplyToShopping,exportPersonalLifeRecords,importPersonalLifeRecords,
       uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveEngineeringHomework, deleteEngineeringHomework, uploadEngineeringFile, getEngineeringFileUrl, deleteEngineeringFile,
-      ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingRow, exportReadingRecords, importReadingRecords,
+      ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingRow, saveReadingPageText, deleteReadingPageText, exportReadingRecords, importReadingRecords,
       saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };
