@@ -16,7 +16,7 @@
     readingVocabulary: 'bloom_reading_vocabulary', readingQuizAttempts: 'bloom_reading_quiz_attempts', readingFiles: 'bloom_reading_files',
     readingPageText: 'bloom_reading_page_text', readingAssignments: 'bloom_reading_assignments', readingAudioRecordings: 'bloom_reading_audio_recordings',
     pianoAppProgress: 'bloom_piano_app_progress', pianoPracticeSessions: 'bloom_piano_practice_sessions', pianoAbilities: 'bloom_piano_abilities', pianoRepertoire: 'bloom_piano_repertoire', pianoMedia: 'bloom_piano_media',
-    animationTutor: 'bloom_animation_tutor', animationResources: 'bloom_animation_resources', animationSkills: 'bloom_animation_skills', animationProjects: 'bloom_animation_projects', animationMedia: 'bloom_animation_media'
+    animationTutor: 'bloom_animation_tutor', animationResources: 'bloom_animation_resources', animationSkills: 'bloom_animation_skills', animationProjects: 'bloom_animation_projects', animationMedia: 'bloom_animation_media', animationPractice: 'bloom_animation_practice', animationHomework: 'bloom_animation_homework'
   };
   const PRIVATE_FIELDS = ['display_name', 'age_years', 'height_cm', 'weight_kg', 'activity_level', 'notes'];
   const DIET_FIELDS = ['display_name', 'color', 'calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'allergies', 'restrictions', 'preferences', 'notes'];
@@ -31,7 +31,7 @@
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework'];
   const LIFE_COLLECTIONS = {
     hydrationSettings:'hydration_settings', hydrationEntries:'hydration_entry',
     skills:'skill', skillSessions:'skill_session', smokingSettings:'smoking_settings', smokingDays:'smoking_day',
@@ -213,7 +213,7 @@
         const cached = JSON.parse(cacheStorage.getItem(cachePrefix + user.id) || 'null');
         if (!cached || cached.version !== 1 || cached.user.id !== user.id || !cached.household || !cached.members.some(row=>row.user_id===user.id && row.household_id===cached.household.id)) return false;
         if (verifiedHouseholdId !== undefined && cached.household.id !== verifiedHouseholdId) { clearCache(user.id); return false; }
-        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia']) if (!Object.hasOwn(cached, key)) cached[key] = [];
+        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework']) if (!Object.hasOwn(cached, key)) cached[key] = [];
         if (!SHARED_LISTS.every(key=>Array.isArray(cached[key]))) return false;
         state = { ...emptyState('ready'), user:userSummary(user), household:cached.household,
           ...Object.fromEntries(SHARED_LISTS.map(key=>[key,cached[key]])), offline:true, cachedAt:cached.savedAt,
@@ -1296,6 +1296,28 @@
       const data=assertResult(await client.from(TABLES.animationProjects).upsert(payload,{onConflict:'id'}).select('*'));
       checkContext(current); await refresh(); return data&&data[0];
     }
+    async function saveAnimationPractice(row){
+      requireOnline(); const current=context(true); row=row||{};
+      const minutes=Number(row.minutes); if(!Number.isInteger(minutes)||minutes<1||minutes>1440)throw new Error('Practice minutes must be a whole number from 1 to 1,440.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,occurred_on:row.occurred_on,minutes,
+        software:String(row.software||'').slice(0,240),exercise:String(row.exercise||'').slice(0,300),notes:String(row.notes||'').slice(0,6000)};
+      const data=assertResult(await client.from(TABLES.animationPractice).upsert(payload,{onConflict:'id'}).select('*'));
+      checkContext(current); await refresh(); return data&&data[0];
+    }
+    async function saveAnimationHomework(row){
+      requireOnline(); const current=context(true); row=row||{};
+      const title=String(row.title||'').trim(); if(!title||title.length>300)throw new Error('Enter an Animation homework title.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,title,due_on:row.due_on||null,
+        status:['open','ready','reviewed'].includes(row.status)?row.status:'open',notes:String(row.notes||'').slice(0,6000),updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.animationHomework).upsert(payload,{onConflict:'id'}).select('*'));
+      checkContext(current); await refresh(); return data&&data[0];
+    }
+    async function deleteAnimationHomework(row){
+      requireOnline(); const current=context(true); if(!row||!row.id)throw new Error('Choose saved Animation homework.');
+      const data=assertResult(await client.from(TABLES.animationHomework).delete().eq('id',row.id).eq('user_id',current.userId).eq('household_id',current.householdId).select('id'));
+      if(!Array.isArray(data)||data.length!==1)throw new Error('That homework changed or was already removed.');
+      await refresh(); return true;
+    }
     async function uploadAnimationMedia(value){
       requireOnline(); const current=context(true),file=value&&value.file;
       const allowed=['image/jpeg','image/png','image/webp','image/gif','video/webm','video/mp4','video/quicktime','application/pdf'];
@@ -1305,7 +1327,7 @@
       if(uploaded.error)throw errorOf(uploaded.error); checkContext(current);
       try{
         const mediaType=file.type==='image/gif'?'gif':file.type.startsWith('video/')?'video':file.type==='application/pdf'?'pdf':'image';
-        const meta={id,household_id:current.householdId,user_id:current.userId,project_id:value.project_id||null,title:String(value.title||file.name||'Animation media').slice(0,240),
+        const meta={id,household_id:current.householdId,user_id:current.userId,project_id:value.project_id||null,homework_id:value.homework_id||null,title:String(value.title||file.name||'Animation media').slice(0,240),
           version_label:String(value.version_label||'').slice(0,120),media_type:mediaType,path,mime_type:file.type,size_bytes:file.size};
         const saved=assertResult(await client.from(TABLES.animationMedia).insert(meta).select('*'));
         checkContext(current); await refresh(); return saved&&saved[0];
@@ -1376,7 +1398,7 @@
       uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveEngineeringHomework, deleteEngineeringHomework, uploadEngineeringFile, getEngineeringFileUrl, deleteEngineeringFile,
       ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingFile, deleteReadingRow, saveReadingPageText, saveReadingPageTexts, deleteReadingPageText, setReadingFilePageCount, saveReadingAssignment, deleteReadingAssignment, uploadReadingAudio, updateReadingAudio, getReadingAudioUrl, deleteReadingAudio, exportReadingRecords, importReadingRecords,
       ensurePianoDefaults, savePianoAppProgress, savePianoPracticeSession, savePianoAbility, savePianoRepertoire, uploadPianoMedia, getPianoMediaUrl, deletePianoMedia,
-      ensureAnimationDefaults, saveAnimationTutor, saveAnimationResource, saveAnimationSkill, saveAnimationProject, uploadAnimationMedia, getAnimationMediaUrl, deleteAnimationMedia,
+      ensureAnimationDefaults, saveAnimationTutor, saveAnimationResource, saveAnimationSkill, saveAnimationProject, saveAnimationPractice, saveAnimationHomework, deleteAnimationHomework, uploadAnimationMedia, getAnimationMediaUrl, deleteAnimationMedia,
       saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };
