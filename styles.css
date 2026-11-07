@@ -784,3 +784,39 @@ html { scroll-padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
   .home-grid { grid-template-columns: minmax(0, 1fr); }
   .home-card { min-height: 130px; padding: 16px; }
 }
+
+
+/* Skills submenu */
+.menu-skill-group{display:grid;gap:6px}
+.menu-skills-toggle[aria-expanded="true"]{
+  border-color:#bf7e9a;
+  background:#fbe1ec;
+  box-shadow:inset 3px 0 0 #a24c72;
+}
+.menu-skills-list{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+  padding:4px 4px 8px 14px;
+}
+.menu-skills-list button{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:42px;
+  padding:8px 10px;
+  border:1px solid #efd7e1;
+  border-radius:11px;
+  background:#fff;
+  color:#6f3d53;
+  font-size:12px;
+  font-weight:700;
+  text-align:left;
+}
+.menu-skills-list button:hover{background:#fff0f6;border-color:#c984a1}
+.menu-skills-list button>span{font-size:17px;line-height:1}
+.habit-area-header{margin-bottom:12px}
+.habit-area-header h2{display:flex;align-items:center;gap:8px}
+@media(max-width:380px){
+  .menu-skills-list{grid-template-columns:1fr}
+}
