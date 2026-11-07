@@ -6,3 +6,34 @@
 @media(prefers-reduced-motion:reduce){.bloom-dashboard *{scroll-behavior:auto}}
 
 .bloom-household-strip{display:flex;align-items:center;gap:.8rem;padding:.75rem 1rem;margin:.7rem 0;border:1px solid #dce7d6;background:#f7fbf4;border-radius:18px}.bloom-household-strip>span{font-size:1.4rem}.bloom-household-strip strong,.bloom-household-strip small{display:block}.bloom-household-strip small{color:#60705d;margin-top:.15rem}
+
+
+/* Home planned-meal reminder */
+.bloom-meal-reminder{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  gap:.8rem;
+  align-items:center;
+  margin:.75rem 0 1rem;
+  padding:.85rem 1rem;
+  border:1px solid #ead8bc;
+  border-radius:18px;
+  background:linear-gradient(135deg,#fffaf0,#fff7f8);
+  box-shadow:0 8px 22px rgba(91,57,66,.05);
+}
+.bloom-meal-reminder .bloom-card-icon{
+  display:grid;
+  place-items:center;
+  width:42px;
+  height:42px;
+  border-radius:12px;
+  background:#fff0d9;
+  font-size:1.35rem;
+}
+.bloom-meal-reminder strong{display:block;color:#633b4b;font-size:1rem;line-height:1.35}
+.bloom-meal-reminder p{margin:.15rem 0;color:#765967;font-size:.78rem;line-height:1.45}
+.bloom-meal-reminder .page-kicker{font-size:.68rem;color:#9a5c73}
+@media(max-width:620px){
+  .bloom-meal-reminder{grid-template-columns:auto 1fr}
+  .bloom-meal-reminder>.button{grid-column:1/-1;width:100%}
+}
