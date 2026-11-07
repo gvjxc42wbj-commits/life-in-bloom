@@ -42,7 +42,8 @@
     'readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings',
     'pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia',
     'animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework',
-    'spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia'
+    'spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia',
+    'dailyJournal','paintingArtworks','paintingVersions','paintingMedia'
   ]);
   const LIFE_COLLECTIONS = {
     hydrationSettings:'hydration_settings', hydrationEntries:'hydration_entry',
