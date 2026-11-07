@@ -33,9 +33,16 @@
   }
   function boostSummary(current,date,person) {
     const products=sharedRows(current,'products').filter(row=>row.category==='food'&&/\bboost\b/i.test((row.brand||'')+' '+row.name));
-    const ids=new Set(products.map(row=>row.id));
+    const product=products.find(row=>!row.archived)||null,ids=new Set(products.map(row=>row.id));
     const entries=sharedRows(current,'mealEntries').filter(row=>!row.archived&&!row.voided_at&&row.kind==='eaten' && row.occurred_on===date && Number(row.person_slot)===Number(person) && ids.has(row.product_id));
-    return {product:products.find(row=>!row.archived)||null,servings:entries.reduce((sum,row)=>sum+Number(row.servings||0),0),logged:entries.length>0};
+    const perPackage=Number(product&&product.servings_per_package)>0?Number(product.servings_per_package):1;
+    const stock=product?sharedRows(current,'inventory').filter(row=>row.product_id===product.id&&Number(row.quantity)>0).reduce((sum,row)=>{
+      const remaining=Number(row.servings_remaining);
+      if(Number.isFinite(remaining)&&remaining>=0)return sum+remaining;
+      const quantity=Number(row.quantity)||0,unit=String(row.unit||'').toLowerCase();
+      return sum+(unit.includes('pack')||unit.includes('case')?quantity*perPackage:quantity);
+    },0):0;
+    return {product,servings:entries.reduce((sum,row)=>sum+Number(row.servings||0),0),logged:entries.length>0,stock:Math.max(0,Math.floor(stock))};
   }
   function createController(options) {
     options=options||{};const store=options.store,notify=options.notify||(()=>{}),refresh=options.refresh||(()=>{}),navigate=options.navigate||(()=>{});
@@ -200,7 +207,7 @@
         if(todaysMeals.length)html+='<section class="bloom-meal-reminder"><span class="bloom-card-icon" aria-hidden="true">🍽️</span><div><p class="page-kicker">Today’s planned meal'+(todaysMeals.length===1?'':'s')+'</p><strong>'+todaysMeals.map(row=>esc(row.recipe_name||'Planned meal')).join(' · ')+'</strong><p>'+todaysMeals.map(row=>esc((row.meal_type||'dinner').replace(/^./,c=>c.toUpperCase()))+' · '+fmt(row.servings)+' servings').join(' &nbsp; • &nbsp; ')+'</p></div>'+button('meal-plans','Open today’s menu','',true)+'</section>';
         const h=options.getHabitsSummary?options.getHabitsSummary(today):{},dog=options.getDogSummary?options.getDogSummary(today):{};
         const boost=boostSummary(current,today,1);
-        html+='<div class="bloom-dashboard-grid"><article class="bloom-dashboard-card card-peach"><span class="bloom-card-icon" aria-hidden="true">🥤</span><p class="page-kicker">Person 1 · Boost</p><strong class="bloom-card-value">'+(boost.logged?fmt(boost.servings)+' servings':'None logged yet')+'</strong><p>From today’s saved food log.</p>'+button('boost','Log Boost',' data-product="'+esc(boost.product&&boost.product.id||'')+'"',true)+'</article>';
+        html+='<div class="bloom-dashboard-grid"><article class="bloom-dashboard-card card-peach boost-quick-card"><div class="boost-card-top"><span class="bloom-card-icon" aria-hidden="true">🥤</span>'+button('boost-plus','+',' data-product="'+esc(boost.product&&boost.product.id||'')+'" aria-label="Add one Boost" title="Add one Boost"',true,!boost.product||boost.stock<1||current.offline)+'</div><p class="page-kicker">Person 1 · Boost</p><strong class="bloom-card-value">'+fmt(boost.servings)+' today</strong><p>'+boost.stock+' Boost'+(boost.stock===1?'':'s')+' left in inventory.</p></article>';
         if(context.personalAvailable)html+='<article class="bloom-dashboard-card card-lilac"><span class="bloom-card-icon" aria-hidden="true">☾</span><p class="page-kicker">Sleep &amp; Mood</p><strong class="bloom-card-value">'+esc(context.sleepText)+'</strong><p>'+Number(context.moodCount||0)+' hourly feelings · tracking day '+esc(context.today)+'</p><button type="button" class="button" data-page-action="open-day" data-date="'+esc(context.today)+'">Open Daily Log</button></article>';
         html+='<article class="bloom-dashboard-card card-sage"><span class="bloom-card-icon" aria-hidden="true">🌿</span><p class="page-kicker">Smoking Log · your account</p><strong class="bloom-card-value">'+(h.smokingDay?Number(h.smokingDay.joints)+' joints · '+Number(h.smokingDay.cigars)+' cigars':'Not logged today')+'</strong><p>Zero is a valid entry. Record your own patterns.</p>'+button('navigate','Open Smoking Log',' data-page="smoking"')+'</article>';
         html+='<article class="bloom-dashboard-card card-cream"><span class="bloom-card-icon" aria-hidden="true">🎹</span><p class="page-kicker">Skills in Bloom</p><strong class="bloom-card-value">'+Number(h.dueSkills||0)+' reviews due</strong><p>'+Number(h.practiceMinutes||0)+' practice minutes logged today.</p>'+button('navigate','Choose a skill',' data-page="skills"')+'</article>';
@@ -223,6 +230,15 @@
         if(action==='water-page'){navigate('wellness');return true;}
         if(action==='meal-plans'){if(options.openFoodPlans)options.openFoodPlans();else navigate('food');return true;}
         if(action==='household'){if(options.openHousehold)options.openHousehold();else navigate('grocery');return true;}
+        if(action==='boost-plus'){
+          if(!target.dataset.product)throw new Error('Add a saved Boost product to Food in Bloom first.');
+          if(!options.quickConsumeBoost)throw new Error('Refresh Life in Bloom to load quick Boost logging.');
+          busy=true;refresh('.boost-quick-card');
+          promise=Promise.resolve(options.quickConsumeBoost(target.dataset.product,1,dayKey(getNow()))).then(result=>{
+            notify('1 Boost logged. '+Number(result&&result.remaining||0)+' left in inventory.');
+          }).catch(error=>notify(error.message||'That Boost could not be logged.',true)).finally(()=>{busy=false;refresh('.boost-quick-card');});
+          return true;
+        }
         if(action==='boost'){if(options.openFoodLog)options.openFoodLog(target.dataset.product,1);else navigate('wellness');return true;}
         if(action==='retry'){submitAttempt();return true;}
         if(action==='close'){if(pending)throw new Error('Confirm the pending save before closing it.');if(dirty()&&!confirm('Discard this water draft?'))return true;form=null;baseline=null;persist();refresh();return true;}
