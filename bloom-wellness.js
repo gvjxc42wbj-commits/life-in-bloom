@@ -10,6 +10,20 @@
   function validDate(value) { return /^\d{4}-\d{2}-\d{2}$/.test(value||'') && value>='1900-01-01' && value<='2200-12-31' && Number.isFinite(Date.parse(value+'T12:00:00Z')) && new Date(value+'T12:00:00Z').toISOString().slice(0,10)===value; }
   const dateLabel=value=>validDate(value)?new Date(value+'T12:00:00Z').toLocaleDateString('en-US',{timeZone:'UTC',weekday:'long',month:'long',day:'numeric',year:'numeric'}):'Choose a date';
   function sharedRows(current,key) { const household=current&&current.household&&current.household.id;return household?(current[key]||[]).filter(row=>row&&row.household_id===household):[]; }
+  const ML_PER_CUP = 236.5882365;
+  function cupsFromMl(value) {
+    const amount=Number(value);
+    return Number.isFinite(amount)&&amount>=0?amount/ML_PER_CUP:0;
+  }
+  function mlFromCups(value) {
+    const amount=Number(value);
+    return Number.isFinite(amount)?amount*ML_PER_CUP:NaN;
+  }
+  function cupLabel(value) {
+    const amount=cupsFromMl(value);
+    const rounded=Math.round(amount*100)/100;
+    return fmt(rounded)+' cup'+(Math.abs(rounded-1)<0.005?'':'s');
+  }
   function waterSummary(current,date,person) {
     const settings=sharedRows(current,'hydrationSettings').find(row=>!row.archived && Number(row.person_slot)===Number(person));
     const entries=sharedRows(current,'hydrationEntries').filter(row=>!row.archived && row.occurred_on===date && Number(row.person_slot)===Number(person));
@@ -69,7 +83,7 @@
       const call=()=>{snapshot();if(token!==generation)throw new Error('The account changed before this water entry was submitted.');return attempt.action==='archive'?store.archiveLifeRecord(attempt.payload,attempt.payload.request_id):attempt.action==='settings'?store.saveHydrationSettings(attempt.payload):store.saveHydrationEntry(attempt.payload);};
       promise=Promise.resolve().then(call).then(()=>{snapshot();if(token!==generation)return;pending=null;if(attempt.action!=='archive'){form=null;baseline=null;}
         if(attempt.action==='entry'&&(attempt.viewSerial==null?selectedDate===attempt.payload.occurred_on:attempt.viewSerial===viewSerial)){if(selectedDate!==attempt.payload.occurred_on){selectedDate=attempt.payload.occurred_on;viewSerial++;}if(options.onDateChange)options.onDateChange(selectedDate);}
-        notify(attempt.action==='archive'?'The water entry was removed from the daily total. Its history remains saved.':'Water saved. Home and Wellness now use the same updated total.');})
+        notify(attempt.action==='archive'?'The water entry was removed from the daily total. Its history remains saved.':'Water saved in Wellness.');})
         .catch(error=>{snapshot();if(token!==generation)return;if(['22023','23514','23505','40001','42501'].includes(String(error.code)))pending=null;notify(error.message||'The save could not be confirmed. Retry keeps the same entry and avoids a duplicate.',true);})
         .finally(()=>{if(token===generation){busy=false;persist();refresh();}});
     }
@@ -84,16 +98,20 @@
     function button(action,label,attrs,primary,disabled) {return '<button type="button" class="button'+(primary?' primary':'')+'" data-wellness-action="'+action+'"'+(attrs||'')+(busy||disabled?' disabled':'')+'>'+label+'</button>';}
     function pendingPanel(current) {return pending?'<section class="panel water-pending" role="status"><h3>Confirm your water change</h3><p>The last save has not been confirmed here. Retry uses the same entry.</p>'+button('retry','Retry the same save','',true,current.offline)+'</section>':'';}
     function field(name,label,type,extra) {return '<label class="water-field" for="water-'+name+'"><span>'+label+'</span><input id="water-'+name+'" name="'+name+'" data-wellness-field="'+name+'" type="'+type+'" value="'+esc(form[name])+'"'+(extra||'')+(busy||pending?' disabled':'')+'></label>';}
+    function cupField(sourceName,label,extra) {
+      const raw=form[sourceName],cups=raw===''?'':Math.round(cupsFromMl(raw)*100)/100;
+      return '<label class="water-field" for="water-'+sourceName+'-cups"><span>'+label+'</span><input id="water-'+sourceName+'-cups" data-wellness-cups="'+sourceName+'" type="number" value="'+esc(cups)+'"'+(extra||'')+(busy||pending?' disabled':'')+'></label>';
+    }
     function renderForm(current) {
       if(!form)return '';let html='<section class="panel water-form-panel" id="water-form-panel"><p class="page-kicker">Person '+form.person_slot+'</p><h3>'+(form.type==='settings'?'Your water settings':'Log water you drank')+'</h3><form data-wellness-form="water" class="water-form">';
-      if(form.type==='settings')html+='<p class="caption">Choose the amount your quick-add button records. A daily goal is optional and is your own preference.</p><div class="water-form-grid">'+field('container_ml','Your container size (mL)','number',' min="1" max="10000" step="any" required')+field('goal_ml','Your daily goal (mL, optional)','number',' min="1" max="30000" step="any"')+'</div>';
-      else html+='<div class="water-form-grid">'+field('occurred_on','Date','date',' required min="1900-01-01" max="'+dayKey(getNow())+'"')+field('amount_ml','Water amount (mL)','number',' required min="1" max="30000" step="any"')+'</div><label class="water-field" for="water-notes"><span>Notes (optional)</span><textarea id="water-notes" name="notes" data-wellness-field="notes" maxlength="2000"'+(busy||pending?' disabled':'')+'>'+esc(form.notes)+'</textarea></label>';
+      if(form.type==='settings')html+='<p class="caption">Choose the number of cups your quick-add button records. A daily goal is optional and is your own preference.</p><div class="water-form-grid">'+cupField('container_ml','Your container size (cups)',' min="0.01" max="42.27" step="0.01" required')+cupField('goal_ml','Your daily goal (cups, optional)',' min="0.01" max="126.8" step="0.01"')+'</div>';
+      else html+='<div class="water-form-grid">'+field('occurred_on','Date','date',' required min="1900-01-01" max="'+dayKey(getNow())+'"')+cupField('amount_ml','Water amount (cups)',' required min="0.01" max="126.8" step="0.01"')+'</div><label class="water-field" for="water-notes"><span>Notes (optional)</span><textarea id="water-notes" name="notes" data-wellness-field="notes" maxlength="2000"'+(busy||pending?' disabled':'')+'>'+esc(form.notes)+'</textarea></label>';
       html+='<div class="water-actions"><button type="submit" class="button primary"'+(busy||current.offline?' disabled':'')+'>'+(pending?'Retry the same save':'Save '+(form.type==='settings'?'settings':'water'))+'</button>'+button('close','Close draft','',false,Boolean(pending))+'</div><p class="caption">'+(saved?'Draft saved on this device. Save online to update both people’s shared view.':'Save this entry to keep it in your household history.')+'</p></form></section>';return html;
     }
     function renderWaterCards(current,date,home) {
       const future=date>dayKey(getNow());
-      return '<div class="water-people">'+[1,2].map(person=>{const s=waterSummary(current,date,person),percent=s.goalMl?Math.min(100,s.totalMl/s.goalMl*100):0;
-        return '<article class="water-person person-'+person+'"><div class="water-person-heading"><span class="water-drop" aria-hidden="true">💧</span><span>Person '+person+'<strong>Water</strong></span>'+button('settings','⚙',' data-person="'+person+'" aria-label="Water settings for Person '+person+'"')+'</div><strong class="water-number">'+fmt(s.totalMl)+' <small>mL</small></strong><p class="water-count">'+fmt(s.containerCount)+' × '+fmt(s.containerMl)+' mL servings'+(s.logged?' logged':' · none logged')+'</p>'+(s.goalMl?'<progress value="'+s.totalMl+'" max="'+s.goalMl+'" aria-label="Person '+person+' water progress"></progress><p class="caption">Your chosen goal: '+fmt(s.goalMl)+' mL'+(percent===100?' · reached':'')+'</p>':'<p class="caption">Daily goal not set</p>')+'<div class="water-actions">'+button('add','+ '+fmt(s.containerMl)+' mL',' data-person="'+person+'" data-date="'+date+'"',true,!ready(current)||Boolean(pending)||future)+button('custom','Other amount',' data-person="'+person+'" data-date="'+date+'"',false,Boolean(pending)||future)+'</div></article>';
+      return '<div class="water-people">'+[1,2].map(person=>{const summary=waterSummary(current,date,person),percent=summary.goalMl?Math.min(100,summary.totalMl/summary.goalMl*100):0;
+        return '<article class="water-person person-'+person+'"><div class="water-person-heading"><span class="water-drop" aria-hidden="true">💧</span><span>Person '+person+'<strong>Water</strong></span>'+button('settings','⚙',' data-person="'+person+'" aria-label="Water settings for Person '+person+'"')+'</div><strong class="water-number">'+cupLabel(summary.totalMl)+'</strong><p class="water-count">'+fmt(summary.containerCount)+' × '+cupLabel(summary.containerMl)+(summary.logged?' logged':' · none logged')+'</p>'+(summary.goalMl?'<progress value="'+summary.totalMl+'" max="'+summary.goalMl+'" aria-label="Person '+person+' water progress"></progress><p class="caption">Your chosen goal: '+cupLabel(summary.goalMl)+(percent===100?' · reached':'')+'</p>':'<p class="caption">Daily goal not set</p>')+'<div class="water-actions">'+button('add','+ '+cupLabel(summary.containerMl),' data-person="'+person+'" data-date="'+date+'"',true,!ready(current)||Boolean(pending)||future)+button('custom','Other amount',' data-person="'+person+'" data-date="'+date+'"',false,Boolean(pending)||future)+'</div></article>';
       }).join('')+'</div>';
     }
     function renderWater() {
@@ -113,7 +131,9 @@
       const greeting=hour<12?'Good morning':hour<18?'Good afternoon':'Good evening';
       let html='<div class="bloom-dashboard"><section class="bloom-home-hero"><p class="page-kicker">Your day, in bloom</p><h1 id="home-dashboard-heading" tabindex="-1">'+greeting+' <span aria-hidden="true">'+(hour<18?'☀':'☾')+'</span></h1><p>'+esc(dateLabel(today))+'</p><p class="bloom-home-gentle">A little care. A little practice.<br>Room for the day you’re having.</p></section>';
       if(ready(current)) {
-        html+='<section class="bloom-household-strip"><span aria-hidden="true">⌂</span><div><strong>'+esc(current.household.name||'Your household')+'</strong><small>'+(current.members||[]).length+' of 2 household members · shared Food, Money, water, Dog & Housework</small></div></section><div class="water-prompt"><span aria-hidden="true">💧</span><div><strong>Did you drink water?</strong><small>Quick-add to either person’s saved count.</small></div>'+button('water-page','Water history')+'</div>'+renderWaterCards(current,today,true)+pendingPanel(current)+renderForm(current);
+        html+='<section class="bloom-household-strip"><span aria-hidden="true">⌂</span><div><strong>'+esc(current.household.name||'Your household')+'</strong><small>'+(current.members||[]).length+' of 2 household members · shared Food, Money, Dog & Housework</small></div></section>';
+        const todaysMeals=sharedRows(current,'cookingPlans').filter(row=>row.status==='planned'&&row.cook_on===today).sort((a,b)=>String(a.meal_type||'').localeCompare(String(b.meal_type||'')));
+        if(todaysMeals.length)html+='<section class="bloom-meal-reminder"><span class="bloom-card-icon" aria-hidden="true">🍽️</span><div><p class="page-kicker">Today’s planned meal'+(todaysMeals.length===1?'':'s')+'</p><strong>'+todaysMeals.map(row=>esc(row.recipe_name||'Planned meal')).join(' · ')+'</strong><p>'+todaysMeals.map(row=>esc((row.meal_type||'dinner').replace(/^./,c=>c.toUpperCase()))+' · '+fmt(row.servings)+' servings').join(' &nbsp; • &nbsp; ')+'</p></div>'+button('meal-plans','Open today’s menu','',true)+'</section>';
         const h=options.getHabitsSummary?options.getHabitsSummary(today):{},dog=options.getDogSummary?options.getDogSummary(today):{};
         const boost=boostSummary(current,today,1);
         html+='<div class="bloom-dashboard-grid"><article class="bloom-dashboard-card card-peach"><span class="bloom-card-icon" aria-hidden="true">🥤</span><p class="page-kicker">Person 1 · Boost</p><strong class="bloom-card-value">'+(boost.logged?fmt(boost.servings)+' servings':'None logged yet')+'</strong><p>From today’s saved food log.</p>'+button('boost','Log Boost',' data-product="'+esc(boost.product&&boost.product.id||'')+'"',true)+'</article>';
@@ -125,7 +145,7 @@
         const entries=sharedRows(current,'moneyEntries').filter(row=>!row.voided_at&&row.direction==='expense'&&String(row.occurred_on).startsWith(today.slice(0,7)));
         const spent=entries.reduce((sum,row)=>sum+Number(row.amount_cents||0),0),savings=h.smokingEstimate&&h.smokingEstimate.savingsCents;
         html+='<section class="bloom-money-card"><div><p class="page-kicker">Money in Bloom</p><h2>'+money(spent)+'</h2><p>Recorded spending this month</p></div><div class="bloom-estimate"><strong>'+(savings==null?h.smokingDay?'Set your smoking baseline & prices':'Log your smoking day':money(Math.abs(savings)))+'</strong><span>'+(savings==null?'to compare a saved day with your original plan.':savings>=0?'estimated smoking cost below your baseline today':'estimated smoking cost above your baseline today')+'</span><small>Estimates are separate from actual money entries.</small></div>'+button('navigate','Open money ledger',' data-page="money"')+'</section>';
-      } else html+='<section class="panel"><h2>Your connected daily dashboard</h2><p>Open your household to see water for both people, dog care, practice reminders, and your saved money records.</p>'+button('signin','Open sign-in','',true)+'</section>';
+      } else html+='<section class="panel"><h2>Your connected daily dashboard</h2><p>Open your household to see planned meals, dog care, practice reminders, and your saved money records.</p>'+button('signin','Open sign-in','',true)+'</section>';
       if(context.personalAvailable)html+='<div class="bloom-ideas-strip"><span aria-hidden="true">🌱</span><p><strong>'+Number(context.noteCount||0)+' saved ideas</strong><br>A place for thoughts you want to keep.</p><button type="button" class="button" data-page-action="navigate" data-page-target="ideas">Open notes</button></div>';
       return html+'</div>';
     }
@@ -137,6 +157,7 @@
         if(action==='signin'){navigate('grocery');return true;}
         if(action==='navigate'){navigate(target.dataset.page);return true;}
         if(action==='water-page'){navigate('wellness');return true;}
+        if(action==='meal-plans'){if(options.openFoodPlans)options.openFoodPlans();else navigate('food');return true;}
         if(action==='boost'){if(options.openFoodLog)options.openFoodLog(target.dataset.product,1);else navigate('wellness');return true;}
         if(action==='retry'){submitAttempt();return true;}
         if(action==='close'){if(pending)throw new Error('Confirm the pending save before closing it.');if(dirty()&&!confirm('Discard this water draft?'))return true;form=null;baseline=null;persist();refresh();return true;}
@@ -151,13 +172,23 @@
         }
         if(action==='remove') {
           if(pending)throw new Error('Confirm the pending change first.');const row=sharedRows(current,'hydrationEntries').find(r=>r.id===target.dataset.id&&!r.archived);
-          if(!row)throw new Error('Refresh to find this water entry.');if(!confirm('Undo this '+fmt(row.amount_ml)+' mL water entry for Person '+row.person_slot+'?'))return true;
+          if(!row)throw new Error('Refresh to find this water entry.');if(!confirm('Undo this '+cupLabel(row.amount_ml)+' water entry for Person '+row.person_slot+'?'))return true;
           pending={action:'archive',payload:{...clone(row),request_id:uuid()}};submitAttempt();return true;
         }
       }catch(error){notify(error.message,true);}return true;
     }
     function handleInput(event) {
-      const target=event.target;if(!target||!target.dataset||!target.dataset.wellnessField)return false;
+      const target=event.target;if(!target||!target.dataset)return false;
+      if(target.dataset.wellnessCups){
+        snapshot();if(busy||pending)return true;const name=target.dataset.wellnessCups;
+        if(form&&['container_ml','goal_ml','amount_ml'].includes(name)){
+          if(target.value==='')form[name]='';
+          else {const ml=mlFromCups(target.value);if(Number.isFinite(ml))form[name]=String(Math.round(ml*1000)/1000);}
+          persist();
+        }
+        return true;
+      }
+      if(!target.dataset.wellnessField)return false;
       const name=target.dataset.wellnessField;snapshot();if(busy||pending)return true;
       if(name==='selectedDate'){if(validDate(target.value)&&target.value!==selectedDate){if(dirty()&&!confirm('Keep the water draft on its original date and view another day?')){target.value=selectedDate;return true;}selectedDate=target.value;viewSerial++;persist();if(options.onDateChange)options.onDateChange(selectedDate);refresh();}return true;}
       if(form&&['container_ml','goal_ml','occurred_on','amount_ml','notes'].includes(name)){form[name]=String(target.value);persist();}return true;
