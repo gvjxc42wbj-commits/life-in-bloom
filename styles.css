@@ -1134,3 +1134,16 @@ html { scroll-padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
   .reference-trash-reminder{grid-template-columns:auto 1fr}
   .reference-trash-countdown{grid-column:1/-1}
 }
+
+
+/* Settings */
+.settings-page{display:grid;gap:14px;margin:14px 0 24px}
+.settings-page .panel{margin:0}
+.settings-hero{background:linear-gradient(135deg,#fff8fb,#f7fbf3)}
+.settings-form{display:grid;gap:12px}
+.settings-grid,.settings-household-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.settings-warning,.settings-danger{padding:14px;border:1px solid #ead7df;border-radius:14px;background:#fffafc}
+.settings-warning p,.settings-danger p{color:#745d68;line-height:1.55}
+.settings-danger{background:#fff7f4;border-color:#efd9d2}
+.menu-settings-button{margin-top:8px;border-top:1px solid rgba(120,73,93,.12)}
+@media(max-width:700px){.settings-grid,.settings-household-grid{grid-template-columns:1fr}.settings-account .panel-title-row,.settings-household .panel-title-row{align-items:flex-start}}
