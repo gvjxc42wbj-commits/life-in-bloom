@@ -99,6 +99,71 @@
     let noteDraft = blankNote();
     let noteBaseline = blankNote();
     let pendingNoteDelete = '';
+    let skillsView = 'me';
+    const SKILLS_KEY = 'life-in-bloom-skills-v1';
+    const DEFAULT_SKILLS = [
+      ['painting', '🎨', 'Painting', 120],
+      ['spanish', '🇪🇸', 'Spanish', 90],
+      ['piano', '🎹', 'Piano', 60],
+      ['science', '🧪', 'Science', 60],
+      ['programming', '💻', 'Programming', 60],
+      ['unity', '🎮', 'Unity / Game Dev', 60],
+      ['blender', '🧊', 'Blender / 3D', 45],
+      ['sewing', '🪡', 'Sewing', 45],
+      ['cursive', '✍️', 'Cursive', 30],
+      ['electronics', '🔌', 'Electronics', 30]
+    ];
+
+    function currentWeekKey() {
+      const date = getNow();
+      const copy = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const day = (copy.getDay() + 6) % 7;
+      copy.setDate(copy.getDate() - day);
+      return calendarKey(copy);
+    }
+    function loadSkillsState() {
+      const fallback = {
+        weeklyGoalMinutes: 600,
+        weekKey: currentWeekKey(),
+        completed: {},
+        studied: {},
+        scienceNotes: '',
+        scienceTopic: 'Scientific Notation',
+        scienceQuiz: {}
+      };
+      try {
+        const raw = root.localStorage && root.localStorage.getItem(SKILLS_KEY);
+        const parsed = raw ? JSON.parse(raw) : {};
+        return {
+          ...fallback,
+          ...parsed,
+          completed: parsed.completed || {},
+          studied: parsed.studied || {},
+          scienceQuiz: parsed.scienceQuiz || {}
+        };
+      } catch (_) { return fallback; }
+    }
+    function saveSkillsState(state) {
+      if (!root.localStorage) return;
+      root.localStorage.setItem(SKILLS_KEY, JSON.stringify(state));
+    }
+    function ensureCurrentSkillsWeek(state) {
+      const weekKey = currentWeekKey();
+      if (state.weekKey === weekKey) return state;
+      return { ...state, weekKey, completed: {}, studied: {} };
+    }
+    function skillsState() {
+      const state = ensureCurrentSkillsWeek(loadSkillsState());
+      saveSkillsState(state);
+      return state;
+    }
+    function skillMinutes(state) {
+      return DEFAULT_SKILLS.reduce((sum, skill) => sum + Number(state.studied[skill[0]] || 0), 0);
+    }
+    function progressBar(percent, label) {
+      const safe = Math.max(0, Math.min(100, percent));
+      return '<div class="skills-progress-wrap" aria-label="' + escapeText(label) + '"><div class="skills-progress-track"><div class="skills-progress-fill" style="width:' + safe + '%"></div></div><strong>' + Math.round(safe) + '%</strong></div>';
+    }
 
     const disabled = () => isReadOnly() ? ' disabled' : '';
     function shoppingDirty() {
@@ -232,6 +297,45 @@
       return html + '<p class="caption save-state">Saved on this device</p></section></section>';
     }
 
+
+    function renderSkills() {
+      const state = skillsState();
+      if (skillsView === 'science') return renderScience(state);
+      const total = skillMinutes(state);
+      const goal = Math.max(60, Number(state.weeklyGoalMinutes || 600));
+      const percent = Math.min(100, (total / goal) * 100);
+      const touched = DEFAULT_SKILLS.filter(skill => Number(state.studied[skill[0]] || 0) > 0).length;
+      const balance = DEFAULT_SKILLS.length ? (touched / DEFAULT_SKILLS.length) * 100 : 0;
+      let html = '<section class="bloom-page skills-bloom"><div class="page-heading"><p class="page-kicker">Skills in Bloom · Me</p><h2>My Learning Week</h2><p>Keep your 10-hour week balanced across everything you are learning.</p></div>';
+      html += '<div class="skills-tab-row"><button type="button" class="button primary" data-page-action="skills-view" data-skills-view="me">Me · Master Dashboard</button><button type="button" class="button" data-page-action="skills-view" data-skills-view="science">Science</button></div>';
+      html += '<section class="panel"><div class="panel-title-row"><div><p class="page-kicker">Weekly study goal</p><h3>' + (total / 60).toFixed(1) + ' / ' + (goal / 60).toFixed(1) + ' hours</h3></div><span class="pill">' + Math.round(percent) + '% complete</span></div>';
+      html += progressBar(percent, 'Weekly study progress');
+      html += '<label class="form-field"><span>Weekly goal: <strong>' + (goal / 60).toFixed(1) + ' hours</strong></span><input type="range" min="1" max="20" step="0.5" value="' + (goal / 60) + '" data-skills-field="weekly-goal" /></label></section>';
+      html += '<section class="panel"><div class="panel-title-row"><div><p class="page-kicker">Well-roundedness</p><h3>Weekly Balance</h3></div><span class="pill">' + touched + ' / ' + DEFAULT_SKILLS.length + ' subjects touched</span></div>' + progressBar(balance, 'Weekly subject balance') + '<p class="caption">This measures whether you intentionally studied your planned subjects; it does not require every subject to get equal time.</p></section>';
+      html += '<section class="panel"><div class="panel-title-row"><h3>This week</h3><span class="pill">Move each slider as you study</span></div><div class="skills-dashboard-list">';
+      for (const skill of DEFAULT_SKILLS) {
+        const minutes = Number(state.studied[skill[0]] || 0);
+        const checked = Boolean(state.completed[skill[0]]) || minutes > 0;
+        html += '<article class="skills-dashboard-card"><label class="skills-check"><input type="checkbox" data-skills-check="' + skill[0] + '"' + (checked ? ' checked' : '') + ' /><span>' + skill[1] + ' <strong>' + escapeText(skill[2]) + '</strong></span></label><div class="skills-minutes"><span>' + minutes + ' min</span><input type="range" min="0" max="180" step="5" value="' + minutes + '" data-skills-minutes="' + skill[0] + '" aria-label="' + escapeText(skill[2]) + ' minutes studied this week" /></div></article>';
+      }
+      html += '</div></section>';
+      html += '<section class="panel"><div class="panel-title-row"><h3>What should I study next?</h3><button type="button" class="button primary" data-page-action="skills-next">Choose for me</button></div><p id="skills-next-answer" class="empty-state">Use this when you want Life in Bloom to point you toward a subject you have not touched much this week.</p></section></section>';
+      return html;
+    }
+
+    function renderScience(state) {
+      const quiz = state.scienceQuiz || {};
+      let html = '<section class="bloom-page skills-bloom"><div class="page-heading"><p class="page-kicker">Skills in Bloom · Science</p><h2>Science</h2><p>Learn the foundations, practice them, test yourself, and keep your own notes.</p></div>';
+      html += '<div class="skills-tab-row"><button type="button" class="button" data-page-action="skills-view" data-skills-view="me">Me · Master Dashboard</button><button type="button" class="button primary" data-page-action="skills-view" data-skills-view="science">Science</button></div>';
+      html += '<section class="panel"><div class="panel-title-row"><div><p class="page-kicker">1 · Scientific Notation</p><h3>Write very large or very small numbers clearly</h3></div><span class="pill">Foundation</span></div><p>Scientific notation writes a number as a coefficient between 1 and 10 multiplied by a power of ten. A positive exponent moves the decimal to the right when you expand the number; a negative exponent moves it to the left.</p><div class="science-example"><strong>Examples</strong><p>32,500 = 3.25 × 10⁴</p><p>0.00325 = 3.25 × 10⁻³</p></div><details><summary>Practice</summary><div class="science-practice"><p>1. Write 450,000 in scientific notation.</p><p>2. Write 6.2 × 10⁻⁴ as a decimal.</p><p>3. Which exponent would you use for 0.000081?</p></div></details></section>';
+      html += '<section class="panel"><div class="panel-title-row"><div><p class="page-kicker">2 · Scientific Method</p><h3>Turn a question into a testable investigation</h3></div></div><div class="science-method-flow"><span>Question</span><b>→</b><span>Research</span><b>→</b><span>Hypothesis</span><b>→</b><span>Experiment</span><b>→</b><span>Data</span><b>→</b><span>Analysis</span><b>→</b><span>Conclusion</span></div><p>Practice identifying the independent variable, dependent variable, constants, control group, observations, and the data you would collect.</p><details><summary>Practice scenario</summary><p><strong>Question:</strong> Does changing the amount of sunlight affect how quickly a bean plant grows?</p><p>Identify the independent variable, dependent variable, constants, and the measurements you would record.</p></details></section>';
+      const chemistryTopics = ['Matter: solids, liquids, gases','Elements, compounds & mixtures','Atoms','Protons, neutrons & electrons','Atomic number & atomic mass','Periodic table basics','Groups & periods','Metals, nonmetals & metalloids','Ions','Molecules','Chemical formulas','Chemical bonds','Chemical reactions','Balancing simple equations','Acids & bases','pH','Moles & molar mass','Solutions & concentration','Laboratory measurement','Lab safety'];
+      html += '<section class="panel"><div class="panel-title-row"><div><p class="page-kicker">3 · Chemistry Basics</p><h3>Foundation course</h3></div><span class="pill">' + chemistryTopics.length + ' topics</span></div><div class="science-topic-grid">' + chemistryTopics.map((topic, i) => '<label class="science-topic"><input type="checkbox" data-science-topic="' + i + '"' + (quiz['topic-' + i] ? ' checked' : '') + ' /><span>' + escapeText(topic) + '</span></label>').join('') + '</div></section>';
+      html += '<section class="panel"><div class="panel-title-row"><div><p class="page-kicker">Practice Test</p><h3>Quick science check</h3></div></div><div class="science-quiz"><p><strong>1.</strong> In 4.2 × 10³, what does the exponent tell you?</p><label><input type="radio" name="science-q1" value="a" data-science-quiz="q1"' + (quiz.q1 === 'a' ? ' checked' : '') + '> The number of decimal places the decimal moves</label><label><input type="radio" name="science-q1" value="b" data-science-quiz="q1"' + (quiz.q1 === 'b' ? ' checked' : '') + '> The number of atoms</label><p><strong>2.</strong> In an experiment, what is the variable you deliberately change?</p><label><input type="radio" name="science-q2" value="a" data-science-quiz="q2"' + (quiz.q2 === 'a' ? ' checked' : '') + '> Dependent variable</label><label><input type="radio" name="science-q2" value="b" data-science-quiz="q2"' + (quiz.q2 === 'b' ? ' checked' : '') + '> Independent variable</label><p><strong>3.</strong> Which particle has a negative charge?</p><label><input type="radio" name="science-q3" value="a" data-science-quiz="q3"' + (quiz.q3 === 'a' ? ' checked' : '') + '> Electron</label><label><input type="radio" name="science-q3" value="b" data-science-quiz="q3"' + (quiz.q3 === 'b' ? ' checked' : '') + '> Proton</label><div class="page-actions"><button type="button" class="button primary" data-page-action="science-grade">Grade practice test</button></div><p id="science-grade-result" class="caption"></p></div></section>';
+      html += '<section class="panel"><div class="panel-title-row"><div><p class="page-kicker">Science Notebook</p><h3>Your notes</h3></div><span class="pill">Saved on this device</span></div><label class="form-field"><span>Lesson notes, formulas, questions, tutor notes, or things to review</span><textarea rows="10" maxlength="30000" data-skills-field="science-notes" placeholder="Write your science notes here…">' + escapeText(state.scienceNotes || '') + '</textarea></label></section></section>';
+      return html;
+    }
+
     function renderSection(page) {
       const section = SECTIONS[page];
       if (!section) return '<section class="panel"><h2>Choose a page</h2>' + linkButton('home', 'Go Home', true) + '</section>';
@@ -241,12 +345,30 @@
       if (page === 'home') return renderHome();
       if (page === 'grocery') return renderGrocery();
       if (page === 'ideas') return renderIdeas();
+      if (page === 'skills') return renderSkills();
       return renderSection(page);
     }
 
     function handleInput(event) {
       const field = event.target;
       const name = field && field.dataset && field.dataset.pageField;
+      if (field && field.dataset && field.dataset.skillsField) {
+        const state = skillsState();
+        if (field.dataset.skillsField === 'weekly-goal') state.weeklyGoalMinutes = Math.round(Number(field.value || 10) * 60);
+        if (field.dataset.skillsField === 'science-notes') state.scienceNotes = field.value;
+        saveSkillsState(state);
+        if (field.dataset.skillsField === 'weekly-goal') refresh();
+        return true;
+      }
+      if (field && field.dataset && field.dataset.skillsMinutes) {
+        const state = skillsState();
+        const id = field.dataset.skillsMinutes;
+        state.studied[id] = Math.max(0, Number(field.value || 0));
+        state.completed[id] = state.studied[id] > 0;
+        saveSkillsState(state);
+        refresh();
+        return true;
+      }
       if (!name) return false;
       if (name === 'shopping-name') shoppingDraft.name = field.value;
       else if (name === 'shopping-quantity') shoppingDraft.quantity = field.value;
@@ -286,6 +408,25 @@
     }
     function handleChange(event) {
       const field = event.target;
+      if (field && field.dataset && field.dataset.skillsCheck) {
+        const state = skillsState();
+        state.completed[field.dataset.skillsCheck] = Boolean(field.checked);
+        saveSkillsState(state);
+        refresh();
+        return true;
+      }
+      if (field && field.dataset && field.dataset.scienceTopic != null) {
+        const state = skillsState();
+        state.scienceQuiz['topic-' + field.dataset.scienceTopic] = Boolean(field.checked);
+        saveSkillsState(state);
+        return true;
+      }
+      if (field && field.dataset && field.dataset.scienceQuiz) {
+        const state = skillsState();
+        state.scienceQuiz[field.dataset.scienceQuiz] = field.value;
+        saveSkillsState(state);
+        return true;
+      }
       const id = field && field.dataset && field.dataset.shoppingToggle;
       if (!id) return false;
       const item = (getData().shoppingList || []).find(entry => entry.id === id);
@@ -303,6 +444,28 @@
       const button = event.target && event.target.closest && event.target.closest('[data-page-action]');
       if (!button) return false;
       const action = button.dataset.pageAction;
+      if (action === 'skills-view') {
+        skillsView = button.dataset.skillsView === 'science' ? 'science' : 'me';
+        refresh();
+        return true;
+      }
+      if (action === 'skills-next') {
+        const state = skillsState();
+        const ranked = DEFAULT_SKILLS.map(skill => ({ skill, minutes: Number(state.studied[skill[0]] || 0) }))
+          .sort((a, b) => a.minutes - b.minutes);
+        const pick = ranked[0];
+        const answer = root.document && root.document.getElementById('skills-next-answer');
+        if (answer && pick) answer.textContent = pick.skill[2] + ' would be a good next choice. You have logged ' + pick.minutes + ' minutes there this week.';
+        return true;
+      }
+      if (action === 'science-grade') {
+        const state = skillsState();
+        const correct = { q1: 'a', q2: 'b', q3: 'a' };
+        const score = Object.keys(correct).reduce((sum, key) => sum + (state.scienceQuiz[key] === correct[key] ? 1 : 0), 0);
+        const result = root.document && root.document.getElementById('science-grade-result');
+        if (result) result.textContent = 'Score: ' + score + ' / 3. ' + (score === 3 ? 'Excellent — all three are correct.' : 'Review the lesson sections above, then try again.');
+        return true;
+      }
       if (action === 'navigate') { navigate(button.dataset.pageTarget); return true; }
       if (action === 'open-day') { openDate(button.dataset.date); return true; }
       if (action === 'keep-note') {
