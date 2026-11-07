@@ -1366,3 +1366,37 @@ body{background:linear-gradient(140deg,#f4effa 0,#fbf9ff 62%,#eee6f7 100%)}
     grid-template-columns:1fr;
   }
 }
+
+
+/* User-uploaded transparent dog image */
+.home-dog-image-slot{
+  position:relative;
+  width:104px;
+  height:104px;
+  display:grid;
+  place-items:center;
+  background:transparent;
+}
+.home-dog-image-slot img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  background:transparent;
+}
+.dog-home-upload{
+  position:absolute;
+  right:-6px;
+  bottom:-4px;
+  width:30px;
+  height:30px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  border:1px solid #cdbbdf;
+  background:#f8f3fc;
+  color:#6f5398;
+  font-weight:800;
+  cursor:pointer;
+  box-shadow:0 4px 12px rgba(72,50,94,.10);
+}
+.dog-home-upload:hover{background:#eee5f7}
