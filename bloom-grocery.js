@@ -353,7 +353,7 @@
         return '<section class="panel grocery-auth"><p class="page-kicker">Your account</p><h2>Choose a new password</h2><p>Set a password for your Grocery account.</p>' + form('password', input('auth', 'password', 'New password', 'type="password" required minlength="12" maxlength="256" autocomplete="new-password"') + input('auth', 'confirmation', 'Repeat new password', 'type="password" required minlength="12" maxlength="256" autocomplete="new-password"') + '<p class="grocery-help">Use at least 12 characters.</p><div class="grocery-actions">' + submit('Save new password') + '</div>') + '</section>';
       }
       const mode = authMode;
-      const title = mode === 'signup' ? 'Create your Grocery account' : mode === 'reset' ? 'Reset your password' : 'Sign in to your household';
+      const title = mode === 'signup' ? 'Create your Life in Bloom account' : mode === 'reset' ? 'Reset your password' : 'Sign in to your household';
       let fields = input('auth', 'email', 'Your email', 'type="email" required maxlength="254" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false"');
       if (mode !== 'reset') fields += input('auth', 'password', 'Password', 'type="password" required ' + (mode === 'signup' ? 'minlength="12" ' : '') + 'maxlength="256" autocomplete="' + (mode === 'signup' ? 'new-password' : 'current-password') + '"');
       if (mode === 'signin') fields += '<p class="grocery-help">Stay signed in on this device. Use Sign out when you want to switch accounts.</p>';
