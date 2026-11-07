@@ -329,3 +329,46 @@ linear-gradient(145deg,#fffdf8,#f6eee4);color:#2e292a}
   .food-pdf-actions a.button{grid-column:1/-1}
   .food-pdf-frame-wrap{height:72vh;min-height:520px;border-radius:12px}
 }
+
+
+/* Wide desktop cookbook reading mode */
+@media (min-width: 1100px){
+  .food-page:has(.food-pdf-cookbook){
+    overflow: visible;
+  }
+  .food-pdf-cookbook{
+    width:min(94vw,1720px);
+    max-width:none;
+    position:relative;
+    left:50%;
+    transform:translateX(-50%);
+    margin-top:.25rem;
+    margin-bottom:2rem;
+  }
+  .food-pdf-toolbar{
+    grid-template-columns:minmax(220px,1fr) auto auto;
+    padding:.8rem 1rem;
+  }
+  .food-pdf-frame-wrap{
+    height:calc(100vh - 165px);
+    min-height:780px;
+    border-radius:20px;
+  }
+  .food-pdf-frame{
+    min-height:780px;
+  }
+  .food-pdf-help{
+    max-width:1100px;
+    margin:.7rem auto 0;
+    text-align:center;
+  }
+}
+@media (min-width: 1500px){
+  .food-pdf-cookbook{
+    width:min(96vw,1880px);
+  }
+  .food-pdf-frame-wrap{
+    height:calc(100vh - 145px);
+    min-height:840px;
+  }
+}
