@@ -531,6 +531,12 @@
       html += '<div class="grocery-backup"><h3>Your household backup</h3><p class="grocery-help">Export shared products, inventory, recipes, shopping lists, monthly budgets, receipts, money history, water entries, Dog, and Housework. File references are included; attached photos and PDFs remain in private online storage.</p><div class="grocery-actions">' + button('export-household', 'Export household backup') + '</div>';
       if (owner) html += '<label class="grocery-field grocery-backup-picker"><span>Restore missing records from a household backup</span><input type="file" accept="application/json,.json" data-grocery-household-import' + disabled() + '></label><p class="grocery-help">Restore is for this same household. Existing records are kept; conflicting changes stop the restore for review. Receipt history is restored without recording the purchases again.</p>';
       if (owner && backupReview) html += '<div class="grocery-backup-review"><h4>Review ' + escapeText(backupReview.name) + '</h4><p class="grocery-help">This household · ' + backupReview.payload.data.products.length + ' products · ' + backupReview.payload.data.receipts.length + ' receipts · ' + backupReview.payload.data.moneyEntries.length + ' money entries</p><div class="grocery-actions">' + button('restore-household', 'Restore missing records', '', true) + button('cancel-household-import', 'Cancel restore') + '</div></div>';
+      const leaveText=owner
+        ? (members.length>1
+          ? 'Leave household · ownership will transfer to the other member.'
+          : 'Leave household · because you are the only member, the shared household and its shared data will be deleted.')
+        : 'Leave household · your account stays signed in and can join or create another household.';
+      html += '<div class="grocery-leave-household"><h3>Household membership</h3><p class="grocery-help">'+escapeText(leaveText)+'</p><div class="grocery-actions">'+button('leave-household','Leave household','',false,current.offline)+'</div></div>';
       return html + '</div><div class="grocery-actions grocery-signout">' + button('signout', 'Sign out of Grocery') + '</div></section>';
     }
     function render() {
@@ -818,7 +824,7 @@
       const element = event.target && event.target.closest && event.target.closest('[data-grocery-action]');
       if (!element || !element.dataset || !element.dataset.groceryAction) return false;
       const action = element.dataset.groceryAction;
-      const actions = ['tab', 'auth-mode', 'retry', 'refresh', 'signout', 'filter-location', 'open-budget', 'edit-shopping', 'edit-inventory', 'clear-shopping', 'clear-inventory', 'clear-private', 'clear-diet', 'delete-shopping', 'delete-inventory', 'confirm-delete', 'keep-item', 'review-import', 'confirm-import', 'cancel-import', 'create-invite', 'record-trip', 'record-checked-trip', 'view-shopping-receipt', 'open-money', 'use-soon', 'meal-plans', 'freeze-inventory', 'export-household', 'restore-household', 'cancel-household-import', 'confirm-master-import', 'cancel-master-import'];
+      const actions = ['tab', 'auth-mode', 'retry', 'refresh', 'signout', 'filter-location', 'open-budget', 'edit-shopping', 'edit-inventory', 'clear-shopping', 'clear-inventory', 'clear-private', 'clear-diet', 'delete-shopping', 'delete-inventory', 'confirm-delete', 'keep-item', 'review-import', 'confirm-import', 'cancel-import', 'create-invite', 'record-trip', 'record-checked-trip', 'view-shopping-receipt', 'open-money', 'use-soon', 'meal-plans', 'freeze-inventory', 'export-household', 'restore-household', 'cancel-household-import', 'confirm-master-import', 'cancel-master-import', 'leave-household'];
       if (!actions.includes(action)) return false;
       const current = snapshot();
       if (busy || (commerce && commerce.isBusy())) return true;
@@ -857,6 +863,20 @@
         }
         else if (action === 'use-soon') { if (options.openFood) options.openFood('soon'); else navigate('food'); }
         else if (action === 'meal-plans') { if (options.openFood) options.openFood('plans'); else navigate('food'); }
+        else if (action === 'leave-household') {
+          const mine=(current.members||[]).find(member=>current.user&&member.user_id===current.user.id);
+          const owner=mine&&mine.role==='owner';
+          const other=(current.members||[]).some(member=>current.user&&member.user_id!==current.user.id);
+          const message=owner
+            ? (other
+              ? 'Leave this household? The other member will become the owner. You will stay signed in and can join or create another household.'
+              : 'Leave this household? You are the only member, so the shared household and all of its shared records will be permanently deleted. Your account will stay signed in.')
+            : 'Leave this household? You will stay signed in and can join or create another household.';
+          if(confirm(message)!==true)return true;
+          if(typeof store.leaveHousehold!=='function')throw new Error('Refresh the app to load the household-leaving tools.');
+          run('Leaving household…',()=>store.leaveHousehold(),()=>{invite=null;backupReview=null;resetDrafts();announce('You left the household. Your account is still signed in, and you can join or create another household.');});
+          return true;
+        }
         else if (action === 'export-household') {
           run('Preparing the household backup…', () => store.exportHousehold(), payload => {
             const filename = 'life-in-bloom-household-' + monthKey(getNow()) + '-' + String(getNow().getDate()).padStart(2, '0') + '.json';
