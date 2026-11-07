@@ -175,3 +175,129 @@
 .food-recipe-detail{scroll-margin-top:18px;outline:none}.food-recipe-jump{position:sticky;top:8px;z-index:4;display:flex;justify-content:space-between;gap:.55rem;margin:-.25rem 0 1rem;padding:.45rem;border:1px solid #e7c8d5;border-radius:14px;background:rgba(255,250,252,.95);backdrop-filter:blur(10px)}
 .food-recipe-jump .button{min-height:38px;padding:.55rem .8rem}
 @media(max-width:620px){.food-cookbook-grid{grid-template-columns:1fr}.food-recipe-jump{top:6px}.food-cookbook-cover{padding:1rem}}
+
+
+/* Cookbook dashboard + live cooking experience */
+.food-cookbook-app{margin:0 auto 2rem;max-width:1320px}
+.food-cookbook-main{display:block}
+.food-cookbook-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin:.2rem 0 1rem}
+.food-cookbook-heading h1{margin:0;color:#1e1a1c;font-family:inherit;font-size:clamp(2rem,4vw,3rem);line-height:1}
+.food-cookbook-heading p{margin:.35rem 0 0;color:#6d6268;font-size:1rem}
+.food-round-search{width:52px;height:52px;border:0;border-radius:50%;background:#d8f8df;color:#172c1e;font-size:1.75rem;cursor:pointer}
+.food-cookbook-dashboard{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(330px,.8fr);gap:1rem;align-items:start}
+.food-cookbook-left{min-width:0}
+.food-book-feature{position:relative;min-height:280px;padding:1rem;border:1px solid #eee4dc;border-radius:24px;background:linear-gradient(135deg,#f0e4d6,#f8f4ec);overflow:hidden}
+.food-open-book{display:grid;grid-template-columns:1fr 1fr;min-height:235px;border-radius:18px;background:#fffdf9;box-shadow:0 18px 38px rgba(68,49,39,.14);overflow:hidden}
+.food-book-visual{position:relative;display:flex;flex-direction:column;justify-content:flex-end;min-height:230px;padding:1rem;background:
+radial-gradient(circle at 30% 40%,rgba(255,255,255,.9),rgba(255,255,255,.2) 28%,transparent 29%),
+linear-gradient(145deg,#fffdf8,#f6eee4);color:#2e292a}
+.food-book-visual.is-left{border-right:1px solid #e5ddd3}
+.food-book-visual.is-right{border-left:1px solid #f5f0e9}
+.food-book-page-no{position:absolute;top:.8rem;left:1rem;font-size:.72rem;color:#5d5856}
+.food-book-dish{display:grid;place-items:center;align-self:center;width:120px;height:100px;margin:auto;border-radius:24px;background:linear-gradient(145deg,#f6e8de,#e9f1db);font-size:3rem;box-shadow:inset 0 0 0 1px #ede2d7}
+.food-book-visual strong{font-family:Georgia,serif;font-size:1rem}
+.food-book-visual small{margin-top:.18rem;color:#6f6865;font-size:.72rem}
+.food-open-cookbook{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);min-width:230px;min-height:48px;border:1px solid #c8e5ce;border-radius:999px;background:#dff5e4;color:#1f3b27;font-size:.95rem;font-weight:800;box-shadow:0 8px 24px rgba(43,85,51,.12);cursor:pointer}
+.food-cookbook-quick{display:grid;gap:.62rem;margin-top:.85rem}
+.food-cookbook-quick>button{display:grid;grid-template-columns:48px 1fr auto;grid-template-rows:auto auto;align-items:center;column-gap:.75rem;padding:.8rem .95rem;border:1px solid #ece7e3;border-radius:18px;background:#fff;text-align:left;color:#1f1b1d;cursor:pointer}
+.food-cookbook-quick>button:nth-child(1),.food-cookbook-quick>button:nth-child(5){background:linear-gradient(90deg,#eaf8ed,#f7fbf7)}
+.food-cookbook-quick>button:nth-child(2){background:linear-gradient(90deg,#eef8ef,#fff)}
+.food-cookbook-quick>button:nth-child(3){background:linear-gradient(90deg,#fff4ec,#fff)}
+.food-cookbook-quick>button:nth-child(4){background:linear-gradient(90deg,#f3edff,#fff)}
+.food-cookbook-quick>button>span{grid-row:1/3;display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:#d7f5dd;font-size:1.15rem}
+.food-cookbook-quick strong{font-size:1rem}
+.food-cookbook-quick small{color:#6f686d}
+.food-cookbook-quick b{grid-column:3;grid-row:1/3;font-size:1.35rem;font-weight:500}
+.food-browse-pages{margin:1rem 0 0}
+.food-browse-pages h2,.food-menu-preview h2{margin:.25rem 0 .7rem;color:#1e1a1c;font-size:1.55rem}
+.food-browse-strip{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:.75rem;overflow-x:auto;padding:.1rem .1rem .6rem}
+.food-page-thumb{min-width:0}
+.food-page-thumb>button{display:block;width:100%;padding:0;border:0;background:transparent;cursor:pointer}
+.food-book-visual.is-thumb{min-height:160px;border:1px solid #e7ded5;border-radius:14px;padding:.7rem;box-shadow:0 7px 16px rgba(67,52,47,.08)}
+.food-book-visual.is-thumb .food-book-dish{width:88px;height:72px;font-size:2.2rem}
+.food-book-visual.is-thumb strong{font-size:.78rem}
+.food-page-thumb>strong{display:block;margin:.45rem 0 .15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.9rem}
+.food-page-thumb>small{display:block;color:#7c7477;font-size:.72rem}
+.food-page-thumb>div{display:flex;gap:.35rem;margin-top:.4rem}
+.food-page-thumb>div button{flex:1;padding:.35rem .45rem;border:1px solid #e6ddd8;border-radius:9px;background:#fff;color:#5e4851;font-size:.72rem;font-weight:700;cursor:pointer}
+.food-page-thumb>div button:last-child{background:#e6f7e9;color:#285035;border-color:#cfe7d4}
+.food-page-thumb.is-selected .food-book-visual.is-thumb{outline:2px solid #82b88e;outline-offset:2px}
+.food-menu-preview{margin-top:1.1rem;padding-top:.95rem;border-top:1px solid #ece3df}
+.food-menu-preview-head{display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.food-menu-preview-head p{margin:.15rem 0;color:#756d71}
+.food-menu-days{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.6rem;margin-top:.65rem}
+.food-menu-days>button{display:grid;gap:.35rem;min-height:125px;padding:.7rem;border:1px solid #eadfd8;border-radius:15px;background:#fffaf7;color:#3f3337;text-align:center;cursor:pointer}
+.food-menu-days>button span{display:grid;place-items:center;min-height:55px;border-radius:10px;background:linear-gradient(145deg,#f5eee8,#e9f2df);font-size:1.8rem}
+.food-menu-days>button small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.food-menu-empty{grid-column:1/-1;padding:1rem;border:1px dashed #ddd0c9;border-radius:14px;color:#776d71}
+.food-live-panel{position:sticky;top:10px;min-width:0;padding:.85rem;border:1px solid #eadfd9;border-radius:24px;background:#fffdfb;box-shadow:0 14px 34px rgba(71,52,46,.08)}
+.food-live-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:.65rem}
+.food-live-topbar .button{min-height:36px;padding:.45rem .65rem;background:#fff;border-color:#ebe1dc}
+.food-live-hero{display:grid;place-items:center;min-height:145px;border-radius:18px;background:linear-gradient(145deg,#e8c8a7,#dbe6bd 52%,#f6c1ad);font-size:4.2rem}
+.food-live-panel>h2{margin:.65rem 0 .25rem;color:#191719;font-size:clamp(1.35rem,2.4vw,2rem);line-height:1.05}
+.food-live-meta{margin:.2rem 0 .65rem;color:#3f393c;font-size:.9rem}
+.food-live-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:.25rem;padding:.25rem;border:1px solid #eee5e1;border-radius:16px;background:#fbf7f4}
+.food-live-tabs>*{display:grid;place-items:center;min-height:38px;border:0;border-radius:12px;background:transparent;color:#554d51;font-size:.78rem;font-weight:700}
+.food-live-tabs .is-active{background:#4c9d5c;color:#fff}
+.food-live-step-card{margin-top:.7rem;border:1px solid #efc6c8;border-radius:18px;overflow:hidden;background:#fff}
+.food-live-step-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.7rem;padding:.7rem .8rem;background:#fff0f1}
+.food-live-step-head>div{display:grid;grid-template-columns:auto 1fr;gap:.1rem .4rem}
+.food-live-step-head strong{font-size:.95rem}
+.food-live-step-head small{grid-column:2;color:#76686d;font-size:.7rem}
+.food-live-dot{width:9px;height:9px;margin-top:.25rem;border-radius:50%;background:#d52f3b}
+.food-live-progress-dots{display:flex;justify-content:space-between;gap:.25rem;padding:.7rem 1rem .2rem}
+.food-live-progress-dots span{display:grid;place-items:center;width:24px;height:24px;border:1px solid #cfc8c5;border-radius:50%;background:#fff;color:#675f62;font-size:.7rem}
+.food-live-progress-dots .is-current{background:#47a159;color:#fff;border-color:#47a159}
+.food-live-progress-dots .is-done{background:#dcefe0;border-color:#9ac8a3}
+.food-live-step-body{display:grid;grid-template-columns:minmax(120px,.9fr) 1.1fr;gap:.75rem;padding:.7rem}
+.food-live-step-visual{display:grid;place-items:center;min-height:135px;border-radius:13px;background:linear-gradient(145deg,#d9b88d,#efe4d4);font-size:3rem}
+.food-live-step-body small{color:#5c5558}.food-live-step-body h3{margin:.25rem 0 .4rem;color:#171517;font-size:1.05rem}.food-live-step-body p{margin:0;color:#3e383b;line-height:1.5;font-size:.86rem}
+.food-live-controls{display:flex;flex-wrap:wrap;gap:.45rem;padding:0 .7rem .75rem}
+.food-live-controls .button{flex:1;min-width:86px;min-height:40px;padding:.55rem .65rem;border-radius:12px}
+.food-live-controls .primary{background:#f5cfd1;border-color:#e9b8bc;color:#702d34}
+.food-live-finished{display:grid;place-items:center;flex:1;min-height:40px;border-radius:12px;background:#e7f5ea;color:#2c6839;font-weight:800}
+.food-live-tools{display:grid;grid-template-columns:repeat(3,1fr);gap:.45rem;margin-top:.6rem}
+.food-live-tools>div{padding:.65rem .55rem;border:1px solid #eee4df;border-radius:14px;background:#fff;text-align:center}
+.food-live-tools strong,.food-live-tools small{display:block}.food-live-tools strong{font-size:.78rem}.food-live-tools small{margin-top:.15rem;color:#766c71;font-size:.64rem}
+.food-live-timer-actions{display:flex;justify-content:center;margin-top:.55rem}
+.food-live-overall{margin-top:.6rem;padding:.65rem;border:1px solid #eee4df;border-radius:14px;background:#fff}
+.food-live-overall>div{display:flex;justify-content:space-between;gap:.5rem;font-size:.72rem}
+.food-live-overall progress{width:100%;height:8px;margin-top:.45rem;accent-color:#45a15a}
+.food-live-main-button{width:100%;min-height:52px;margin-top:.7rem;border:0;border-radius:999px;background:#d43b42;color:#fff;font-size:.95rem;font-weight:800;cursor:pointer}
+.food-preview-actions{display:flex;gap:.5rem;margin-top:.8rem}.food-preview-actions .button{flex:1}
+.food-recipe-preview .food-book-visual.is-preview{min-height:160px;border-radius:16px;background:linear-gradient(145deg,#e6d7c7,#edf2dd)}
+.food-recipe-preview .food-book-visual.is-preview .food-book-dish{font-size:3rem}
+.food-full-contents{margin-top:1rem;padding:.65rem 1rem;border:1px solid #e8ddd7;border-radius:18px;background:#fff}
+.food-full-contents>summary{cursor:pointer;font-weight:800;color:#44373d}
+.food-full-contents section{margin:1rem 0}.food-full-contents section>h3{margin:.2rem 0 .55rem}
+.food-full-contents section>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.4rem}
+.food-full-contents section button{display:grid;grid-template-columns:auto 1fr auto;gap:.5rem;padding:.55rem .65rem;border:1px solid #eee3de;border-radius:10px;background:#fff;text-align:left;color:#4c3d43;cursor:pointer}
+.food-full-contents section button span,.food-full-contents section button small{color:#887b80;font-size:.7rem}
+.food-full-contents section button strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:1000px){
+  .food-cookbook-dashboard{grid-template-columns:1fr}
+  .food-live-panel{position:relative;top:auto}
+  .food-browse-strip{grid-template-columns:repeat(5,minmax(150px,1fr))}
+}
+@media(max-width:760px){
+  .food-open-book{grid-template-columns:1fr 1fr}
+  .food-book-feature{min-height:240px}
+  .food-book-visual{min-height:190px}
+  .food-cookbook-quick{grid-template-columns:1fr}
+  .food-menu-days{grid-template-columns:repeat(5,minmax(125px,1fr));overflow-x:auto}
+  .food-full-contents section>div{grid-template-columns:1fr 1fr}
+}
+@media(max-width:540px){
+  .food-cookbook-heading{align-items:flex-start}
+  .food-round-search{width:46px;height:46px}
+  .food-book-feature{padding:.65rem}
+  .food-open-book{min-height:210px}
+  .food-book-visual{min-height:175px;padding:.6rem}
+  .food-book-dish{width:84px;height:72px;font-size:2.4rem}
+  .food-open-cookbook{min-width:200px;min-height:44px}
+  .food-browse-strip{grid-template-columns:repeat(5,140px)}
+  .food-live-step-body{grid-template-columns:1fr}
+  .food-live-tools{grid-template-columns:1fr}
+  .food-full-contents section>div{grid-template-columns:1fr}
+  .food-live-panel{padding:.65rem;border-radius:18px}
+}
