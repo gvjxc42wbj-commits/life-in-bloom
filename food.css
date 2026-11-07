@@ -163,3 +163,15 @@
 
 .food-hub-card.is-primary{grid-column:1/-1;background:linear-gradient(135deg,#fff1f5,#fde2ec);border-color:#d990aa;box-shadow:0 14px 30px rgba(132,57,88,.12)}
 .food-hub-card.is-primary>span{font-size:1.9rem}.food-hub-card.is-primary strong{font-size:1.4rem}
+
+/* Food In Bloom cookbook navigation */
+.food-cookbook-cover{padding:1.25rem 1.3rem;margin-bottom:1.15rem;border:1px solid #d9a3ba;border-radius:24px;background:linear-gradient(135deg,#541837,#8b315b 58%,#f3abc7);color:#fff;box-shadow:0 14px 34px rgba(86,24,55,.14)}
+.food-cookbook-cover .page-kicker{color:#ffd5e5}.food-cookbook-cover h2{margin:.15rem 0 .35rem;font-size:clamp(1.9rem,5vw,2.7rem);color:#fff}.food-cookbook-cover p{max-width:46rem;line-height:1.55}.food-cookbook-cover span{display:inline-block;margin-top:.35rem;font-size:.82rem;font-weight:700;opacity:.92}
+.food-cookbook-section{margin:1.3rem 0 1.8rem}.food-cookbook-section>h3{margin:0 0 .75rem;font-size:1.15rem;color:#6e354e}
+.food-cookbook-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
+.food-cookbook-page{appearance:none;display:grid;gap:.35rem;min-width:0;padding:1rem;text-align:left;border:1px solid #e2bfce;border-radius:18px;background:linear-gradient(180deg,#fffefd,#fff7fa);color:#4f303e;box-shadow:0 7px 18px rgba(99,55,73,.05)}
+.food-cookbook-page:hover,.food-cookbook-page:focus-visible{border-color:#bf7795;transform:translateY(-1px);box-shadow:0 10px 24px rgba(99,55,73,.09)}
+.food-cookbook-number{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a14c70}.food-cookbook-page strong{font-family:Georgia,serif;font-size:1.05rem;line-height:1.3}.food-cookbook-page small{color:#785b68;line-height:1.4}.food-cookbook-open{margin-top:.2rem;font-size:.8rem;font-weight:800;color:#9d476b}
+.food-recipe-detail{scroll-margin-top:18px;outline:none}.food-recipe-jump{position:sticky;top:8px;z-index:4;display:flex;justify-content:space-between;gap:.55rem;margin:-.25rem 0 1rem;padding:.45rem;border:1px solid #e7c8d5;border-radius:14px;background:rgba(255,250,252,.95);backdrop-filter:blur(10px)}
+.food-recipe-jump .button{min-height:38px;padding:.55rem .8rem}
+@media(max-width:620px){.food-cookbook-grid{grid-template-columns:1fr}.food-recipe-jump{top:6px}.food-cookbook-cover{padding:1rem}}
