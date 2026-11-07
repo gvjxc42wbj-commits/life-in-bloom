@@ -372,3 +372,68 @@ linear-gradient(145deg,#fffdf8,#f6eee4);color:#2e292a}
     min-height:840px;
   }
 }
+
+
+/* Native Food In Bloom digital cookbook */
+.food-digital-cookbook{max-width:1420px;margin:0 auto 2rem}
+.food-digital-cookbook-header{display:flex;align-items:flex-end;justify-content:space-between;gap:1.2rem;padding:1.2rem 1.35rem;border:1px solid #e8cbd8;border-radius:24px;background:linear-gradient(135deg,#fff8fb,#f9e5ee 68%,#fffaf8)}
+.food-digital-cookbook-header h1{margin:.1rem 0 .35rem;color:#4d2639;font-family:Georgia,serif;font-size:clamp(2rem,5vw,3.4rem)}
+.food-digital-cookbook-header p{max-width:800px;margin:.2rem 0;color:#715765;line-height:1.55}
+.food-digital-cookbook-stats{display:grid;grid-template-columns:auto auto;gap:.1rem .45rem;align-items:baseline;padding:.75rem 1rem;border-radius:18px;background:#fff;border:1px solid #edd8e1;white-space:nowrap}
+.food-digital-cookbook-stats strong{color:#9d4268;font-size:1.6rem}.food-digital-cookbook-stats span{color:#765b67;font-size:.75rem}
+.food-digital-cookbook-tools{display:grid;grid-template-columns:minmax(260px,420px) 1fr;gap:1rem;align-items:end;margin:1rem 0}
+.food-cookbook-category-pills{display:flex;gap:.4rem;overflow-x:auto;padding:.15rem .1rem .35rem}
+.food-cookbook-category-pills button{flex:0 0 auto;min-height:38px;padding:.45rem .75rem;border:1px solid #e6c9d6;border-radius:999px;background:#fff;color:#744357;font-size:.76rem;font-weight:700;cursor:pointer}
+.food-digital-cookbook-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(360px,.75fr);gap:1rem;align-items:start}
+.food-digital-cookbook-list{min-width:0}
+.food-cookbook-native-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem}
+.food-cookbook-native-card{display:grid;gap:.45rem;min-width:0;padding:.55rem;border:1px solid #ead2dc;border-radius:18px;background:#fffafd;box-shadow:0 7px 18px rgba(94,49,69,.05)}
+.food-cookbook-native-card.is-selected{border-color:#b85f86;box-shadow:0 0 0 2px #f7dbe7,0 10px 24px rgba(94,49,69,.09)}
+.food-cookbook-native-select{display:grid;grid-template-columns:112px 1fr;gap:.7rem;align-items:stretch;width:100%;padding:0;border:0;background:transparent;text-align:left;color:inherit;cursor:pointer}
+.food-cookbook-native-thumb{position:relative;min-height:98px;border:1px solid #eadfd9;border-radius:13px;overflow:hidden;background:linear-gradient(145deg,#f2e5da,#eaf1de)}
+.food-cookbook-native-thumb::before{content:"";position:absolute;inset:8px;border-radius:10px;background:linear-gradient(145deg,#8a3059,#c888a5 40%,#e7d9ca 41%,#faf8f4 72%,#1f5a42 73%);opacity:.86}
+.food-cookbook-native-thumb::after{content:"Food In Bloom";position:absolute;left:8px;right:8px;bottom:8px;padding:.35rem;border-radius:8px;background:rgba(255,255,255,.9);color:#5f2941;font-family:Georgia,serif;font-size:.67rem;font-weight:700;text-align:center}
+.food-cookbook-native-thumb>span{position:absolute;z-index:2;top:6px;left:6px;padding:.2rem .35rem;border-radius:7px;background:rgba(255,255,255,.92);color:#82425e;font-size:.62rem;font-weight:800}
+.food-cookbook-native-copy{min-width:0;padding:.2rem 0}
+.food-cookbook-native-copy small{color:#9b6079;font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
+.food-cookbook-native-copy h3{margin:.3rem 0;color:#50303f;font-size:1rem;line-height:1.25}
+.food-cookbook-native-copy p{margin:.15rem 0;color:#765d68;font-size:.74rem}
+.food-cookbook-native-actions{display:flex;gap:.35rem}.food-cookbook-native-actions .button{flex:1;min-height:36px;padding:.42rem .55rem;font-size:.72rem}
+.food-cookbook-native-detail{position:sticky;top:10px;display:grid;gap:.75rem;padding:1rem;border:1px solid #e6ccd7;border-radius:22px;background:#fff;box-shadow:0 14px 34px rgba(83,46,62,.08)}
+.food-cookbook-detail-hero{display:grid;grid-template-columns:150px 1fr;gap:.85rem;align-items:center}
+.food-cookbook-native-thumb.is-large{min-height:150px}
+.food-cookbook-detail-hero h2{margin:.45rem 0 .2rem;color:#4f283a;font-family:Georgia,serif;font-size:clamp(1.45rem,3vw,2.1rem);line-height:1.08}
+.food-cookbook-detail-hero p{margin:0;color:#765e68}
+.food-cookbook-detail-actions{display:flex;flex-wrap:wrap;gap:.45rem}.food-cookbook-detail-actions .button{flex:1 1 125px}
+.food-cookbook-native-detail details{padding:.2rem .8rem .75rem;border:1px solid #eedbe3;border-radius:14px;background:#fffafd}
+.food-cookbook-native-detail details>summary{cursor:pointer;font-weight:800;color:#713e54}
+.food-cookbook-native-detail .food-nutrition{margin:.1rem 0}
+@media(max-width:1050px){
+  .food-digital-cookbook-layout{grid-template-columns:1fr}
+  .food-cookbook-native-detail{position:relative;top:auto}
+}
+@media(max-width:760px){
+  .food-digital-cookbook-header{align-items:flex-start;flex-direction:column}
+  .food-digital-cookbook-tools{grid-template-columns:1fr}
+  .food-cookbook-native-grid{grid-template-columns:1fr}
+}
+@media(max-width:480px){
+  .food-cookbook-native-select{grid-template-columns:92px 1fr}
+  .food-cookbook-detail-hero{grid-template-columns:1fr}
+  .food-cookbook-native-thumb.is-large{min-height:170px}
+}
+
+/* Menu: compact planner dropdown, upcoming meals stay primary */
+.food-menu-page{display:grid;gap:.85rem}
+.food-menu-heading{padding:.2rem .15rem}.food-menu-heading h2{margin:.15rem 0 .25rem;color:#633b4b;font-family:Georgia,serif;font-size:clamp(1.8rem,4vw,2.6rem)}
+.food-menu-heading p{margin:.15rem 0;color:#765967}
+.food-plan-dropdown{padding:0;border:1px solid #e6bfd0;border-radius:18px;background:#fffafd;overflow:hidden}
+.food-plan-dropdown>summary{display:grid;grid-template-columns:44px 1fr auto;grid-template-rows:auto auto;align-items:center;gap:.1rem .65rem;min-height:72px;padding:.75rem .9rem;list-style:none;cursor:pointer;color:#6d344f}
+.food-plan-dropdown>summary::-webkit-details-marker{display:none}
+.food-plan-dropdown>summary>span{grid-row:1/3;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:#f8dce7;font-size:1.3rem}
+.food-plan-dropdown>summary>strong{font-size:1rem}.food-plan-dropdown>summary>small{color:#7e6470;font-size:.72rem;font-weight:400}.food-plan-dropdown>summary>b{grid-column:3;grid-row:1/3;font-size:1.35rem}
+.food-plan-dropdown-body{padding:0 .8rem .8rem;border-top:1px solid #f0dde5}
+.food-plan-dropdown-body>.food-actions{margin:.75rem 0}
+.food-plan-dropdown-body>.food-plan-panel{margin:0;border:0;box-shadow:none;padding:.5rem 0;background:transparent}
+.food-upcoming-primary{margin:0}
+.food-upcoming-primary> .food-heading{margin-bottom:.4rem}
