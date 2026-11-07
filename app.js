@@ -982,6 +982,22 @@ function renderCircle(){
     appMenu.showModal();
   });
   $('#close-menu-btn').addEventListener('click', () => appMenu.close());
+  const skillsToggle = $('#menu-skills-toggle');
+  const skillsList = $('#menu-skills-list');
+  if (skillsToggle && skillsList) {
+    skillsToggle.addEventListener('click', () => {
+      const open = skillsToggle.getAttribute('aria-expanded') !== 'true';
+      skillsToggle.setAttribute('aria-expanded', String(open));
+      skillsList.hidden = !open;
+    });
+    for (const button of skillsList.querySelectorAll('[data-skill-category]')) button.addEventListener('click', () => {
+      if (habits && habits.openSkillArea) habits.openSkillArea(button.dataset.skillCategory);
+      if (navigate('skills')) {
+        renderKeepScroll();
+        if (appMenu.open) appMenu.close();
+      }
+    });
+  }
   appMenu.addEventListener('close', () => menuButton.setAttribute('aria-expanded', 'false'));
   for (const button of document.querySelectorAll('[data-page]')) button.addEventListener('click', () => {
     const destination = button.dataset.page;
