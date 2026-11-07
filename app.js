@@ -624,14 +624,7 @@ function renderCircle(){
     if(state.page!=='home'||!wellness||typeof wellness.trashReminderState!=='function')return;
     const reminder=wellness.trashReminderState(new Date());
     const node=content.querySelector('[data-trash-reminder]');
-    if(!reminder) {
-      if(node) renderKeepScroll();
-      return;
-    }
-    if(!node) {
-      renderKeepScroll();
-      return;
-    }
+    if(!reminder||!node) return;
     node.dataset.trashDeadline=reminder.deadline;
     node.classList.toggle('is-urgent',Boolean(reminder.urgent));
     const title=node.querySelector('[data-trash-title]');
