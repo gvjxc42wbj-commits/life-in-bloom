@@ -77,6 +77,8 @@
     let engineeringHomeworkDraft = { title:'', due_on:'', notes:'' };
     let readingView='home', selectedReadingBookId='', readingCoachTab='vocabulary', readingSeedChecked='';
     let readingBookOpen=false, readingSessionOpen=false, readingNoteOpen=false;
+    let readerPage=1, readerZoom=1.15, readerMode='pdf', readerRangeStart=1, readerRangeEnd=1;
+    let readerPdfDoc=null, readerPdfFileId='', readerPdfLoad=null, readerStatus='', readerTextDraft='', readerTextDraftPage=0, readerLesson=null;
     let readingBookDraft={id:'',title:'',author:'',isbn:'',edition:'',total_pages:'',current_page:'',current_section:'',status:'not_started',cover_url:'',notes:''};
     let readingSessionDraft={minutes:'20',start_page:'',end_page:'',section:'',notes:''};
     let readingNoteDraft={page_number:'',section:'',note_type:'note',body:''};
@@ -128,7 +130,7 @@
       const today = M.dayKey(getNow());
       if (key !== identity) {
         identity = key; generation++; busy = null; attempt = null; problem = ''; backupReview = null; selectedDate = today; lastToday = today; selectedCategory = 'all'; selectedSkillId = '';
-        skillOpen = false; sessionOpen = false; settingsOpen = false; purchaseOpen = false; draftSaved = false; draftWarning = false; engineeringHomeworkOpen = false; engineeringHomeworkDraft = { title:'', due_on:'', notes:'' }; readingView='home'; selectedReadingBookId=''; readingCoachTab='vocabulary'; readingSeedChecked=''; readingBookOpen=false; readingSessionOpen=false; readingNoteOpen=false;
+        skillOpen = false; sessionOpen = false; settingsOpen = false; purchaseOpen = false; draftSaved = false; draftWarning = false; engineeringHomeworkOpen = false; engineeringHomeworkDraft = { title:'', due_on:'', notes:'' }; readingView='home'; selectedReadingBookId=''; readingCoachTab='vocabulary'; readingSeedChecked=''; readingBookOpen=false; readingSessionOpen=false; readingNoteOpen=false; readerPage=1; readerZoom=1.15; readerMode='pdf'; readerRangeStart=1; readerRangeEnd=1; readerPdfDoc=null; readerPdfFileId=''; readerPdfLoad=null; readerStatus=''; readerTextDraft=''; readerTextDraftPage=0; readerLesson=null;
         drafts = makeDrafts(); baselines = copy(drafts); sourceKeys = {};
         const settings = settingsRow(current); reset('settings', rowDraft('settings', settings, today)); sourceKeys.settings = settings ? settings.id + ':' + settings.revision : 'new';
         loadDay(current);
@@ -209,6 +211,59 @@
     function readingNotes(current,bookId) { return (current.readingNotes||[]).filter(row=>row.book_id===bookId).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))); }
     function readingVocabulary(current,bookId) { return (current.readingVocabulary||[]).filter(row=>row.book_id===bookId).sort((a,b)=>String(a.word||'').localeCompare(String(b.word||''))); }
     function readingFiles(current,bookId) { return (current.readingFiles||[]).filter(row=>!bookId||row.book_id===bookId).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))); }
+    function readingBookPdf(current,bookId) {
+      return readingFiles(current,bookId).find(file=>file.file_role==='book_pdf'&&file.mime_type==='application/pdf')||null;
+    }
+    function readingPageTexts(current,fileId) {
+      const user=current.user&&current.user.id, household=current.household&&current.household.id;
+      return (current.readingPageText||[]).filter(row=>row&&row.user_id===user&&row.household_id===household&&row.file_id===fileId)
+        .sort((a,b)=>Number(a.page_number)-Number(b.page_number));
+    }
+    function setReaderStatus(message) {
+      readerStatus=String(message||'');
+      if(root.document){
+        const target=root.document.querySelector('[data-reader-status]');
+        if(target) target.textContent=readerStatus;
+      }
+    }
+    async function ensureReaderDocument(file) {
+      if(!file) throw new Error('Upload a full-book PDF first.');
+      if(!root.BloomReader) throw new Error('Bloom Reader has not loaded yet. Refresh the app and try again.');
+      if(readerPdfDoc&&readerPdfFileId===file.id) return readerPdfDoc;
+      if(readerPdfLoad&&readerPdfFileId===file.id) return readerPdfLoad;
+      readerPdfFileId=file.id; readerPdfDoc=null;
+      readerPdfLoad=Promise.resolve(store.getReadingFileUrl(file)).then(url=>root.BloomReader.loadDocument(url)).then(doc=>{
+        readerPdfDoc=doc;readerPdfLoad=null;
+        return doc;
+      }).catch(error=>{readerPdfLoad=null;readerPdfFileId='';throw error;});
+      return readerPdfLoad;
+    }
+    async function hydrateBloomReader(current,book,file) {
+      if(!file||readingView!=='reader') return;
+      try{
+        setReaderStatus('Loading private PDF…');
+        const doc=await ensureReaderDocument(file);
+        const total=doc.numPages;
+        readerPage=Math.max(1,Math.min(total,readerPage));
+        readerRangeStart=Math.max(1,Math.min(total,readerRangeStart));
+        readerRangeEnd=Math.max(readerRangeStart,Math.min(total,readerRangeEnd));
+        const totalNode=root.document&&root.document.querySelector('[data-reader-total-pages]');
+        if(totalNode) totalNode.textContent=String(total);
+        if(!file.page_count&&store.setReadingFilePageCount) Promise.resolve(store.setReadingFilePageCount(file,total)).catch(()=>{});
+        const record=readingPageTexts(store.snapshot(),file.id).find(row=>Number(row.page_number)===readerPage);
+        if(readerTextDraftPage!==readerPage){
+          readerTextDraft=record?String(record.verified_text||record.raw_text||''):'';
+          readerTextDraftPage=readerPage;
+        }
+        if(readerMode==='pdf'){
+          const canvas=root.document&&root.document.querySelector('[data-bloom-reader-canvas]');
+          if(canvas) await root.BloomReader.renderPage(doc,readerPage,canvas,readerZoom);
+        }
+        const text=root.document&&root.document.querySelector('[data-reader-page-text]');
+        if(text&&text.value!==readerTextDraft) text.value=readerTextDraft;
+        setReaderStatus(record?(record.verified?'Verified page text · '+record.extraction_method.replace('_',' '):'Extracted · review before lesson use'):'Page not extracted yet');
+      }catch(error){setReaderStatus(error&&error.message||'The PDF page could not be opened.');}
+    }
     function bookProgress(book) {
       const total=Number(book&&book.total_pages), page=Number(book&&book.current_page);
       return Number.isFinite(total)&&total>0&&Number.isFinite(page)&&page>=0?Math.max(0,Math.min(100,Math.round(page/total*100))):null;
@@ -334,8 +389,30 @@
       html+='<div class="reading-two-col"><section class="panel"><div class="habit-heading"><div><p class="page-kicker">My notes & quotes</p><h2>Reading Journal</h2></div>'+button('reading-add-note','+ Add note','',true)+'</div>';
       if(readingNoteOpen)html+='<form class="habit-form" data-reading-note-form><div class="habit-form-grid"><label class="habit-field"><span>Type</span><select data-reading-note-field="note_type"><option value="note">Note</option><option value="quote">Quote</option><option value="question">Question</option><option value="character">Character</option><option value="theme">Theme</option></select></label><label class="habit-field"><span>Page</span><input type="number" min="0" max="10000" data-reading-note-field="page_number" value="'+esc(readingNoteDraft.page_number)+'"></label><label class="habit-field"><span>Chapter / part</span><input data-reading-note-field="section" value="'+esc(readingNoteDraft.section)+'"></label></div><label class="habit-field"><span>Your note</span><textarea required rows="4" data-reading-note-field="body">'+esc(readingNoteDraft.body)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save note</button>'+button('reading-cancel-note','Cancel')+'</div></form>';
       html+=(notes.length?'<div class="reading-note-list">'+notes.slice(0,8).map(n=>'<article><small>'+esc(n.note_type)+' '+(n.page_number!=null?'· p. '+n.page_number:'')+'</small><p>'+esc(n.body)+'</p></article>').join('')+'</div>':'<p class="habit-help">No notes saved yet.</p>')+'</section><section class="panel"><p class="page-kicker">Words from your reading</p><h2>Vocabulary</h2><div class="reading-word-chips">'+vocab.slice(0,12).map(v=>'<span>'+esc(v.word)+'</span>').join('')+'</div>'+button('reading-coach','Open Reading Coach',' data-id="'+esc(book.id)+'"',true)+'</section></div>';
-      html+='<section class="panel reading-scans"><div class="habit-heading"><div><p class="page-kicker">Physical-book lesson source</p><h2>Scan Reading Pages</h2><p class="habit-help">Upload short page images from your own copy and keep them private. Exact OCR-generated lessons should be created only from verified supplied text.</p></div><label class="button primary">Upload page photos / PDF<input type="file" data-reading-upload accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label></div><div class="reading-file-grid">'+(files.length?files.map(file=>'<article>'+(/^image\//.test(file.mime_type)?'<img data-reading-file-preview="'+esc(file.id)+'" alt="">':'<div class="reading-pdf">PDF</div>')+'<strong>'+esc(file.name)+'</strong>'+button('reading-file-open', 'reading-export','Open',' data-id="'+esc(file.id)+'"')+'</article>').join(''):'<p class="habit-help">No page scans saved for this book yet.</p>')+'</div><p class="habit-help"><strong>Generate My Lesson:</strong> the storage/review step is ready. OCR + source-grounded automatic lesson generation still needs the text-extraction integration; the app will not invent exact page content in the meantime.</p></section></section>';
+      const bookPdf=readingBookPdf(current,book.id);
+      html+='<section class="panel reading-reader-launch"><div class="habit-heading"><div><p class="page-kicker">Kindle-style private reader</p><h2>Bloom Reader</h2><p class="habit-help">'+(bookPdf?'Full-book PDF saved privately'+(bookPdf.page_count?' · '+bookPdf.page_count+' PDF pages':'')+'. Open the reader to extract only the pages you choose.':'Upload your full-book PDF once. Bloom Reader will render pages privately and cache text only for selected ranges.')+'</p></div>'+(bookPdf?button('reading-reader','Open Bloom Reader',' data-id="'+esc(book.id)+'"',true):'<label class="button primary">Upload full-book PDF<input type="file" accept="application/pdf" data-reading-book-pdf hidden></label>')+'</div></section>';
+      html+='<section class="panel reading-scans"><div class="habit-heading"><div><p class="page-kicker">Physical-book lesson source</p><h2>Scan Reading Pages</h2><p class="habit-help">Upload short page images from your own copy and keep them private. Exact OCR-generated lessons should be created only from verified supplied text.</p></div><label class="button primary">Upload page photos / PDF<input type="file" data-reading-upload accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label></div><div class="reading-file-grid">'+(files.length?files.map(file=>'<article>'+(/^image\//.test(file.mime_type)?'<img data-reading-file-preview="'+esc(file.id)+'" alt="">':'<div class="reading-pdf">PDF</div>')+'<strong>'+esc(file.name)+'</strong>'+button('reading-file-open', 'reading-reader', 'reader-prev', 'reader-next', 'reader-mode', 'reader-zoom-out', 'reader-zoom-in', 'reader-extract', 'reader-save-text', 'reader-verify-text', 'reader-generate-lesson', 'reader-jump','Open',' data-id="'+esc(file.id)+'"')+'</article>').join(''):'<p class="habit-help">No page scans saved for this book yet.</p>')+'</div><p class="habit-help"><strong>Generate My Lesson:</strong> the storage/review step is ready. OCR + source-grounded automatic lesson generation still needs the text-extraction integration; the app will not invent exact page content in the meantime.</p></section></section>';
       if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydrateReadingFiles(files)));
+      return html;
+    }
+    function renderBloomReader(current,book,file){
+      if(!file) return '<section class="reading-dashboard"><section class="reading-banner"><div><p class="page-kicker">Bloom Reader</p><h2>'+esc(book.title)+'</h2><p>Upload the full PDF to begin.</p></div>'+button('reading-detail','← Book Detail',' data-id="'+esc(book.id)+'"')+'</section><section class="panel"><h2>Private book PDF</h2><p class="habit-help">The PDF stays in your private Reading storage. Bloom Reader extracts only the pages you choose.</p><label class="button primary">Upload full-book PDF<input type="file" accept="application/pdf" data-reading-book-pdf hidden></label></section></section>';
+      const pageTexts=readingPageTexts(current,file.id),currentRecord=pageTexts.find(row=>Number(row.page_number)===readerPage);
+      const total=file.page_count||'…',verifiedInRange=pageTexts.filter(row=>row.verified&&Number(row.page_number)>=readerRangeStart&&Number(row.page_number)<=readerRangeEnd);
+      const usable=currentRecord?String(currentRecord.verified_text||currentRecord.raw_text||''):'';
+      if(readerTextDraftPage!==readerPage){readerTextDraft=usable;readerTextDraftPage=readerPage;}
+      let lesson='';
+      if(readerLesson){
+        lesson='<section class="panel reader-lesson-draft"><div class="habit-heading"><div><p class="page-kicker">Verified-source lesson draft</p><h2>Pages '+readerLesson.start+'–'+readerLesson.end+'</h2></div><span class="habit-badge">'+readerLesson.pages+' verified pages</span></div><div class="reading-two-col"><div><h3>Vocabulary candidates</h3><div class="reading-word-chips">'+readerLesson.words.map(word=>'<span>'+esc(word)+'</span>').join('')+'</div><p class="habit-help">These words were selected directly from your verified page text. Definitions/answer keys will be added when the AI lesson-generation service is connected.</p></div><div><h3>Comprehension prompts</h3><ol class="reader-prompts"><li>Summarize the most important events or ideas in these pages.</li><li>What changed for a character, conflict, setting, or idea in this range?</li><li>Choose one claim about these pages and support it with evidence from the verified text.</li></ol></div></div><div><h3>Spelling set</h3><p class="habit-help">'+readerLesson.words.slice(0,8).map(esc).join(' · ')+'</p></div></section>';
+      }
+      const html='<section class="reading-dashboard bloom-reader"><section class="reading-banner"><div><p class="page-kicker">Bloom Reader</p><h2>'+esc(book.title)+'</h2><p>Private PDF reader · text layer first · OCR fallback</p></div>'+button('reading-detail','← Book Detail',' data-id="'+esc(book.id)+'"')+'</section>'
+        + '<section class="panel reader-toolbar"><div class="reader-page-controls">'+button('reader-prev','←')+'<label>Page <input type="number" min="1" data-reader-page value="'+readerPage+'"></label><span>of <b data-reader-total-pages>'+esc(total)+'</b></span>'+button('reader-next','→')+'</div><div class="reader-view-controls">'+button('reader-mode','PDF',' data-mode="pdf"',readerMode==='pdf')+button('reader-mode','Reading View',' data-mode="text"',readerMode==='text')+button('reader-zoom-out','A−')+button('reader-zoom-in','A+')+'</div></section>'
+        + '<section class="reader-workspace"><div class="panel reader-page-panel">'+(readerMode==='pdf'?'<div class="reader-canvas-wrap"><canvas data-bloom-reader-canvas></canvas></div>':'<article class="reader-text-view">'+(usable?'<p>'+esc(usable).replace(/\n/g,'</p><p>')+'</p>':'<p class="habit-help">Extract this page first to create Reading View text.</p>')+'</article>')+'</div>'
+        + '<aside class="panel reader-coach-panel"><p class="page-kicker">Lesson source range</p><h2>Extract selected pages</h2><div class="reader-range"><label>From <input type="number" min="1" data-reader-range="start" value="'+readerRangeStart+'"></label><label>To <input type="number" min="1" data-reader-range="end" value="'+readerRangeEnd+'"></label></div><p class="habit-help">Bloom Reader uses the PDF text layer first. If a page has too little usable text, it automatically renders that page and runs OCR in a Web Worker.</p>'+button('reader-extract','Extract / OCR range','',true,current.offline)+'<p class="reader-status" data-reader-status>'+esc(readerStatus||'Ready')+'</p><hr><p class="page-kicker">Generate My Lesson</p><p class="habit-help">'+verifiedInRange.length+' verified page'+(verifiedInRange.length===1?'':'s')+' in this range.</p>'+button('reader-generate-lesson','Generate lesson draft','',true,verifiedInRange.length===0)+'</aside></section>'
+        + '<section class="panel reader-review"><div class="habit-heading"><div><p class="page-kicker">Review OCR / extracted text</p><h2>PDF page '+readerPage+'</h2><p class="habit-help">'+(currentRecord?'Method: '+esc(currentRecord.extraction_method.replace('_',' '))+(currentRecord.verified?' · Verified':' · Not verified'):'Extract this page or a range first.')+'</p></div>'+(currentRecord&&currentRecord.verified?'<span class="habit-badge">✓ Verified</span>':'')+'</div><textarea data-reader-page-text rows="16" placeholder="Extract the page to review its text.">'+esc(readerTextDraft)+'</textarea><div class="habit-actions">'+button('reader-save-text','Save correction','',false,!currentRecord)+button('reader-verify-text','Save & mark verified','',true,!currentRecord)+'</div><p class="habit-help">Only text you mark verified is allowed into Generate My Lesson.</p></section>'
+        + lesson
+        + '<section class="panel reader-cache-summary"><details><summary>Cached pages · '+pageTexts.length+'</summary><div class="reader-page-cache">'+pageTexts.map(row=>'<button type="button" data-habit-action="reader-jump" data-page="'+row.page_number+'" class="'+(row.verified?'is-verified':'')+'"><strong>'+row.page_number+'</strong><small>'+esc(row.extraction_method==='ocr'?'OCR':'Text')+(row.verified?' · ✓':'')+'</small></button>').join('')+'</div></details></section></section>';
+      if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydrateBloomReader(current,book,file)));
       return html;
     }
     function renderReadingCoach(current,book){
@@ -356,6 +433,7 @@
       const selected=readingBook(current,selectedReadingBookId)||books[0]||null;
       if(selected&&!selectedReadingBookId)selectedReadingBookId=selected.id;
       if(readingView==='detail'&&selected)return renderReadingDetail(current,selected);
+      if(readingView==='reader'&&selected)return renderBloomReader(current,selected,readingBookPdf(current,selected.id));
       if(readingView==='coach'&&selected)return renderReadingCoach(current,selected);
       return renderReadingHome(current);
     }
@@ -623,6 +701,9 @@
       const element = event.target, data = element && element.dataset;
       if (!data) return false;
       const current = snapshot();
+      if(Object.hasOwn(data,'readerPage')){const file=readingBookPdf(current,selectedReadingBookId);const max=Number(file&&file.page_count)||20000;readerPage=Math.max(1,Math.min(max,Math.floor(Number(element.value)||1)));readerTextDraftPage=0;refresh();return true;}
+      if(Object.hasOwn(data,'readerRange')){const value=Math.max(1,Math.floor(Number(element.value)||1));if(data.readerRange==='start')readerRangeStart=value;else readerRangeEnd=value;if(readerRangeEnd<readerRangeStart)readerRangeEnd=readerRangeStart;return true;}
+      if(Object.hasOwn(data,'readerPageText')){readerTextDraft=String(element.value||'');readerTextDraftPage=readerPage;return true;}
       if(Object.hasOwn(data,'readingBookField')){const key=data.readingBookField;if(Object.hasOwn(readingBookDraft,key))readingBookDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'readingSessionField')){const key=data.readingSessionField;if(Object.hasOwn(readingSessionDraft,key))readingSessionDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'readingNoteField')){const key=data.readingNoteField;if(Object.hasOwn(readingNoteDraft,key))readingNoteDraft[key]=String(element.value||'');return true;}
@@ -665,6 +746,13 @@
         const current=snapshot(),file=element.files&&element.files[0];element.value='';if(!file)return true;
         try{requireReady(current);if(file.size>20*1024*1024)throw new Error('Choose a Reading backup smaller than 20 MB.');
           run('Restoring Reading backup…',async()=>{let value;try{value=JSON.parse(await file.text());}catch(_){throw new Error('This is not a valid Reading JSON backup.');}await store.importReadingRecords(value);return true;},()=>notify('Reading backup restored and merged with your saved records.'));
+        }catch(error){notify(error.message,true);}return true;
+      }
+      if(data&&Object.hasOwn(data,'readingBookPdf')){
+        const current=snapshot(),book=readingBook(current,selectedReadingBookId),file=element.files&&element.files[0];element.value='';if(!file||!book)return true;
+        try{requireReady(current);if(file.type!=='application/pdf')throw new Error('Choose a PDF book file.');
+          if(readingBookPdf(current,book.id)&&!confirm('A full-book PDF is already saved for this book. Upload another copy as an additional file?'))return true;
+          run('Uploading private book PDF…',()=>store.uploadReadingFile({file,book_id:book.id,file_role:'book_pdf'}),saved=>{readerPdfDoc=null;readerPdfFileId='';readerPdfLoad=null;readerPage=1;readerRangeStart=1;readerRangeEnd=1;readingView='reader';notify('Book PDF saved privately. Bloom Reader is ready.');});
         }catch(error){notify(error.message,true);}return true;
       }
       if(data&&Object.hasOwn(data,'readingUpload')){
@@ -771,6 +859,44 @@
           const row=engineeringFileRows(current).find(item=>item.id===data.id); if(!row)throw new Error('Refresh to find that Engineering file.');
           if(!confirm('Delete this saved Engineering file?'))return true;
           run('Deleting Engineering file…',()=>store.deleteEngineeringFile(row),()=>notify('Engineering file deleted.'),null,'#engineering-homework');return true;
+        }
+        else if(action==='reading-reader'){if(data.id)selectedReadingBookId=data.id;readingView='reader';readerPage=1;readerRangeStart=1;readerRangeEnd=1;readerTextDraftPage=0;readerLesson=null;refresh();return true;}
+        else if(action==='reader-prev'){readerPage=Math.max(1,readerPage-1);readerTextDraftPage=0;refresh();return true;}
+        else if(action==='reader-next'){const file=readingBookPdf(current,selectedReadingBookId),max=Number(file&&file.page_count)||readerPage+1;readerPage=Math.min(max,readerPage+1);readerTextDraftPage=0;refresh();return true;}
+        else if(action==='reader-mode'){if(['pdf','text'].includes(data.mode))readerMode=data.mode;refresh();return true;}
+        else if(action==='reader-zoom-out'){readerZoom=Math.max(.6,Math.round((readerZoom-.15)*100)/100);refresh();return true;}
+        else if(action==='reader-zoom-in'){readerZoom=Math.min(2.5,Math.round((readerZoom+.15)*100)/100);refresh();return true;}
+        else if(action==='reader-jump'){readerPage=Math.max(1,Number(data.page)||1);readerTextDraftPage=0;refresh();return true;}
+        else if(action==='reader-extract'){
+          const book=readingBook(current,selectedReadingBookId),file=readingBookPdf(current,selectedReadingBookId);if(!book||!file)throw new Error('Upload the full-book PDF first.');
+          let start=Math.max(1,readerRangeStart),end=Math.max(start,readerRangeEnd);if(end-start+1>25)throw new Error('Process up to 25 pages at a time so the browser stays responsive.');
+          run('Extracting selected pages…',async()=>{
+            const doc=await ensureReaderDocument(file);end=Math.min(end,doc.numPages);const existing=readingPageTexts(current,file.id);
+            const results=[];
+            for(let pageNo=start;pageNo<=end;pageNo++){
+              const prior=existing.find(row=>Number(row.page_number)===pageNo);
+              if(prior&&prior.verified){results.push(prior);setReaderStatus('Page '+pageNo+' already verified · skipped');continue;}
+              setReaderStatus('Page '+pageNo+' of '+end+' · checking PDF text layer…');
+              const value=await root.BloomReader.processPage(doc,pageNo,{minimumTextChars:80,onStage(info){setReaderStatus('Page '+info.page+' · '+(info.stage==='ocr'?'running OCR fallback…':'reading PDF text layer…'));},onOcrProgress(info){if(info&&typeof info.progress==='number')setReaderStatus('Page '+pageNo+' · OCR '+Math.round(info.progress*100)+'%');}});
+              results.push({...value,book_id:book.id,file_id:file.id,verified:false,verified_text:''});
+            }
+            await root.BloomReader.terminateWorker();
+            const unsaved=results.filter(row=>!row.id||!existing.some(old=>old.id===row.id&&old.verified));
+            if(unsaved.length)await store.saveReadingPageTexts(unsaved);
+            return results;
+          },()=>{readerPage=start;readerTextDraftPage=0;setReaderStatus('Extraction finished. Review and verify each page before generating a lesson.');notify('Selected pages extracted. Review the text and mark pages verified.');},null,'.reader-review');return true;
+        }
+        else if(action==='reader-save-text'||action==='reader-verify-text'){
+          const book=readingBook(current,selectedReadingBookId),file=readingBookPdf(current,selectedReadingBookId),row=file&&readingPageTexts(current,file.id).find(item=>Number(item.page_number)===readerPage);
+          if(!book||!file||!row)throw new Error('Extract this page before saving corrections.');
+          run(action==='reader-verify-text'?'Verifying page text…':'Saving corrected page text…',()=>store.saveReadingPageText({...row,book_id:book.id,file_id:file.id,verified_text:readerTextDraft,verified:action==='reader-verify-text'}),()=>notify(action==='reader-verify-text'?'Page verified for lesson use.':'Corrected page text saved.'));return true;
+        }
+        else if(action==='reader-generate-lesson'){
+          const file=readingBookPdf(current,selectedReadingBookId);if(!file)throw new Error('Upload the full-book PDF first.');
+          const pages=readingPageTexts(current,file.id).filter(row=>row.verified&&Number(row.page_number)>=readerRangeStart&&Number(row.page_number)<=readerRangeEnd);
+          if(!pages.length)throw new Error('Verify at least one page in this range first.');
+          const combined=pages.map(row=>row.verified_text||row.raw_text||'').join('\n\n');
+          readerLesson={start:readerRangeStart,end:readerRangeEnd,pages:pages.length,words:root.BloomReader?root.BloomReader.candidateWords(combined,12):[]};refresh('.reader-lesson-draft');return true;
         }
         else if(action==='reading-export'){
           const value=store.exportReadingRecords();
