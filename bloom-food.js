@@ -152,6 +152,7 @@
     let liveCookStep = 0;
     let liveCookTimerEnd = 0;
     let liveCookTimerHandle = null;
+    let cookbookPdfPage = 1;
     const COOKBOOK_PAGES = {1:4,2:6,3:7,4:8,5:9,6:10,7:11,8:12,9:13,10:14,11:15,12:16,13:17,14:18,15:20,16:21,17:22,18:23,19:24,20:25,21:26,22:27,23:29,24:30,25:31,26:33,27:35,28:36,29:37,30:38,31:40,32:41,33:42,34:43,35:44,36:45,37:46,38:47,39:48,40:49,41:50,42:51,43:52,44:54,45:55};
     const COOKBOOK_SECTIONS = [
       ['Main Dishes',1,7],['Family Recipes',8,10],['Breakfast',11,11],['Drinks',12,12],
@@ -529,40 +530,27 @@
         + '<div class="food-preview-actions">' + button('cook-recipe', '▶ Cook Live', ' data-id="' + esc(recipe.id) + '"', true) + button('cookbook-recipe', 'Open full recipe', ' data-id="' + esc(recipe.id) + '"') + '</div></aside>';
     }
     function renderCookbook(current) {
-      const cookbook = (current.recipes || []).filter(recipe => !recipe.archived && cookbookNumber(recipe)).sort((a,b) => cookbookNumber(a) - cookbookNumber(b));
-      const byNumber = new Map(cookbook.map(recipe => [cookbookNumber(recipe), recipe]));
-      if (!cookbookSelectedRecipeId && cookbook.length) cookbookSelectedRecipeId = cookbook[0].id;
-      const selected = cookbook.find(recipe => recipe.id === cookbookSelectedRecipeId) || cookbook[0] || null;
-      const liveRecipe = cookbook.find(recipe => recipe.id === liveCookRecipeId) || null;
-      const first = cookbook[0], second = cookbook[1] || cookbook[0];
-      const upcoming = (current.cookingPlans || []).filter(row => row.status === 'planned' && row.cook_on >= dayKey(getNow())).sort((a,b) => String(a.cook_on).localeCompare(String(b.cook_on))).slice(0,5);
-      let html = '<section class="food-cookbook-app" id="food-cookbook-top"><div class="food-cookbook-main"><header class="food-cookbook-heading"><div><h1>Cookbook</h1><p>Browse pages, plan meals, and cook with live guidance</p></div><button type="button" class="food-round-search" data-food-action="tab" data-tab="recipes" aria-label="Search recipes">⌕</button></header>'
-        + '<div class="food-cookbook-dashboard"><div class="food-cookbook-content"><div class="food-cookbook-left"><div class="food-book-feature"><div class="food-open-book">' + (first ? cookbookVisual(first,'is-left') : '') + (second ? cookbookVisual(second,'is-right') : '') + '</div><button type="button" class="food-open-cookbook" data-food-action="cookbook-jump-browse">📖 Open cookbook &nbsp; →</button></div>'
-        + '<div class="food-cookbook-quick"><button type="button" data-food-action="cookbook-jump-browse"><span>☷</span><strong>Contents</strong><small>Browse by section or page</small><b>›</b></button>'
-        + '<button type="button" data-food-action="tab" data-tab="plans"><span>🗓</span><strong>Menu</strong><small>Plan meals & build from recipes</small><b>›</b></button>'
-        + '<button type="button" data-food-action="tab" data-tab="recipes"><span>🔖</span><strong>Saved</strong><small>Your saved recipes</small><b>›</b></button>'
-        + '<button type="button" data-food-action="cookbook-select" data-id="' + esc(selected && selected.id || '') + '"><span>◴</span><strong>Recently viewed</strong><small>Pick up where you left off</small><b>›</b></button>'
-        + '<button type="button" data-food-action="tab" data-tab="recipes"><span>⌕</span><strong>Jump to recipe</strong><small>Search this cookbook</small><b>›</b></button></div></div>'
-        + '<section class="food-browse-pages" id="food-cookbook-browse"><h2>Browse pages</h2><div class="food-browse-strip">';
-      for (const recipe of cookbook.slice(0,8)) {
-        const number = cookbookNumber(recipe);
-        html += '<article class="food-page-thumb' + (selected && recipe.id === selected.id ? ' is-selected' : '') + '"><button type="button" data-food-action="cookbook-select" data-id="' + esc(recipe.id) + '">' + cookbookVisual(recipe,'is-thumb') + '</button><strong>' + esc(recipe.name) + '</strong><small>Page ' + esc(COOKBOOK_PAGES[number] || '') + '</small><div><button type="button" data-food-action="cookbook-recipe" data-id="' + esc(recipe.id) + '">Recipe</button><button type="button" data-food-action="cook-recipe" data-id="' + esc(recipe.id) + '">Cook</button></div></article>';
-      }
-      html += '</div></section><section class="food-menu-preview"><div class="food-menu-preview-head"><div><h2>Meal Menu</h2><p>Upcoming meals from your saved plan</p></div>' + button('tab','Build Menu',' data-tab="plans"',true) + '</div><div class="food-menu-days">';
-      if (upcoming.length) {
-        for (const plan of upcoming) html += '<button type="button" data-food-action="edit-plan" data-id="' + esc(plan.id) + '"><strong>' + esc(dateLabel(plan.cook_on).replace(/, \d{4}$/,'')) + '</strong><span aria-hidden="true">🍽️</span><small>' + esc(plan.recipe_name || 'Planned meal') + '</small></button>';
-      } else html += '<div class="food-menu-empty">No planned meals yet. Build your menu from any cookbook recipe.</div>';
-      html += '</div></section></div>' + (liveRecipe ? renderLiveCook(current,liveRecipe) : renderCookbookPreview(current,selected)) + '</div>';
-      html += '<details class="food-full-contents"><summary>All cookbook sections · 45 recipes</summary>';
-      for (const [label, firstNumber, lastNumber] of COOKBOOK_SECTIONS) {
-        const rows=[];
-        for (let number=firstNumber; number<=lastNumber; number++) {
-          const recipe=byNumber.get(number); if(!recipe) continue;
-          rows.push('<button type="button" data-food-action="cookbook-select" data-id="' + esc(recipe.id) + '"><span>Recipe ' + String(number).padStart(2,'0') + '</span><strong>' + esc(recipe.name) + '</strong><small>p. ' + esc(COOKBOOK_PAGES[number] || '') + '</small></button>');
-        }
-        if(rows.length) html += '<section><h3>' + esc(label) + '</h3><div>' + rows.join('') + '</div></section>';
-      }
-      return html + '</details></section>';
+      const page = Math.max(1, Math.min(56, Number(cookbookPdfPage) || 1));
+      cookbookPdfPage = page;
+      const src = './Food-In-Bloom-Cookbook.pdf#page=' + page + '&zoom=page-width&view=FitH';
+      return '<section class="food-pdf-cookbook" id="food-cookbook-top">'
+        + '<div class="food-pdf-toolbar" aria-label="Cookbook PDF controls">'
+        + '<div class="food-pdf-title"><strong>Food In Bloom</strong><small>Original 56-page cookbook PDF</small></div>'
+        + '<div class="food-pdf-page-controls">'
+        + button('cookbook-pdf-prev','← Previous','',false,page <= 1)
+        + '<label>Page <input type="number" min="1" max="56" value="' + page + '" data-food-pdf-page> of 56</label>'
+        + button('cookbook-pdf-next','Next →','',false,page >= 56)
+        + '</div>'
+        + '<div class="food-pdf-actions">'
+        + button('cookbook-pdf-cover','Cover')
+        + button('cookbook-pdf-contents','Contents')
+        + '<a class="button primary" href="./Food-In-Bloom-Cookbook.pdf" target="_blank" rel="noopener">Open full screen ↗</a>'
+        + '</div></div>'
+        + '<div class="food-pdf-frame-wrap">'
+        + '<iframe class="food-pdf-frame" title="Food In Bloom cookbook PDF" src="' + src + '"></iframe>'
+        + '</div>'
+        + '<p class="food-pdf-help">Use the PDF viewer controls to zoom, search, print, or download. On a phone or tablet, pinch to zoom or use Open full screen for the largest reading view.</p>'
+        + '</section>';
     }
 
     function renderRecipes(current) {
@@ -890,7 +878,11 @@
       const element = event.target, data = element && element.dataset;
       if (!data) return false;
       const current = snapshot();
-      if (Object.hasOwn(data, 'foodSearch')) { search = String(element.value || ''); refresh('#food-recipe-search'); return true; }
+      if (Object.hasOwn(data, 'foodPdfPage')) {
+        const page = Math.max(1, Math.min(56, Math.round(Number(element.value) || 1)));
+        cookbookPdfPage = page; element.value = String(page); refresh('#food-cookbook-top'); return true;
+      }
+            if (Object.hasOwn(data, 'foodSearch')) { search = String(element.value || ''); refresh('#food-recipe-search'); return true; }
       if (Object.hasOwn(data, 'foodReference')) {
         if (!M.NUTRIENTS.some(({ key }) => key === data.foodReference)) return false;
         if (!busy) { drafts.recipe.nutrition_reference[data.foodReference] = element.value; persist(); }
@@ -1004,13 +996,17 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-food-action]') : null;
       const data = element && element.dataset, action = data && data.foodAction;
-      const actions = ['grocery', 'food-home', 'wellness', 'tab', 'cookbook-recipe', 'cookbook-select', 'cookbook-jump-browse', 'cook-recipe', 'cook-open-recipe', 'cook-exit', 'cook-next', 'cook-prev', 'cook-speak', 'cook-replay', 'cook-start-timer', 'cook-stop-timer', 'recipe-back', 'scroll-top', 'new-recipe', 'resume-recipe', 'view-recipe', 'edit-recipe', 'discard-recipe', 'archive-recipe', 'add-ingredient', 'remove-ingredient', 'add-shopping-ingredient', 'remove-shopping-ingredient', 'toggle-plan-ingredients', 'new-plan', 'plan-recipe', 'resume-plan', 'edit-plan', 'cancel-plan', 'close-plan', 'discard-plan', 'retry-plan', 'reload-plan', 'reload-plan-recipe', 'refresh-meal-shopping', 'new-log', 'resume-log', 'log-recipe', 'edit-log', 'eaten-from-plan', 'discard-log', 'choose-person', 'delete-log', 'calendar', 'upload-file', 'view-file', 'remove-file'];
+      const actions = ['grocery', 'food-home', 'wellness', 'tab', 'cookbook-pdf-prev', 'cookbook-pdf-next', 'cookbook-pdf-cover', 'cookbook-pdf-contents', 'cookbook-recipe', 'cookbook-select', 'cookbook-jump-browse', 'cook-recipe', 'cook-open-recipe', 'cook-exit', 'cook-next', 'cook-prev', 'cook-speak', 'cook-replay', 'cook-start-timer', 'cook-stop-timer', 'recipe-back', 'scroll-top', 'new-recipe', 'resume-recipe', 'view-recipe', 'edit-recipe', 'discard-recipe', 'archive-recipe', 'add-ingredient', 'remove-ingredient', 'add-shopping-ingredient', 'remove-shopping-ingredient', 'toggle-plan-ingredients', 'new-plan', 'plan-recipe', 'resume-plan', 'edit-plan', 'cancel-plan', 'close-plan', 'discard-plan', 'retry-plan', 'reload-plan', 'reload-plan-recipe', 'refresh-meal-shopping', 'new-log', 'resume-log', 'log-recipe', 'edit-log', 'eaten-from-plan', 'discard-log', 'choose-person', 'delete-log', 'calendar', 'upload-file', 'view-file', 'remove-file'];
       if (!actions.includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery') { openGrocery(data.tab || 'list', data.month || undefined); return true; }
         if (action === 'food-home' || action === 'wellness') { navigate(action === 'food-home' ? 'food' : 'wellness'); return true; }
         if (action === 'tab') { if (['home','cookbook','recipes','plans','cooking','soon','log'].includes(data.tab)) tab = data.tab; }
+        else if (action === 'cookbook-pdf-prev') { cookbookPdfPage = Math.max(1, cookbookPdfPage - 1); refresh('#food-cookbook-top'); return true; }
+        else if (action === 'cookbook-pdf-next') { cookbookPdfPage = Math.min(56, cookbookPdfPage + 1); refresh('#food-cookbook-top'); return true; }
+        else if (action === 'cookbook-pdf-cover') { cookbookPdfPage = 1; refresh('#food-cookbook-top'); return true; }
+        else if (action === 'cookbook-pdf-contents') { cookbookPdfPage = 2; refresh('#food-cookbook-top'); return true; }
         else if (action === 'cookbook-select') {
           if ((current.recipes || []).some(row => row.id === data.id && !row.archived)) cookbookSelectedRecipeId = data.id;
           liveCookRecipeId = ''; stopLiveTimer(); persist(); refresh('#food-cookbook-top'); return true;
