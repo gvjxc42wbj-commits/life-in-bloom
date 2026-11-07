@@ -8,7 +8,7 @@
     budgets: 'bloom_budgets', inventory: 'bloom_inventory', shoppingItems: 'bloom_shopping_items',
     products: 'bloom_products', recurringProducts: 'bloom_recurring_products', receipts: 'bloom_receipts',
     moneyEntries: 'bloom_money_entries', bills: 'bloom_bills', billRules: 'bloom_bill_rules', recipes: 'bloom_recipes',
-    mealEntries: 'bloom_meal_entries', foodFiles: 'bloom_food_files',
+    mealEntries: 'bloom_meal_entries', foodFiles: 'bloom_food_files', cookbookFiles: 'bloom_cookbook_files',
     cookingPlans: 'bloom_cooking_plans', mealShoppingLinks: 'bloom_meal_shopping_links',
     lifeRecords: 'bloom_life_records', dogStockEffects: 'bloom_dog_stock_effects', kitchenEquipment: 'bloom_kitchen_equipment',
     engineeringHomework: 'bloom_engineering_homework', engineeringFiles: 'bloom_engineering_files',
@@ -32,9 +32,10 @@
     recipes: ['name','servings','ingredients','ingredient_text','instructions','source_url','notes','archived','nutrition_mode','nutrition_reference','nutrition_source','planning_ingredients','tags','equipment','source_key','category_label','time_text','source_name'],
     kitchenEquipment: ['name','brand','model','capabilities','notes','archived'],
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
-    foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
+    foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes'],
+    cookbookFiles: ['name','path','mime_type','size_bytes','uploaded_by']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework','spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia','dailyJournal','paintingArtworks','paintingVersions','paintingMedia','plants','plantCareSchedules','plantEvents','plantMedia'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookbookFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework','spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia','dailyJournal','paintingArtworks','paintingVersions','paintingMedia','plants','plantCareSchedules','plantEvents','plantMedia'];
   // Specialized Skills modules should never be able to take down Home, Food,
   // Dog, Money, or household navigation if one optional table is temporarily
   // unavailable. Core household/food tables remain strict.
@@ -886,6 +887,52 @@
         checkContext(current); uploads.delete(key); return saved;
       } catch(error) { if(current.generation===generation) throw fail(error); throw error; }
     }
+    async function uploadCookbookFile(file) {
+      requireOnline();
+      const current=context(true);
+      if(!file||!file.size||file.size>75*1024*1024||file.type!=='application/pdf')throw new Error('Choose a PDF cookbook up to 75 MB.');
+      const bytes=new Uint8Array(await file.slice(0,5).arrayBuffer());checkContext(current);
+      if(String.fromCharCode(...bytes)!=='%PDF-')throw new Error('Choose the original PDF file.');
+      const id=newUuid(),path=current.householdId+'/'+id+'.pdf';
+      const uploaded=await client.storage.from('bloom-food-files').upload(path,file,{contentType:'application/pdf',upsert:false,cacheControl:'3600'});
+      if(uploaded.error)throw errorOf(uploaded.error);checkContext(current);
+      try{
+        const rows=assertResult(await client.from(TABLES.cookbookFiles).insert({
+          id,household_id:current.householdId,uploaded_by:current.userId,
+          name:String(file.name||'Food in Bloom Cookbook.pdf').slice(0,255),
+          path,mime_type:'application/pdf',size_bytes:file.size
+        }).select('*'));
+        checkContext(current);
+        const saved=rows&&rows[0];
+        const prior=(state.cookbookFiles||[]).filter(row=>row.id!==id&&row.household_id===current.householdId);
+        for(const row of prior){
+          try{await client.storage.from('bloom-food-files').remove([row.path]);}catch(_){}
+          try{await client.from(TABLES.cookbookFiles).delete().eq('id',row.id).eq('household_id',current.householdId);}catch(_){}
+        }
+        await refresh();return saved;
+      }catch(error){
+        try{await client.storage.from('bloom-food-files').remove([path]);}catch(_){}
+        throw error;
+      }
+    }
+    async function getCookbookFileUrl(row){
+      requireOnline();const current=context(true);
+      const saved=(state.cookbookFiles||[]).find(item=>item.id===row.id&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.householdId+'/'))throw new Error('That cookbook is no longer available.');
+      const prior=signedFiles.get(saved.path);if(prior&&prior.expires>Date.now())return prior.url;
+      const result=assertResult(await client.storage.from('bloom-food-files').createSignedUrl(saved.path,120));checkContext(current);
+      signedFiles.set(saved.path,{url:result.signedUrl,expires:Date.now()+90000});return result.signedUrl;
+    }
+    async function deleteCookbookFile(row){
+      requireOnline();const current=context(true);
+      const saved=(state.cookbookFiles||[]).find(item=>item.id===row.id&&item.household_id===current.householdId);
+      if(!saved)throw new Error('Refresh the cookbook before removing it.');
+      assertResult(await client.storage.from('bloom-food-files').remove([saved.path]));checkContext(current);signedFiles.delete(saved.path);
+      const rows=assertResult(await client.from(TABLES.cookbookFiles).delete().eq('id',saved.id).eq('household_id',current.householdId).select('id'));
+      if(!Array.isArray(rows)||rows.length!==1)throw new Error('The cookbook record could not be removed.');
+      await refresh();return true;
+    }
+
     async function getFoodFileUrl(row) {
       requireOnline();
       const current=context(true);
@@ -1681,7 +1728,7 @@
       deleteShoppingItem, importLocalShopping, saveProduct, saveRecurringProduct, saveBill, ensureBillMonth, stopBillSeries, saveRecipe,
       saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, importFoodMaster, saveKitchenEquipment, deleteKitchenEquipment, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
       ...lifeSavers,saveLifeRecord,archiveLifeRecord,addDogSupplyToShopping,exportPersonalLifeRecords,importPersonalLifeRecords,
-      uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveEngineeringHomework, deleteEngineeringHomework, uploadEngineeringFile, getEngineeringFileUrl, deleteEngineeringFile,
+      uploadFoodFile, deleteFoodFile, getFoodFileUrl, uploadCookbookFile, getCookbookFileUrl, deleteCookbookFile, saveEngineeringHomework, deleteEngineeringHomework, uploadEngineeringFile, getEngineeringFileUrl, deleteEngineeringFile,
       ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingFile, deleteReadingRow, saveReadingPageText, saveReadingPageTexts, deleteReadingPageText, setReadingFilePageCount, saveReadingAssignment, deleteReadingAssignment, uploadReadingAudio, updateReadingAudio, getReadingAudioUrl, deleteReadingAudio, exportReadingRecords, importReadingRecords,
       ensurePianoDefaults, savePianoAppProgress, savePianoPracticeSession, savePianoAbility, savePianoRepertoire, uploadPianoMedia, getPianoMediaUrl, deletePianoMedia,
       ensureAnimationDefaults, saveAnimationTutor, saveAnimationResource, saveAnimationSkill, saveAnimationProject, saveAnimationPractice, saveAnimationHomework, deleteAnimationHomework, uploadAnimationMedia, getAnimationMediaUrl, deleteAnimationMedia,
