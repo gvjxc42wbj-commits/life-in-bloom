@@ -73,6 +73,8 @@
     let identity = '', generation = 0, busy = null, pending = Promise.resolve(), attempt = null, problem = '', backupReview = null;
     let page = 'skills', selectedCategory = 'all', selectedSkillId = '', selectedDate = M.dayKey(getNow()), lastToday = selectedDate;
     let skillOpen = false, sessionOpen = false, settingsOpen = false, purchaseOpen = false, draftSaved = false, draftWarning = false;
+    let engineeringHomeworkOpen = false;
+    let engineeringHomeworkDraft = { title:'', due_on:'', notes:'' };
     let drafts = makeDrafts(), baselines = copy(drafts), sourceKeys = {};
     function makeDrafts() { return { skill: skillDraft(), session: sessionDraft(selectedDate), settings: settingsDraft(), smoke: smokeDraft(selectedDate), purchase: purchaseDraft(selectedDate) }; }
     const dirty = group => JSON.stringify(drafts[group]) !== JSON.stringify(baselines[group]);
@@ -121,7 +123,7 @@
       const today = M.dayKey(getNow());
       if (key !== identity) {
         identity = key; generation++; busy = null; attempt = null; problem = ''; backupReview = null; selectedDate = today; lastToday = today; selectedCategory = 'all'; selectedSkillId = '';
-        skillOpen = false; sessionOpen = false; settingsOpen = false; purchaseOpen = false; draftSaved = false; draftWarning = false;
+        skillOpen = false; sessionOpen = false; settingsOpen = false; purchaseOpen = false; draftSaved = false; draftWarning = false; engineeringHomeworkOpen = false; engineeringHomeworkDraft = { title:'', due_on:'', notes:'' };
         drafts = makeDrafts(); baselines = copy(drafts); sourceKeys = {};
         const settings = settingsRow(current); reset('settings', rowDraft('settings', settings, today)); sourceKeys.settings = settings ? settings.id + ':' + settings.revision : 'new';
         loadDay(current);
@@ -192,70 +194,85 @@
       const sessions = privateRows(current, 'skillSessions', true).filter(row => row.skill_id === skill.id).slice().sort((a, b) => b.occurred_on.localeCompare(a.occurred_on) || String(b.created_at || '').localeCompare(String(a.created_at || '')));
       return '<section class="panel" id="habit-skill-history"><div class="habit-heading"><div><p class="page-kicker">Your saved practice</p><h2>' + esc(skill.name) + '</h2></div>' + button('close-history', 'Close history') + '</div>' + (sessions.length ? '<ul class="habit-history-list">' + sessions.map(row => '<li' + (row.archived ? ' class="is-archived"' : '') + '><div><strong>' + esc(dateLabel(row.occurred_on)) + ' · ' + esc(count(row.minutes)) + ' min</strong><p>' + esc((M.REVIEW_RESULTS.find(item => item.key === row.result) || {}).label || row.result) + (row.archived ? ' · Archived' : '') + '</p>' + (row.notes ? '<p class="habit-prose">' + esc(row.notes) + '</p>' : '') + '</div>' + (!row.archived ? '<div class="habit-actions">' + button('edit-session', 'Edit entry', ' data-id="' + esc(row.id) + '"', false, Boolean(attempt)) + button('archive', 'Remove mistaken entry', ' data-kind="skill_session" data-id="' + esc(row.id) + '"', false, Boolean(attempt) || current.offline) + '</div>' : '') + '</li>').join('') + '</ul>' : '<p class="habit-empty">No practice entries yet.</p>') + '</section>';
     }
+    function engineeringHomeworkRows(current) {
+      const user=current.user&&current.user.id, household=current.household&&current.household.id;
+      return (current.engineeringHomework||[]).filter(row=>row&&row.user_id===user&&row.household_id===household)
+        .sort((a,b)=>Number(a.status==='done')-Number(b.status==='done')||String(a.due_on||'9999-12-31').localeCompare(String(b.due_on||'9999-12-31'))||String(b.created_at||'').localeCompare(String(a.created_at||'')));
+    }
+    function engineeringFileRows(current) {
+      const user=current.user&&current.user.id, household=current.household&&current.household.id;
+      return (current.engineeringFiles||[]).filter(row=>row&&row.user_id===user&&row.household_id===household)
+        .sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+    }
+    function hydrateEngineeringFiles(files) {
+      if (!root.document || !store.getEngineeringFileUrl || !Array.isArray(files)) return;
+      for (const file of files) {
+        if (!/^image\//.test(file.mime_type||'')) continue;
+        const img=root.document.querySelector('[data-engineering-file-preview="'+file.id+'"]');
+        if (!img || img.dataset.loaded==='true') continue;
+        Promise.resolve(store.getEngineeringFileUrl(file)).then(url=>{
+          const live=root.document&&root.document.querySelector('[data-engineering-file-preview="'+file.id+'"]');
+          if(live){ live.src=url; live.dataset.loaded='true'; }
+        }).catch(()=>{});
+      }
+    }
     function renderEngineeringDashboard(current, skills, sessions, today) {
       const engineeringSkills=skills.filter(skill=>skill.category==='engineering');
       const ids=new Set(engineeringSkills.map(skill=>skill.id));
       const engineeringSessions=sessions.filter(row=>ids.has(row.skill_id));
-      const month=today.slice(0,7);
+      const month=today.slice(0,7), weekAgo=M.addDays(today,-6);
       const monthMinutes=engineeringSessions.filter(row=>String(row.occurred_on||'').slice(0,7)===month).reduce((sum,row)=>sum+Number(row.minutes||0),0);
-      const weekAgo=M.addDays(today,-6);
       const weekMinutes=engineeringSessions.filter(row=>row.occurred_on>=weekAgo&&row.occurred_on<=today).reduce((sum,row)=>sum+Number(row.minutes||0),0);
       const due=engineeringSkills.filter(skill=>M.skillProgress(skill,engineeringSessions,today).due).length;
+      const observed=engineeringSkills.map(skill=>M.skillProgress(skill,engineeringSessions,today).observed_level).filter(Number.isFinite);
+      const overall=observed.length?Math.round(observed.reduce((a,b)=>a+b,0)/observed.length*10):0;
       const tutorUrl='https://preply.com/en/tutor/6360685?utm_source=friend_plg&utm_medium=app_native&utm_campaign=stu_plg_st_all_0_mul_xx_multiplesub_share-tutor-profile-1&utm_content=NDYyMTQ4Ng%3D%3D&adj_t=20yroq7d&adj_campaign=stu_plg_st_all_0_mul_xx_multiplesub_share-tutor-profile-1';
-
+      const homework=engineeringHomeworkRows(current), files=engineeringFileRows(current);
+      const openHomework=homework.filter(row=>row.status!=='done').length;
       const vocab=[
-        ['📡','Ultrasonic sensor','Measures distance by sending sound pulses and timing their echo.'],
-        ['🧊','Tinkercad','Web app for simple 3D design and basic circuit simulation.'],
-        ['⚙️','Actuator','Turns an electrical/control signal into physical action or movement.'],
-        ['👁️','Sensor','Detects something in the environment and sends data to a system.'],
-        ['🧠','Microcontroller','Small programmable computer that reads sensors and controls outputs.'],
-        ['🧪','Wokwi','Browser-based simulator for microcontrollers and electronics projects.'],
-        ['💻','VS Code','Code editor used to write, organize, and debug project code.']
+        ['📡','Ultrasonic Sensor','Measures distance by sending sound pulses and timing their echo.'],
+        ['🧊','Tinkercad','A web app for 3D design and simple electronics simulation.'],
+        ['⚙️','Actuator','A device that turns a control signal into physical action or movement.'],
+        ['👁️','Sensor','Detects a change in the environment and provides data to a system.'],
+        ['🧠','Microcontroller','A small programmable computer that reads inputs and controls outputs.'],
+        ['🧪','Wokwi','A browser simulator for microcontrollers, circuits, and embedded code.'],
+        ['💻','VS Code','A code editor for writing, organizing, and debugging project code.']
       ];
       const lab=[
-        ['🧰','ELEGOO Mega 2560 R3 Starter Kit','Arduino-compatible board, sensors, motors, displays, and guided projects.'],
-        ['🔌','ELEGOO Breadboard Electronics Kit','Breadboard, LEDs, resistors, capacitors, switches, wires, and basic components.'],
-        ['🔋','4-AA Battery Holder + Switch','Portable 6V battery holder for small electronics builds.'],
-        ['🔋','AA Batteries','Power source for portable prototypes and experiments.']
+        ['🧰','ELEGOO Mega 2560 R3 Starter Kit','Arduino-compatible board, sensors, displays, motors, and guided projects.'],
+        ['🔌','ELEGOO Breadboard Electronics Kit','Breadboards, LEDs, resistors, capacitors, switches, and jumper wires.'],
+        ['🔋','4-AA Battery Holder + Switch','Portable 6V holder for small electronics prototypes.'],
+        ['🔋','AA Batteries','Portable power for experiments and small builds.'],
+        ['🛠️','Soldering & Test Tools','Multimeter, soldering iron, fume absorber, crimpers, cutters, and hand tools.']
       ];
       const projects=[
-        ['🔒','ATM Savings Lockbox','In progress','Mechanical enclosure + electronics + programmed locking logic.'],
-        ['🌫️','Programmable Scent Synthesizer','Planning','Pumps/airflow, electronics, controls, and programmed scent channels.'],
-        ['🧱','Breadboard Practice Builds','Practicing','Small circuits to learn components, wiring, sensors, and outputs.'],
-        ['🖨️','3D Printing / CAD Practice','Building skills','Modeling parts, enclosures, tolerances, and iteration.'],
-        ['🐾','Robot Dog','Long-term','Robotics, actuators, sensors, control logic, mechanics, and embedded systems.']
+        ['🔒','ATM Savings Lockbox','In Progress','Mechanical enclosure + electronics + programmable locking logic.'],
+        ['💡','LED Blink / Arduino Basics','Practice','First code-driven circuits and microcontroller workflow.'],
+        ['📡','Ultrasonic Distance Sensor','Next Build','Sensor input, distance measurement, and output/debugging.'],
+        ['🌫️','Programmable Scent Synthesizer','Proposal','Three-channel mechatronics project with ESP32, servos, blower, and 3D enclosure.'],
+        ['🐾','Robot Dog','Long-Term','Robotics, actuators, sensors, mechanics, embedded control, and autonomy.']
       ];
-      return '<section class="engineering-dashboard">'
-        + '<section class="panel engineering-hero"><div class="habit-heading"><div><p class="page-kicker">Engineering roadmap</p><h2>My Engineering Journey</h2><p class="habit-help">Build fundamentals, use real tools, finish working projects, and prepare for college-level engineering.</p></div><a class="button" href="'+esc(tutorUrl)+'" target="_blank" rel="noopener noreferrer">Open tutor profile ↗</a></div>'
-        + '<div class="engineering-metrics"><div><span>⚙️</span><strong>'+engineeringSkills.length+'</strong><small>saved engineering topics</small></div><div><span>⏱️</span><strong>'+esc(count(weekMinutes))+' min</strong><small>practice this week</small></div><div><span>📚</span><strong>'+esc(count(monthMinutes))+' min</strong><small>practice this month</small></div><div><span>↻</span><strong>'+due+'</strong><small>ready to revisit</small></div></div></section>'
+      const proposal='<section class="panel engineering-proposal"><div class="habit-heading"><div><p class="page-kicker">Project proposal</p><h2>Programmable Scent Synthesizer — Prototype 1</h2><p class="habit-help">A learning-focused three-channel mechatronics build using an ESP32, servo-driven sprayers, airflow control, and a custom 3D-printed enclosure.</p></div><span class="habit-badge">Proposed</span></div><div class="engineering-proposal-grid"><div class="engineering-proposal-icon" aria-hidden="true">🌫️</div><ul><li>3 independent 30 mL scent channels</li><li>ESP32 + PCA9685 + servo control</li><li>Blower delivery and purge cycle</li><li>Physical buttons and programmed recipes</li><li>Custom serviceable 3D-printed enclosure</li><li>12-week learning plan · about 24 active hours</li></ul></div><details><summary>What I want to learn from this project</summary><p>Electronics fundamentals, safe power distribution, ESP32 programming, C/C++, I2C, PWM, servo and MOSFET control, multimeter use, breadboard prototyping, soldering, debugging, CAD, and converting a prototype into permanent hardware.</p></details></section>';
 
-        + '<section class="panel engineering-roadmap"><div class="habit-heading"><div><p class="page-kicker">Path to my end goal</p><h2>College-Readiness Roadmap</h2><p class="habit-help">A step-by-step path from foundations to real engineering work and future college study.</p></div></div><div class="engineering-roadmap-grid">'
-        + '<article><span class="engineering-stage">1</span><h3>Foundations</h3><ul><li>Math refresh</li><li>Physics & chemistry foundations</li><li>Coding basics</li><li>Breadboard basics</li></ul></article>'
-        + '<article><span class="engineering-stage">2</span><h3>Tools</h3><ul><li>Tinkercad / CAD</li><li>Arduino / microcontrollers</li><li>Wokwi simulation</li><li>VS Code workflow</li><li>3D printing</li></ul></article>'
-        + '<article><span class="engineering-stage">3</span><h3>Applied Projects</h3><ul><li>ATM savings lockbox</li><li>Scent synthesizer</li><li>Sensor + actuator builds</li><li>Working prototypes</li></ul></article>'
-        + '<article><span class="engineering-stage">4</span><h3>College / Career Ready</h3><ul><li>Strong fundamentals</li><li>Project portfolio</li><li>Documented engineering process</li><li>Confidence explaining designs</li></ul></article>'
-        + '</div></section>'
+      let homeworkHtml='<section class="panel engineering-homework" id="engineering-homework"><div class="habit-heading"><div><p class="page-kicker">Homework & whiteboard uploads</p><h2>Homework & Saved Files</h2><p class="habit-help">Keep tutor assignments, whiteboard snapshots, circuit photos, sketches, and PDFs with your Engineering dashboard.</p></div><span class="habit-badge">'+openHomework+' open</span></div><div class="engineering-homework-actions">'+button('engineering-homework-add','+ Add homework','',true,current.offline)+'<label class="button engineering-upload-button">⇧ Upload pictures / PDF<input type="file" data-engineering-upload accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden'+(busy||current.offline?' disabled':'')+'></label></div>';
+      if(engineeringHomeworkOpen) homeworkHtml+='<form class="engineering-homework-form" data-engineering-homework-form><div class="habit-form-grid"><label class="habit-field"><span>Homework</span><input type="text" maxlength="200" required data-engineering-homework-field="title" value="'+esc(engineeringHomeworkDraft.title)+'" placeholder="For example, Build the ultrasonic sensor circuit"></label><label class="habit-field"><span>Due date (optional)</span><input type="date" data-engineering-homework-field="due_on" value="'+esc(engineeringHomeworkDraft.due_on)+'"></label></div><label class="habit-field"><span>Notes (optional)</span><textarea maxlength="5000" rows="3" data-engineering-homework-field="notes">'+esc(engineeringHomeworkDraft.notes)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save homework</button>'+button('engineering-homework-cancel','Cancel')+'</div></form>';
+      homeworkHtml+='<div class="engineering-homework-list">'+(homework.length?homework.map(row=>'<article class="'+(row.status==='done'?'is-done':'')+'"><label><input type="checkbox" data-habit-action="engineering-homework-toggle" data-id="'+esc(row.id)+'"'+(row.status==='done'?' checked':'')+'><span><strong>'+esc(row.title)+'</strong><small>'+(row.due_on?'Due '+esc(dateLabel(row.due_on)):'No due date')+(row.notes?' · '+esc(row.notes):'')+'</small></span></label>'+button('engineering-homework-delete','Remove',' data-id="'+esc(row.id)+'"')+'</article>').join(''):'<p class="habit-help">No Engineering homework saved yet.</p>')+'</div>';
+      homeworkHtml+='<div class="engineering-file-grid">'+(files.length?files.map(file=>'<article class="engineering-file-card">'+(/^image\//.test(file.mime_type||'')?'<div class="engineering-file-preview"><img alt="" data-engineering-file-preview="'+esc(file.id)+'"></div>':'<div class="engineering-file-preview is-pdf">PDF</div>')+'<strong>'+esc(file.name)+'</strong><small>'+esc((Number(file.size_bytes||0)/1024/1024).toFixed(1))+' MB</small><div class="habit-actions">'+button('engineering-file-open','Open',' data-id="'+esc(file.id)+'"',true,current.offline)+button('engineering-file-delete','Delete',' data-id="'+esc(file.id)+'"',false,current.offline)+'</div></article>').join(''):'<p class="habit-help">Upload a whiteboard photo, wiring sketch, homework image, or PDF to start your file shelf.</p>')+'</div></section>';
 
-        + '<div class="engineering-two-col">'
-        + '<section class="panel engineering-tutor"><div class="habit-heading"><div><p class="page-kicker">Tutor support</p><h2>Engineering Tutor</h2><p class="habit-help">Use your recurring session to turn questions and project roadblocks into next steps.</p></div></div><a class="engineering-tutor-link" href="'+esc(tutorUrl)+'" target="_blank" rel="noopener noreferrer"><span>📅</span><div><strong>Standing engineering tutor</strong><small>Open Preply tutor profile</small></div><b>↗</b></a>'
-        + '<div class="engineering-check-groups"><div><h3>Bring to Tutor</h3><label><input type="checkbox"> Concepts I am stuck on</label><label><input type="checkbox"> Project progress / problems</label><label><input type="checkbox"> Sketches, code, or circuit questions</label></div><div><h3>Questions to Ask</h3><label><input type="checkbox"> What should I learn next?</label><label><input type="checkbox"> Is my design approach sound?</label><label><input type="checkbox"> What should I practice before next session?</label></div></div></section>'
-
-        + '<section class="panel engineering-vocab"><div class="habit-heading"><div><p class="page-kicker">Tutor vocabulary</p><h2>Concepts to Master</h2><p class="habit-help">Terms your tutor wants you to recognize and explain in your own words.</p></div></div><div class="engineering-vocab-list">'
-        + vocab.map(row=>'<details><summary><span>'+row[0]+'</span><strong>'+esc(row[1])+'</strong></summary><p>'+esc(row[2])+'</p></details>').join('')
-        + '</div></section></div>'
-
-        + '<section class="panel engineering-lab"><div class="habit-heading"><div><p class="page-kicker">My engineering lab</p><h2>Equipment I Already Have</h2><p class="habit-help">Use the gear you already own to turn concepts into repeatable experiments.</p></div></div><div class="engineering-lab-grid">'
-        + lab.map(row=>'<article><span>'+row[0]+'</span><h3>'+esc(row[1])+'</h3><p>'+esc(row[2])+'</p><small>Owned</small></article>').join('')
-        + '</div></section>'
-
-        + '<section class="panel engineering-projects"><div class="habit-heading"><div><p class="page-kicker">Projects I am building toward</p><h2>Engineering Projects</h2><p class="habit-help">Projects become proof that you can apply concepts, troubleshoot, iterate, and finish.</p></div></div><div class="engineering-project-grid">'
-        + projects.map(row=>'<article><span>'+row[0]+'</span><h3>'+esc(row[1])+'</h3><b>'+esc(row[2])+'</b><p>'+esc(row[3])+'</p></article>').join('')
-        + '</div></section>'
-
-        + '<section class="panel engineering-success"><div class="habit-heading"><div><p class="page-kicker">What success looks like</p><h2>College & Engineering Readiness</h2><p class="habit-help">Progress is not one score. It is a collection of capabilities you can demonstrate.</p></div></div><div class="engineering-success-grid"><span>🎓 Understand core concepts</span><span>🔧 Build working projects</span><span>🧾 Explain and document my process</span><span>🧪 Test and troubleshoot</span><span>💻 Use engineering software confidently</span><span>🌱 Feel ready for college-level work</span></div></section>'
+      const html='<section class="engineering-dashboard">'
+        + '<section class="engineering-banner"><div><p class="page-kicker">Skills in Bloom</p><h2>Engineering</h2><p>Build · Design · Prototype · Learn</p></div><span aria-hidden="true">⚙️</span></section>'
+        + '<div class="engineering-top-grid"><section class="panel engineering-goal"><p class="page-kicker">My engineering goal</p><h2>Build toward independent engineering work</h2><p class="habit-help">Strengthen electronics, programming, mechanical design, fabrication, and systems thinking through real projects and college preparation.</p></section><section class="panel engineering-progress"><p class="page-kicker">Overall progress</p><h2>'+(observed.length?overall+'%':'Start tracking')+'</h2><div class="engineering-progress-bar"><span style="width:'+overall+'%"></span></div><p class="habit-help">Foundation → Applied → Projects → Independent</p></section><section class="panel engineering-quick"><p class="page-kicker">Quick actions</p>'+button('new-skill','+ Add Practice Topic','',true,Boolean(attempt))+button('engineering-homework-add','+ Add Homework','')+'</section></div>'
+        + '<div class="engineering-three-col"><section class="panel engineering-tutor-card"><p class="page-kicker">My tutor</p><div class="engineering-tutor-profile"><span class="engineering-tutor-avatar" aria-hidden="true">🧑‍🏫</span><div><h2>Engineering Tutor</h2><p>Standing tutoring support</p></div></div><a class="button primary" href="'+esc(tutorUrl)+'" target="_blank" rel="noopener noreferrer">Open Tutor Profile (Preply) ↗</a></section><section class="panel engineering-appointment"><p class="page-kicker">Tutor appointment</p><h2>Standing Appointment</h2><p class="habit-help">Recurring engineering support for concepts, troubleshooting, and project planning.</p><a class="engineering-text-link" href="'+esc(tutorUrl)+'" target="_blank" rel="noopener noreferrer">Tutor profile ↗</a></section>'+proposal+'</div>'
+        + '<div class="engineering-two-col"><section class="panel engineering-roadmap"><p class="page-kicker">My learning path</p><h2>10-Year Engineering Roadmap</h2><div class="engineering-timeline"><article><b>1</b><div><h3>Foundations · Now–3 months</h3><p>Electronics basics, math/science refresh, terminology, simple circuits.</p></div></article><article><b>2</b><div><h3>Core Skills · 3–12 months</h3><p>Circuit design, microcontrollers, Tinkercad/CAD, coding, breadboarding.</p></div></article><article><b>3</b><div><h3>Systems & Design · Years 2–4</h3><p>Sensors, actuators, controls, CAD, prototyping, integration.</p></div></article><article><b>4</b><div><h3>Advanced Projects · Years 5–7</h3><p>Complex builds, mechanical systems, robotics, real-world projects.</p></div></article><article><b>5</b><div><h3>Professional Readiness · Years 8–10</h3><p>Portfolio, advanced engineering focus, college/career preparation.</p></div></article></div></section><section class="panel engineering-vocab"><p class="page-kicker">Key terms & vocabulary</p><h2>Concepts to Master</h2><div class="engineering-vocab-list">'+vocab.map(row=>'<details><summary><span>'+row[0]+'</span><strong>'+esc(row[1])+'</strong></summary><p>'+esc(row[2])+'</p></details>').join('')+'</div></section></div>'
+        + homeworkHtml
+        + '<section class="panel engineering-lab"><div class="habit-heading"><div><p class="page-kicker">My engineering kit & tools</p><h2>My Engineering Lab</h2><p class="habit-help">Equipment already available for hands-on learning and prototypes.</p></div></div><div class="engineering-lab-grid">'+lab.map(row=>'<article><span>'+row[0]+'</span><h3>'+esc(row[1])+'</h3><p>'+esc(row[2])+'</p><small>✓ Owned</small></article>').join('')+'</div></section>'
+        + '<div class="engineering-bottom-grid"><section class="panel engineering-focus"><p class="page-kicker">Current focus · 12 weeks</p><h2>What I’m Working On Now</h2><label><input type="checkbox"> Learn the key terminology</label><label><input type="checkbox"> Complete guided ELEGOO circuits</label><label><input type="checkbox"> Practice in Tinkercad</label><label><input type="checkbox"> Try a project in Wokwi</label><label><input type="checkbox"> Set up VS Code for embedded work</label><label><input type="checkbox"> Weekly tutor practice & review</label></section><section class="panel engineering-projects"><p class="page-kicker">Practice & projects</p><h2>Build Portfolio</h2><div class="engineering-project-grid">'+projects.map(row=>'<article><span>'+row[0]+'</span><h3>'+esc(row[1])+'</h3><b>'+esc(row[2])+'</b><p>'+esc(row[3])+'</p></article>').join('')+'</div></section><section class="panel engineering-college"><p class="page-kicker">College readiness</p><h2>Ready for the Next Level</h2><label><input type="checkbox"> Math review · Algebra → Calculus</label><label><input type="checkbox"> Physics basics · mechanics & circuits</label><label><input type="checkbox"> Chemistry review as needed</label><label><input type="checkbox"> Reading & technical writing</label><label><input type="checkbox"> Build a project portfolio</label><label><input type="checkbox"> Research engineering programs</label></section></div>'
+        + '<section class="panel engineering-stats"><div class="engineering-metrics"><div><span>⚙️</span><strong>'+engineeringSkills.length+'</strong><small>saved engineering topics</small></div><div><span>⏱️</span><strong>'+esc(count(weekMinutes))+' min</strong><small>practice this week</small></div><div><span>📚</span><strong>'+esc(count(monthMinutes))+' min</strong><small>practice this month</small></div><div><span>↻</span><strong>'+due+'</strong><small>ready to revisit</small></div></div></section>'
         + '</section>';
+      if(root.requestAnimationFrame) root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydrateEngineeringFiles(files)));
+      else hydrateEngineeringFiles(files);
+      return html;
     }
-
     function renderSkills(current) {
       const skills = privateRows(current, 'skills'), sessions = privateRows(current, 'skillSessions'), today = M.dayKey(getNow());
       const due = skills.filter(skill => M.skillProgress(skill, sessions, today).due);
@@ -412,7 +429,19 @@
       });
     }
     function handleSubmit(event) {
-      const form = event.target, group = form && form.dataset && form.dataset.habitForm;
+      const form=event.target;
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'engineeringHomeworkForm')){
+        if(event.preventDefault)event.preventDefault();
+        const current=snapshot(); if(busy)return true;
+        try{
+          requireReady(current);
+          run('Saving Engineering homework…',()=>store.saveEngineeringHomework({...engineeringHomeworkDraft,status:'open'}),()=>{
+            engineeringHomeworkDraft={title:'',due_on:'',notes:''}; engineeringHomeworkOpen=false; notify('Engineering homework saved.');
+          },null,'#engineering-homework');
+        }catch(error){notify(error.message,true);}
+        return true;
+      }
+      const group = form && form.dataset && form.dataset.habitForm;
       if (!Object.hasOwn(FIELDS, group)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
@@ -432,6 +461,11 @@
       const element = event.target, data = element && element.dataset;
       if (!data) return false;
       const current = snapshot();
+      if(Object.hasOwn(data,'engineeringHomeworkField')){
+        const key=String(data.engineeringHomeworkField||'');
+        if(['title','due_on','notes'].includes(key)) engineeringHomeworkDraft[key]=String(element.value||'');
+        return true;
+      }
       if (Object.hasOwn(data, 'habitRange')) {
         const key = data.habitRange; if (!['joints', 'cigars'].includes(key)) return false;
         if (!locked('smoke')) {
@@ -462,6 +496,16 @@
     }
     function handleChange(event) {
       const element = event.target, data = element && element.dataset;
+      if(data&&Object.hasOwn(data,'engineeringUpload')){
+        const current=snapshot(), files=Array.from(element.files||[]); element.value='';
+        if(!files.length)return true;
+        try{
+          requireReady(current);
+          if(typeof store.uploadEngineeringFile!=='function')throw new Error('Refresh the app to load Engineering file tools.');
+          run('Uploading Engineering files…',async()=>{const out=[];for(const file of files.slice(0,12))out.push(await store.uploadEngineeringFile({file}));return out;},rows=>notify((rows||[]).length+' Engineering file'+((rows||[]).length===1?'':'s')+' saved.'),null,'#engineering-homework');
+        }catch(error){notify(error.message,true);}
+        return true;
+      }
       if (data && Object.hasOwn(data, 'habitImport')) {
         const current = snapshot();
         if (busy || attempt) return true;
@@ -527,11 +571,31 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-habit-action]') : null;
       const data = element && element.dataset, action = data && data.habitAction;
-      if (!['grocery', 'money', 'category', 'new-skill', 'edit-skill', 'log-skill', 'skill-history', 'close-history', 'edit-session', 'resume', 'discard', 'archive', 'retry', 'reload-record', 'grams', 'trigger', 'reset-baseline', 'open-settings', 'close-settings', 'edit-day', 'new-purchase', 'export', 'restore-backup', 'cancel-backup'].includes(action)) return false;
+      if (!['grocery', 'money', 'category', 'new-skill', 'edit-skill', 'log-skill', 'skill-history', 'close-history', 'edit-session', 'resume', 'discard', 'archive', 'retry', 'reload-record', 'grams', 'trigger', 'reset-baseline', 'open-settings', 'close-settings', 'edit-day', 'new-purchase', 'export', 'restore-backup', 'cancel-backup', 'engineering-homework-add', 'engineering-homework-cancel', 'engineering-homework-toggle', 'engineering-homework-delete', 'engineering-file-open', 'engineering-file-delete'].includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery' || action === 'money') { navigate(action); return true; }
         if (action === 'category') { if (data.category === 'all' || M.CATEGORIES.some(item => item.key === data.category)) selectedCategory = data.category; }
+        else if(action==='engineering-homework-add'){engineeringHomeworkOpen=true;engineeringHomeworkDraft={title:'',due_on:'',notes:''};refresh('#engineering-homework');return true;}
+        else if(action==='engineering-homework-cancel'){engineeringHomeworkOpen=false;engineeringHomeworkDraft={title:'',due_on:'',notes:''};refresh('#engineering-homework');return true;}
+        else if(action==='engineering-homework-toggle'){
+          const row=engineeringHomeworkRows(current).find(item=>item.id===data.id); if(!row)throw new Error('Refresh to find that homework.');
+          run(row.status==='done'?'Reopening homework…':'Completing homework…',()=>store.saveEngineeringHomework({...row,status:row.status==='done'?'open':'done'}),()=>notify(row.status==='done'?'Homework reopened.':'Homework marked done.'),null,'#engineering-homework');return true;
+        }
+        else if(action==='engineering-homework-delete'){
+          const row=engineeringHomeworkRows(current).find(item=>item.id===data.id); if(!row)throw new Error('Refresh to find that homework.');
+          if(!confirm('Remove this Engineering homework? Saved uploaded files are kept unless you delete them separately.'))return true;
+          run('Removing homework…',()=>store.deleteEngineeringHomework(row),()=>notify('Homework removed.'),null,'#engineering-homework');return true;
+        }
+        else if(action==='engineering-file-open'){
+          const row=engineeringFileRows(current).find(item=>item.id===data.id); if(!row)throw new Error('Refresh to find that Engineering file.');
+          run('Opening Engineering file…',()=>store.getEngineeringFileUrl(row),url=>{if(root.open)root.open(url,'_blank','noopener');},null,'#engineering-homework');return true;
+        }
+        else if(action==='engineering-file-delete'){
+          const row=engineeringFileRows(current).find(item=>item.id===data.id); if(!row)throw new Error('Refresh to find that Engineering file.');
+          if(!confirm('Delete this saved Engineering file?'))return true;
+          run('Deleting Engineering file…',()=>store.deleteEngineeringFile(row),()=>notify('Engineering file deleted.'),null,'#engineering-homework');return true;
+        }
         else if (action === 'new-skill') { const category = selectedCategory === 'all' ? 'piano' : selectedCategory; openGroup('skill', current, null, { category, memory_type: M.category(category).memory_type }); return true; }
         else if (action === 'edit-skill' || action === 'log-skill') {
           const row = privateRows(current, 'skills').find(skill => skill.id === data.id); if (!row) throw new Error('Refresh to find this saved skill.');
