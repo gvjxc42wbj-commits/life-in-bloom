@@ -663,6 +663,9 @@ function renderCircle(){
     else if (state.view === 'month') content.innerHTML = renderMonth() + `<div class='panel'><button type='button' class='button' data-action='back-wheel'>Back to moon wheel</button></div>`;
     else content.innerHTML = renderWeek();
     const shared=cloud && cloud.snapshot();
+    if(shared && ['home','grocery','food','wellness','money','dog','housework','skills','smoking'].includes(state.page) && shared.status==='error') {
+      content.insertAdjacentHTML('afterbegin','<aside class="panel cloud-status error" role="alert"><strong>Life in Bloom could not finish loading shared data.</strong><br>'+escapeText(shared.error || 'Please refresh. Your saved records have not been deleted.')+'</aside>');
+    }
     if(shared && ['home','grocery','food','wellness','money','dog','housework','skills','smoking'].includes(state.page) && (shared.offline || shared.cacheWarning)) {
       content.insertAdjacentHTML('afterbegin','<aside class="panel cloud-status" role="status">'+escapeText(shared.offline ? 'Offline — showing your saved device copy. Keep working on drafts; reconnect and save to update the household. Last copy: '+new Date(shared.cachedAt).toLocaleString() : shared.cacheWarning)+'</aside>');
     }
