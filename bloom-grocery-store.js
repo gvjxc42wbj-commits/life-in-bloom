@@ -14,7 +14,7 @@
     engineeringHomework: 'bloom_engineering_homework', engineeringFiles: 'bloom_engineering_files',
     readingBooks: 'bloom_reading_books', readingSessions: 'bloom_reading_sessions', readingNotes: 'bloom_reading_notes',
     readingVocabulary: 'bloom_reading_vocabulary', readingQuizAttempts: 'bloom_reading_quiz_attempts', readingFiles: 'bloom_reading_files',
-    readingPageText: 'bloom_reading_page_text'
+    readingPageText: 'bloom_reading_page_text', readingAssignments: 'bloom_reading_assignments', readingAudioRecordings: 'bloom_reading_audio_recordings'
   };
   const PRIVATE_FIELDS = ['display_name', 'age_years', 'height_cm', 'weight_kg', 'activity_level', 'notes'];
   const DIET_FIELDS = ['display_name', 'color', 'calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'allergies', 'restrictions', 'preferences', 'notes'];
@@ -29,7 +29,7 @@
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings'];
   const LIFE_COLLECTIONS = {
     hydrationSettings:'hydration_settings', hydrationEntries:'hydration_entry',
     skills:'skill', skillSessions:'skill_session', smokingSettings:'smoking_settings', smokingDays:'smoking_day',
@@ -147,6 +147,7 @@
     const signedFiles = new Map();
     const signedEngineeringFiles = new Map();
     const signedReadingFiles = new Map();
+    const signedReadingAudio = new Map();
     let client = options.client || null;
     let state = emptyState('loading');
     let generation = 0;
@@ -208,7 +209,7 @@
         const cached = JSON.parse(cacheStorage.getItem(cachePrefix + user.id) || 'null');
         if (!cached || cached.version !== 1 || cached.user.id !== user.id || !cached.household || !cached.members.some(row=>row.user_id===user.id && row.household_id===cached.household.id)) return false;
         if (verifiedHouseholdId !== undefined && cached.household.id !== verifiedHouseholdId) { clearCache(user.id); return false; }
-        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText']) if (!Object.hasOwn(cached, key)) cached[key] = [];
+        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings']) if (!Object.hasOwn(cached, key)) cached[key] = [];
         if (!SHARED_LISTS.every(key=>Array.isArray(cached[key]))) return false;
         state = { ...emptyState('ready'), user:userSummary(user), household:cached.household,
           ...Object.fromEntries(SHARED_LISTS.map(key=>[key,cached[key]])), offline:true, cachedAt:cached.savedAt,
@@ -263,6 +264,7 @@
         signedFiles.clear();
         signedEngineeringFiles.clear();
         signedReadingFiles.clear();
+        signedReadingAudio.clear();
         uploads.clear();
         generation++;
         requestNumber++;
@@ -1014,7 +1016,7 @@
       try{
         const meta={id,household_id:current.householdId,user_id:current.userId,book_id:value.book_id||null,name:String(file.name||'Reading scan').slice(0,240),path,mime_type:file.type,size_bytes:file.size,
           page_from:value.page_from===''||value.page_from==null?null:Number(value.page_from),page_to:value.page_to===''||value.page_to==null?null:Number(value.page_to),section:String(value.section||'').slice(0,240),
-          file_role:value.file_role==='book_pdf'?'book_pdf':'scan',page_count:value.page_count==null?null:Number(value.page_count)};
+          file_role:value.file_role==='book_pdf'?'book_pdf':value.file_role==='assignment_attachment'?'assignment_attachment':'scan',page_count:value.page_count==null?null:Number(value.page_count),assignment_id:value.assignment_id||null};
         const saved=assertResult(await client.from(TABLES.readingFiles).insert(meta).select('*'));checkContext(current);await refresh();return saved&&saved[0];
       }catch(error){try{await client.storage.from('bloom-reading-files').remove([path]);}catch(_){ }throw error;}
     }
@@ -1076,16 +1078,74 @@
       checkContext(current);if(!Array.isArray(data)||data.length!==1)throw new Error('The Bloom Reader PDF metadata could not be updated.');
       await refresh();checkContext(current);return data[0];
     }
+    async function saveReadingAssignment(row){
+      requireOnline();const current=context(true);row=row||{};
+      const title=String(row.title||'').trim();if(!title||title.length>240)throw new Error('Enter an assignment title up to 240 characters.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,book_id:row.book_id||null,title,
+        prompt:String(row.prompt||'').slice(0,6000),body:String(row.body||'').slice(0,20000),tutor_questions:String(row.tutor_questions||'').slice(0,6000),
+        due_on:row.due_on||null,status:['draft','ready','reviewed'].includes(row.status)?row.status:'draft',updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.readingAssignments).upsert(payload,{onConflict:'id'}).select('*'));
+      checkContext(current);await refresh();checkContext(current);return data&&data[0];
+    }
+    async function deleteReadingAssignment(row){
+      requireOnline();const current=context(true);if(!row||!row.id)throw new Error('Choose a saved assignment.');
+      const data=assertResult(await client.from(TABLES.readingAssignments).delete().eq('id',row.id).eq('user_id',current.userId).eq('household_id',current.householdId).select('id'));
+      if(!Array.isArray(data)||data.length!==1)throw new Error('That assignment changed or was already removed.');
+      await refresh();return true;
+    }
+    async function uploadReadingAudio(value){
+      requireOnline();const current=context(true),file=value&&value.file;
+      const allowed=['audio/webm','audio/mp4','audio/mpeg','audio/ogg','audio/wav'];
+      if(!file||!file.size||file.size>100*1024*1024||!allowed.includes(file.type))throw new Error('Choose a supported audio file up to 100 MB.');
+      if(!value.book_id||!state.readingBooks.some(b=>b.id===value.book_id&&b.user_id===current.userId))throw new Error('Choose a saved book first.');
+      const id=newUuid(),ext={'audio/webm':'webm','audio/mp4':'m4a','audio/mpeg':'mp3','audio/ogg':'ogg','audio/wav':'wav'}[file.type],path=current.userId+'/'+id+'.'+ext;
+      const uploaded=await client.storage.from('bloom-reading-audio').upload(path,file,{contentType:file.type,upsert:false,cacheControl:'3600'});
+      if(uploaded.error)throw errorOf(uploaded.error);checkContext(current);
+      try{
+        const duration=Number(value.duration_seconds),wordCount=value.source_word_count==null?null:Number(value.source_word_count);
+        const wpm=wordCount!=null&&duration>0?Math.round((wordCount/(duration/60))*100)/100:null;
+        const meta={id,household_id:current.householdId,user_id:current.userId,book_id:value.book_id,recorded_on:value.recorded_on,
+          section:String(value.section||'').slice(0,240),page_from:value.page_from===''||value.page_from==null?null:Number(value.page_from),
+          page_to:value.page_to===''||value.page_to==null?null:Number(value.page_to),duration_seconds:duration,source_word_count:wordCount,words_per_minute:wpm,
+          clarity_rating:value.clarity_rating==null||value.clarity_rating===''?null:Number(value.clarity_rating),
+          confidence_rating:value.confidence_rating==null||value.confidence_rating===''?null:Number(value.confidence_rating),
+          notes:String(value.notes||'').slice(0,5000),name:String(file.name||'Read aloud recording').slice(0,240),path,mime_type:file.type,size_bytes:file.size};
+        const saved=assertResult(await client.from(TABLES.readingAudioRecordings).insert(meta).select('*'));
+        checkContext(current);await refresh();return saved&&saved[0];
+      }catch(error){try{await client.storage.from('bloom-reading-audio').remove([path]);}catch(_){}throw error;}
+    }
+    async function updateReadingAudio(row){
+      requireOnline();const current=context(true);if(!row||!row.id)throw new Error('Choose a saved recording.');
+      const payload={clarity_rating:row.clarity_rating==null||row.clarity_rating===''?null:Number(row.clarity_rating),
+        confidence_rating:row.confidence_rating==null||row.confidence_rating===''?null:Number(row.confidence_rating),notes:String(row.notes||'').slice(0,5000)};
+      const data=assertResult(await client.from(TABLES.readingAudioRecordings).update(payload).eq('id',row.id).eq('user_id',current.userId).eq('household_id',current.householdId).select('*'));
+      checkContext(current);await refresh();return data&&data[0];
+    }
+    async function getReadingAudioUrl(row){
+      requireOnline();const current=context(true),saved=state.readingAudioRecordings.find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/'))throw new Error('That reading recording is not available.');
+      const prior=signedReadingAudio.get(saved.path);if(prior&&prior.expires>Date.now())return prior.url;
+      const result=assertResult(await client.storage.from('bloom-reading-audio').createSignedUrl(saved.path,120));checkContext(current);
+      signedReadingAudio.set(saved.path,{url:result.signedUrl,expires:Date.now()+90000});return result.signedUrl;
+    }
+    async function deleteReadingAudio(row){
+      requireOnline();const current=context(true),saved=state.readingAudioRecordings.find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/'))throw new Error('Refresh the reading recordings before removing one.');
+      assertResult(await client.storage.from('bloom-reading-audio').remove([saved.path]));checkContext(current);signedReadingAudio.delete(saved.path);
+      const data=assertResult(await client.from(TABLES.readingAudioRecordings).delete().eq('id',saved.id).eq('user_id',current.userId).select('id'));
+      if(!Array.isArray(data)||data.length!==1)throw new Error('The recording could not be removed.');
+      await refresh();return true;
+    }
     function exportReadingRecords() {
       if(!state.user||!state.household||state.status!=='ready') throw new Error('Sign in before exporting Reading in Bloom.');
-      const keys=['readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts'];
+      const keys=['readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingAssignments'];
       return {app:'Life in Bloom Reading',version:1,user_id:state.user.id,household_id:state.household.id,exported_at:new Date().toISOString(),
         data:Object.fromEntries(keys.map(key=>[key,clone((state[key]||[]).filter(row=>row.user_id===state.user.id&&row.household_id===state.household.id))]))};
     }
     async function importReadingRecords(value) {
       requireOnline(); const current=context(true);
       if(!value||value.app!=='Life in Bloom Reading'||value.version!==1||value.user_id!==current.userId||value.household_id!==current.householdId||!value.data) throw new Error('Choose a Reading in Bloom backup from this same account and household.');
-      const mapping={readingBooks:TABLES.readingBooks,readingSessions:TABLES.readingSessions,readingNotes:TABLES.readingNotes,readingVocabulary:TABLES.readingVocabulary,readingQuizAttempts:TABLES.readingQuizAttempts};
+      const mapping={readingBooks:TABLES.readingBooks,readingSessions:TABLES.readingSessions,readingNotes:TABLES.readingNotes,readingVocabulary:TABLES.readingVocabulary,readingQuizAttempts:TABLES.readingQuizAttempts,readingAssignments:TABLES.readingAssignments};
       for(const key of Object.keys(mapping)){
         const rows=value.data[key]; if(!Array.isArray(rows)||rows.length>10000) throw new Error('This Reading backup is incomplete or too large.');
         if(rows.some(row=>!row||row.user_id!==current.userId||row.household_id!==current.householdId)) throw new Error('The Reading backup contains records from another account or household.');
@@ -1146,7 +1206,7 @@
       saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, importFoodMaster, saveKitchenEquipment, deleteKitchenEquipment, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
       ...lifeSavers,saveLifeRecord,archiveLifeRecord,addDogSupplyToShopping,exportPersonalLifeRecords,importPersonalLifeRecords,
       uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveEngineeringHomework, deleteEngineeringHomework, uploadEngineeringFile, getEngineeringFileUrl, deleteEngineeringFile,
-      ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingFile, deleteReadingRow, saveReadingPageText, saveReadingPageTexts, deleteReadingPageText, setReadingFilePageCount, exportReadingRecords, importReadingRecords,
+      ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingFile, deleteReadingRow, saveReadingPageText, saveReadingPageTexts, deleteReadingPageText, setReadingFilePageCount, saveReadingAssignment, deleteReadingAssignment, uploadReadingAudio, updateReadingAudio, getReadingAudioUrl, deleteReadingAudio, exportReadingRecords, importReadingRecords,
       saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };
