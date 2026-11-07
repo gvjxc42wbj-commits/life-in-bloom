@@ -146,6 +146,13 @@
     let identity = null, generation = 0, busy = null, pending = Promise.resolve(), currentPage = 'food';
     let tab = 'home', selectedDate = dayKey(getNow()), search = '', editor = false, openedRecipeId = '', logging = false, planning = false;
     let selectedFile = null, fileUrls = new Map(), draftSaved = false, draftWarningShown = false;
+    let recipeReturn = null;
+    const COOKBOOK_PAGES = {1:4,2:6,3:7,4:8,5:9,6:10,7:11,8:12,9:13,10:14,11:15,12:16,13:17,14:18,15:20,16:21,17:22,18:23,19:24,20:25,21:26,22:27,23:29,24:30,25:31,26:33,27:35,28:36,29:37,30:38,31:40,32:41,33:42,34:43,35:44,36:45,37:46,38:47,39:48,40:49,41:50,42:51,43:52,44:54,45:55};
+    const COOKBOOK_SECTIONS = [
+      ['Main Dishes',1,7],['Family Recipes',8,10],['Breakfast',11,11],['Drinks',12,12],
+      ['New Recipes',13,22],['More Favorites',23,32],['Final Additions · Main Dishes',33,42],
+      ['Soups',43,43],['Side Dishes',44,44],['Desserts',45,45]
+    ];
     let planAttempt = null, planProblem = '', planIngredientsOpen = false;
     let drafts = { recipe: recipeDraft(), log: logDraft(selectedDate), plan: planDraft(selectedDate) }, baselines = copy(drafts);
 
@@ -167,7 +174,7 @@
         };
         drafts[group] = restore(saved.drafts[group]); baselines[group] = restore(saved.baselines[group]);
       }
-      tab = ['home','recipes','plans','cooking','soon','log'].includes(saved.tab) ? saved.tab : 'home';
+      tab = ['home','cookbook','recipes','plans','cooking','soon','log'].includes(saved.tab) ? saved.tab : 'home';
       selectedDate = M.dateNumber(saved.selectedDate) == null ? dayKey(getNow()) : saved.selectedDate;
       editor = Boolean(saved.editor); logging = Boolean(saved.logging); planning = Boolean(saved.planning); openedRecipeId = String(saved.openedRecipeId || '');
       if (saved.planAttempt && ['save', 'cancel'].includes(saved.planAttempt.action) && saved.planAttempt.payload && typeof saved.planAttempt.payload === 'object' && typeof saved.planAttempt.payload.request_id === 'string') planAttempt = copy(saved.planAttempt);
@@ -179,7 +186,7 @@
       const current = store.snapshot() || {};
       const key = (current.user && current.user.id || '') + ':' + (current.household && current.household.id || '');
       if (key !== identity) {
-        identity = key; generation++; busy = null; selectedDate = dayKey(getNow()); tab = 'home'; search = ''; editor = false; logging = false; planning = false; planAttempt = null; planProblem = ''; planIngredientsOpen = false; openedRecipeId = ''; selectedFile = null; fileUrls = new Map();
+        identity = key; generation++; busy = null; selectedDate = dayKey(getNow()); tab = 'home'; search = ''; editor = false; logging = false; planning = false; planAttempt = null; planProblem = ''; planIngredientsOpen = false; openedRecipeId = ''; recipeReturn = null; selectedFile = null; fileUrls = new Map();
         drafts = { recipe: recipeDraft(), log: logDraft(selectedDate), plan: planDraft(selectedDate) }; baselines = copy(drafts); draftSaved = false; draftWarningShown = false;
         if (draftStore && current.user && current.household) {
           try { const saved = draftStore.read(current.user.id, current.household.id, 'food'); draftSaved = Boolean(saved && restoreDrafts(saved.data)); }
@@ -381,7 +388,8 @@
     }
     function renderRecipeDetail(current, recipe) {
       const products = new Map((current.products || []).map(product => [product.id, product]));
-      let html = '<section class="panel food-recipe-detail"><p class="page-kicker">' + esc(recipe.category_label || 'Saved recipe') + '</p><h2>' + esc(recipe.name) + '</h2>' + (recipe.time_text ? '<p class="food-recipe-meta">Time · ' + esc(recipe.time_text) + '</p>' : '') + '<p class="food-help">Makes ' + esc(fmt(recipe.servings)) + ' servings. Ingredient quantities below are for the whole recipe.</p>' + recipeCostMarkup(recipe, current, false) + allergyNotice(recipe, current);
+      const backLabel = recipeReturn && recipeReturn.tab === 'cookbook' ? '← Back to Cookbook' : '← Back';
+      let html = '<section class="panel food-recipe-detail" id="food-recipe-detail-' + esc(recipe.id) + '" tabindex="-1"><nav class="food-recipe-jump" aria-label="Recipe navigation">' + button('recipe-back', backLabel) + button('scroll-top', '↑ Top') + '</nav><p class="page-kicker">' + esc(recipe.category_label || 'Saved recipe') + '</p><h2>' + esc(recipe.name) + '</h2>' + (recipe.time_text ? '<p class="food-recipe-meta">Time · ' + esc(recipe.time_text) + '</p>' : '') + '<p class="food-help">Makes ' + esc(fmt(recipe.servings)) + ' servings. Ingredient quantities below are for the whole recipe.</p>' + recipeCostMarkup(recipe, current, false) + allergyNotice(recipe, current);
       if (recipe.ingredient_text) html += '<h3>Ingredients as written</h3><p class="food-prose">' + esc(recipe.ingredient_text) + '</p>';
       if ((recipe.ingredients || []).length) html += '<h3>Foods linked to your catalog</h3><ul class="food-ingredients">' + recipe.ingredients.map(item => '<li><strong>' + esc(products.get(item.product_id) && products.get(item.product_id).name || 'Ingredient no longer available') + '</strong><span>' + esc(fmt(item.quantity)) + ' ' + esc(item.unit) + '</span></li>').join('') + '</ul>';
       else html += '<p class="food-help">You can link catalog foods when you want pantry matches or calculations from their nutrition labels.</p>';
@@ -416,13 +424,54 @@
     function draftStatus(group) {
       return '<p class="food-draft-state" data-food-draft-status="' + group + '" role="status"' + (!dirty(group) ? ' hidden' : '') + '>' + (draftSaved ? 'Draft saved on this device. Choose Save to share the finished entry with your household.' : 'Draft in progress. Save before closing this page.') + '</p>';
     }
+    function cookbookNumber(recipe) {
+      const match = String(recipe && recipe.source_key || '').match(/^food_in_bloom_(\d{2})$/);
+      return match ? Number(match[1]) : null;
+    }
+    function afterRenderScroll(selector, block) {
+      if (!selector || !root.document) return;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const target = root.document.querySelector(selector);
+        if (!target) return;
+        target.scrollIntoView({ block: block || 'start', behavior: 'smooth' });
+        if (typeof target.focus === 'function') {
+          try { target.focus({ preventScroll: true }); } catch (_) {}
+        }
+      }));
+    }
+    function openRecipeAndScroll(recipeId, originTab) {
+      const current = snapshot();
+      const recipe = (current.recipes || []).find(row => row.id === recipeId && !row.archived);
+      if (!recipe) throw new Error('Refresh to find this saved recipe.');
+      recipeReturn = { tab: originTab || tab, y: Number(root.scrollY || root.pageYOffset || 0) };
+      openedRecipeId = recipe.id; editor = false; selectedFile = null; tab = 'recipes';
+      persist(); refresh();
+      afterRenderScroll('#food-recipe-detail-' + recipe.id, 'start');
+      return true;
+    }
+    function renderCookbook(current) {
+      const cookbook = (current.recipes || []).filter(recipe => !recipe.archived && cookbookNumber(recipe));
+      const byNumber = new Map(cookbook.map(recipe => [cookbookNumber(recipe), recipe]));
+      let html = '<section class="panel food-cookbook" id="food-cookbook-top"><div class="food-cookbook-cover"><p class="page-kicker">Food In Bloom · Cookbook</p><h2>Cookbook pages</h2><p>Browse the book in recipe order. Tap any page to open that exact recipe in the Recipes tab.</p><span>45 recipes · pages 4–55</span></div>';
+      for (const [label, first, last] of COOKBOOK_SECTIONS) {
+        const rows = [];
+        for (let number = first; number <= last; number++) {
+          const recipe = byNumber.get(number);
+          if (!recipe) continue;
+          rows.push('<button type="button" class="food-cookbook-page" data-food-action="cookbook-recipe" data-id="' + esc(recipe.id) + '"><span class="food-cookbook-number">Recipe ' + String(number).padStart(2,'0') + '</span><strong>' + esc(recipe.name) + '</strong><small>Cookbook page ' + esc(COOKBOOK_PAGES[number] || '') + (recipe.time_text ? ' · ' + esc(recipe.time_text) : '') + '</small><span class="food-cookbook-open">Open recipe →</span></button>');
+        }
+        if (rows.length) html += '<section class="food-cookbook-section"><h3>' + esc(label) + '</h3><div class="food-cookbook-grid">' + rows.join('') + '</div></section>';
+      }
+      return html + '</section>';
+    }
+
     function renderRecipes(current) {
       const recipes = (current.recipes || []).filter(recipe => !recipe.archived && String(recipe.name).toLowerCase().includes(search.toLowerCase()));
-      let html = '<section class="panel"><div class="food-heading"><div><p class="page-kicker">Your recipe collection</p><h2>Recipes you come back to</h2></div>' + button('new-recipe', '+ Save a recipe', '', true) + '</div><label class="food-field food-search" for="food-recipe-search"><span>Find a saved recipe</span><input id="food-recipe-search" type="search" data-food-search value="' + esc(search) + '" placeholder="Search your recipes"></label>';
+      let html = '<section class="panel" id="food-recipes-top"><div class="food-heading"><div><p class="page-kicker">Your recipe collection</p><h2>Recipes you come back to</h2></div>' + button('new-recipe', '+ Save a recipe', '', true) + '</div><label class="food-field food-search" for="food-recipe-search"><span>Find a saved recipe</span><input id="food-recipe-search" type="search" data-food-search value="' + esc(search) + '" placeholder="Search your recipes"></label>';
       if (dirty('recipe') && !editor) html += '<p class="food-help">You have a recipe draft.</p>' + button('resume-recipe', 'Resume recipe draft');
       if (dirty('plan') || planAttempt) html += '<p class="food-help">You have a meal plan to finish.</p>' + button('resume-plan', 'Resume meal plan');
       if (!recipes.length) html += '<div class="food-empty"><span aria-hidden="true">📖</span><h3>' + (search ? 'No matching recipes' : 'Start with a recipe you know') + '</h3><p>Save its ingredients and the number of servings. Then you can log a different portion for each person and find it when an ingredient needs using.</p></div>';
-      else html += '<div class="food-recipe-grid">' + recipes.map(recipe => '<article class="food-recipe-card">' + (recipe.category_label || recipe.time_text ? '<p class="food-recipe-meta">' + [recipe.category_label, recipe.time_text].filter(Boolean).map(esc).join(' · ') + '</p>' : '') + '<h3>' + esc(recipe.name) + '</h3><p>' + esc(fmt(recipe.servings)) + ' servings' + ((recipe.planning_ingredients || []).length ? ' · ' + recipe.planning_ingredients.length + ' ingredients' : '') + '</p><div class="food-nutrition-brief">' + briefNutrition(M.recipeNutrition(recipe, current.products || [], 1)) + '</div>' + recipeCostMarkup(recipe, current, true) + allergyNotice(recipe, current) + '<div class="food-actions">' + button('plan-recipe', 'Plan this meal', ' data-id="' + esc(recipe.id) + '"', true, Boolean(planAttempt)) + button('view-recipe', 'Open recipe', ' data-id="' + esc(recipe.id) + '"') + button('log-recipe', 'Log a portion', ' data-id="' + esc(recipe.id) + '" data-person="1"') + '</div></article>').join('') + '</div>';
+      else html += '<div class="food-recipe-grid">' + recipes.map(recipe => '<article class="food-recipe-card" id="food-recipe-card-' + esc(recipe.id) + '">' + (recipe.category_label || recipe.time_text ? '<p class="food-recipe-meta">' + [recipe.category_label, recipe.time_text].filter(Boolean).map(esc).join(' · ') + '</p>' : '') + '<h3>' + esc(recipe.name) + '</h3><p>' + esc(fmt(recipe.servings)) + ' servings' + ((recipe.planning_ingredients || []).length ? ' · ' + recipe.planning_ingredients.length + ' ingredients' : '') + '</p><div class="food-nutrition-brief">' + briefNutrition(M.recipeNutrition(recipe, current.products || [], 1)) + '</div>' + recipeCostMarkup(recipe, current, true) + allergyNotice(recipe, current) + '<div class="food-actions">' + button('plan-recipe', 'Plan this meal', ' data-id="' + esc(recipe.id) + '"', true, Boolean(planAttempt)) + button('view-recipe', 'Open recipe', ' data-id="' + esc(recipe.id) + '"') + button('log-recipe', 'Log a portion', ' data-id="' + esc(recipe.id) + '" data-person="1"') + '</div></article>').join('') + '</div>';
       html += '</section>';
       if (editor) html += renderRecipeForm(current);
       else {
@@ -531,8 +580,9 @@
       if (current.offline) html += '<p class="food-offline" role="status">Offline · showing the saved device copy. You can prepare a draft; reconnect to save changes online.</p>';
       if (currentPage === 'wellness') return html + renderWellness(current) + '</section>';
       const dueCount = M.dueItems(current.inventory || [], dayKey(getNow())).length;
-      html += '<nav class="food-tabs" aria-label="Food sections">' + [['home','🌸','Food home'],['recipes','📖','Recipes'],['plans','🗓️','Menu'],['cooking','🍳','Cooking'],['soon','🌱','Use soon'+(dueCount?' · '+dueCount:'')],['log','🍽️','Food log']].map(([value, icon, label]) => '<button type="button" data-food-action="tab" data-tab="' + value + '"' + (tab === value ? ' aria-current="page"' : '') + '><span aria-hidden="true">' + icon + '</span> ' + esc(label) + '</button>').join('') + '</nav>';
+      html += '<nav class="food-tabs" aria-label="Food sections">' + [['home','🌸','Food home'],['cookbook','📕','Cookbook'],['recipes','📖','Recipes'],['plans','🗓️','Menu'],['cooking','🍳','Cooking'],['soon','🌱','Use soon'+(dueCount?' · '+dueCount:'')],['log','🍽️','Food log']].map(([value, icon, label]) => '<button type="button" data-food-action="tab" data-tab="' + value + '"' + (tab === value ? ' aria-current="page"' : '') + '><span aria-hidden="true">' + icon + '</span> ' + esc(label) + '</button>').join('') + '</nav>';
       if (tab === 'home') html += renderFoodHome(current);
+      else if (tab === 'cookbook') html += renderCookbook(current);
       else if (tab === 'recipes') html += renderRecipes(current);
       else if (tab === 'plans') html += renderPlans(current);
       else if (tab === 'cooking') html += renderCooking(current);
@@ -853,21 +903,31 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-food-action]') : null;
       const data = element && element.dataset, action = data && data.foodAction;
-      const actions = ['grocery', 'food-home', 'wellness', 'tab', 'new-recipe', 'resume-recipe', 'view-recipe', 'edit-recipe', 'discard-recipe', 'archive-recipe', 'add-ingredient', 'remove-ingredient', 'add-shopping-ingredient', 'remove-shopping-ingredient', 'toggle-plan-ingredients', 'new-plan', 'plan-recipe', 'resume-plan', 'edit-plan', 'cancel-plan', 'close-plan', 'discard-plan', 'retry-plan', 'reload-plan', 'reload-plan-recipe', 'refresh-meal-shopping', 'new-log', 'resume-log', 'log-recipe', 'edit-log', 'eaten-from-plan', 'discard-log', 'choose-person', 'delete-log', 'calendar', 'upload-file', 'view-file', 'remove-file'];
+      const actions = ['grocery', 'food-home', 'wellness', 'tab', 'cookbook-recipe', 'recipe-back', 'scroll-top', 'new-recipe', 'resume-recipe', 'view-recipe', 'edit-recipe', 'discard-recipe', 'archive-recipe', 'add-ingredient', 'remove-ingredient', 'add-shopping-ingredient', 'remove-shopping-ingredient', 'toggle-plan-ingredients', 'new-plan', 'plan-recipe', 'resume-plan', 'edit-plan', 'cancel-plan', 'close-plan', 'discard-plan', 'retry-plan', 'reload-plan', 'reload-plan-recipe', 'refresh-meal-shopping', 'new-log', 'resume-log', 'log-recipe', 'edit-log', 'eaten-from-plan', 'discard-log', 'choose-person', 'delete-log', 'calendar', 'upload-file', 'view-file', 'remove-file'];
       if (!actions.includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery') { openGrocery(data.tab || 'list', data.month || undefined); return true; }
         if (action === 'food-home' || action === 'wellness') { navigate(action === 'food-home' ? 'food' : 'wellness'); return true; }
-        if (action === 'tab') { if (['home','recipes','plans','cooking','soon','log'].includes(data.tab)) tab = data.tab; }
-        else if (action === 'new-recipe') { if (dirty('recipe') && !confirm('Start a new recipe and discard your current recipe draft?')) return true; resetGroup('recipe', recipeDraft()); editor = true; openedRecipeId = ''; tab = 'recipes'; }
-        else if (action === 'resume-recipe') { editor = true; tab = 'recipes'; }
-        else if (action === 'view-recipe') { openedRecipeId = data.id; editor = false; selectedFile = null; tab = 'recipes'; }
+        if (action === 'tab') { if (['home','cookbook','recipes','plans','cooking','soon','log'].includes(data.tab)) tab = data.tab; }
+        else if (action === 'cookbook-recipe') { return openRecipeAndScroll(data.id, 'cookbook'); }
+        else if (action === 'recipe-back') {
+          const destination = recipeReturn && recipeReturn.tab || 'recipes';
+          const y = recipeReturn && Number.isFinite(recipeReturn.y) ? recipeReturn.y : 0;
+          recipeReturn = null; openedRecipeId = ''; editor = false; tab = destination;
+          persist(); refresh();
+          requestAnimationFrame(() => requestAnimationFrame(() => root.scrollTo({ top: y, behavior: 'smooth' })));
+          return true;
+        }
+        else if (action === 'scroll-top') { root.scrollTo({ top: 0, behavior: 'smooth' }); return true; }
+        else if (action === 'new-recipe') { if (dirty('recipe') && !confirm('Start a new recipe and discard your current recipe draft?')) return true; resetGroup('recipe', recipeDraft()); editor = true; openedRecipeId = ''; tab = 'recipes'; persist(); refresh(); afterRenderScroll('#food-recipe-form','start'); return true; }
+        else if (action === 'resume-recipe') { editor = true; tab = 'recipes'; persist(); refresh(); afterRenderScroll('#food-recipe-form','start'); return true; }
+        else if (action === 'view-recipe') { return openRecipeAndScroll(data.id, tab); }
         else if (action === 'edit-recipe') {
           const recipe = (current.recipes || []).find(row => row.id === data.id); if (!recipe) throw new Error('Refresh to open this recipe.');
           if (drafts.recipe.id !== recipe.id && dirty('recipe') && !confirm('Edit this recipe and discard your current recipe draft?')) return true;
           if (drafts.recipe.id !== recipe.id || !dirty('recipe')) { const value = recipeDraft(); for (const key of Object.keys(value)) if (Object.hasOwn(recipe, key)) value[key] = copy(recipe[key]); value.nutrition_reference = referenceDraft(value.nutrition_reference); value.request_id = ''; resetGroup('recipe', value); }
-          editor = true; tab = 'recipes'; openedRecipeId = recipe.id;
+          editor = true; tab = 'recipes'; openedRecipeId = recipe.id; recipeReturn = { tab: 'recipes', y: Number(root.scrollY || root.pageYOffset || 0) }; persist(); refresh(); afterRenderScroll('#food-recipe-form','start'); return true;
         } else if (action === 'discard-recipe') { if (dirty('recipe') && !confirm('Discard this recipe draft? The last saved recipe will remain.')) return true; resetGroup('recipe', recipeDraft()); editor = false; }
         else if (action === 'archive-recipe') {
           ready(current); const recipe = (current.recipes || []).find(row => row.id === data.id); if (!recipe || !confirm('Archive ' + recipe.name + '? Earlier food entries keep their saved nutrition.')) return true;
@@ -961,7 +1021,7 @@
       } catch (error) { notify(error.message, true); }
       return true;
     }
-    function selectTab(value) { snapshot(); if (busy || !['home','recipes','plans','cooking','soon','log'].includes(value)) return false; tab = value; persist(); refresh(); return true; }
+    function selectTab(value) { snapshot(); if (busy || !['home','cookbook','recipes','plans','cooking','soon','log'].includes(value)) return false; tab = value; persist(); refresh(); return true; }
     function hasUnpersistedChanges() { snapshot(); return Boolean(selectedFile || ((dirty('recipe') || dirty('log') || dirty('plan') || planAttempt) && !draftSaved)); }
     return { render, handleClick, handleSubmit, handleInput, handleChange, hasUnsavedDraft, hasUnpersistedChanges, discardDraft, selectTab, startProductLog, setSelectedDate, getSelectedDate: () => { snapshot(); return selectedDate; }, isBusy: () => Boolean(busy), whenIdle: () => pending, getHomeSummary: () => { const current = snapshot(); return { due: M.dueItems(current.inventory || [], dayKey(getNow())).length, recipes: (current.recipes || []).filter(row => !row.archived).length }; } };
   }
