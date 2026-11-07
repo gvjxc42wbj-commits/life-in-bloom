@@ -135,53 +135,53 @@
     return { actual, water, waterMl, nutrition };
   }
 
-  const COOKBOOK_IMAGE_CACHE_KEY = 'life-in-bloom-cookbook-images-v1';
+  const COOKBOOK_IMAGE_CACHE_KEY = 'life-in-bloom-cookbook-images-v2';
   const COOKBOOK_IMAGE_QUERIES = {
-    1:'Italian chicken sandwich peppers',
-    2:'baked fish potatoes green beans',
+    1:'chicken sandwich bell peppers baguette plated meal',
+    2:'baked white fish potatoes green beans plated meal',
     3:'orange rosemary roasted chicken thighs',
-    4:'pork chops carrot puree',
-    5:'braised chicken sweet potatoes',
+    4:'pork chop carrot puree plated dinner',
+    5:'braised chicken sweet potatoes plated dinner',
     6:'stuffed bell peppers ground beef',
-    7:'sheet pan chicken vegetables rosemary',
+    7:'roasted chicken vegetables sheet pan plated meal',
     8:'chili bowl beef beans',
     9:'beef stew potatoes carrots',
-    10:'meatloaf dinner',
-    11:'egg breakfast sandwich',
-    12:'mocha frappe coffee',
-    13:'spaghetti tomato sauce',
-    14:'chicken fried steak gravy',
-    15:'sirloin steak farro',
-    16:'pork tenderloin vegetable salad',
-    17:'lemon chicken potatoes green beans',
-    18:'mushroom chicken mashed potatoes',
-    19:'steak teriyaki stir fry',
-    20:'bulgogi meatballs rice',
-    21:'bruschetta chicken',
-    22:'grilled chicken salad corn peppers',
-    23:'pork schnitzel potatoes',
-    24:'beef bibimbap',
-    25:'chicken meatloaf apple',
-    26:'meatloaf cupcakes mashed potato',
-    27:'beef bulgogi bowl rice',
-    28:'mushroom swiss burger',
+    10:'homemade meatloaf sliced plated dinner',
+    11:'egg breakfast sandwich plated food',
+    12:'mocha frappe whipped cream drink',
+    13:'spaghetti tomato sauce bowl plated',
+    14:'chicken fried steak white gravy plated',
+    15:'sirloin steak grain pilaf plated',
+    16:'pork tenderloin vegetable salad plated',
+    17:'lemon chicken potatoes green beans plated',
+    18:'mushroom chicken mashed potatoes plated',
+    19:'beef teriyaki stir fry vegetables bowl',
+    20:'Korean bulgogi meatballs rice bowl',
+    21:'bruschetta chicken tomato basil plated',
+    22:'southwestern grilled chicken salad corn peppers',
+    23:'pork schnitzel roasted potatoes plated',
+    24:'Korean beef bibimbap bowl',
+    25:'chicken meatloaf sliced plated dinner',
+    26:'meatloaf cupcakes mashed potato frosting',
+    27:'Korean beef bulgogi rice bowl',
+    28:'mushroom swiss burger plated',
     29:'sweet chili pork rice bowl',
-    30:'beef cheese tostadas',
-    31:'balsamic pork carrots potatoes',
-    32:'pulled chicken sandwich coleslaw',
-    33:'barbecue pork burger fries',
-    34:'duck orange mashed potatoes',
-    35:'chicken creole rice',
-    36:'mozzarella stuffed burger',
-    37:'chicken and rice one pot',
-    38:'bruschetta chicken bake',
-    39:'brown sugar chicken',
-    40:'foil packet chicken potatoes bacon cheese',
-    41:'chicken cordon bleu casserole',
-    42:'pork bibimbap rice',
-    43:'minestrone soup',
-    44:'garlic roasted cauliflower',
-    45:'strawberry cake'
+    30:'beef cheese tostadas plated',
+    31:'pork tenderloin balsamic sauce carrots potatoes',
+    32:'barbecue pulled chicken sandwich coleslaw',
+    33:'barbecue pork burger potato wedges',
+    34:'duck a l orange plated dinner',
+    35:'chicken creole rice plated',
+    36:'mozzarella stuffed burger tomato plated',
+    37:'one pot chicken rice plated',
+    38:'bruschetta chicken bake tomato mozzarella',
+    39:'glazed baked chicken breast plated',
+    40:'chicken potatoes bacon cheese foil packet',
+    41:'chicken cordon bleu casserole plated',
+    42:'Korean pork bibimbap rice bowl',
+    43:'minestrone soup bowl vegetables',
+    44:'roasted cauliflower garlic plated',
+    45:'strawberry cake sliced plated'
   };
   function readCookbookImageCache() {
     try {
@@ -627,35 +627,71 @@
         credit.innerHTML = 'Image: <a href="' + esc(entry.source) + '" target="_blank" rel="noopener noreferrer">' + esc(author) + '</a>' + (entry.license ? ' · ' + esc(entry.license) : '');
       }
     }
+    function cookbookImageScore(page, query) {
+      if (!page || !page.imageinfo || !page.imageinfo[0]) return -Infinity;
+      const info = page.imageinfo[0], meta = info.extmetadata || {};
+      const mime = String(info.mime || '').toLowerCase();
+      if (mime && !/^image\/(jpeg|png|webp)$/.test(mime)) return -Infinity;
+      const width = Number(info.width) || 0, height = Number(info.height) || 0;
+      if (width && height && (width < 500 || height < 300)) return -Infinity;
+      const title = String(page.title || '').replace(/^File:/i,' ');
+      const description = cleanCommonsText((meta.ImageDescription && meta.ImageDescription.value) || '');
+      const objectName = cleanCommonsText((meta.ObjectName && meta.ObjectName.value) || '');
+      const text = (title + ' ' + description + ' ' + objectName).toLowerCase();
+      const bad = [
+        'menu','advert','advertisement','label','package','packaging','logo','icon','diagram','map','poster',
+        'newspaper','magazine','book page','recipe card','scan','scanned','document','screenshot','drawing',
+        'illustration','painting','engraving','clipart','svg','pdf','text page','cover page','brochure',
+        'nutrition facts','ingredient list','food label','box art','product packaging'
+      ];
+      if (bad.some(term => text.includes(term))) return -Infinity;
+      let score = 0;
+      const generic = new Set(['plated','plate','meal','food','bowl','dinner','dish','homemade','roasted','baked']);
+      const words = String(query || '').toLowerCase().split(/[^a-z0-9]+/).filter(word => word.length > 2 && !generic.has(word));
+      for (const word of words) {
+        if (text.includes(word)) score += word.length >= 7 ? 5 : 3;
+      }
+      if (/\b(food|dish|meal|cuisine|served|plate|bowl|restaurant|homemade)\b/.test(text)) score += 4;
+      if (/\b(photo|photograph|photographed)\b/.test(text)) score += 2;
+      if (width >= 1000 && height >= 600) score += 3;
+      if (width >= height * 1.15) score += 1;
+      if (/\.jpe?g$/i.test(title)) score += 2;
+      return score;
+    }
     async function resolveCookbookImage(recipe) {
       if (!recipe || cookbookImageEntry(recipe) || typeof root.fetch !== 'function') return cookbookImageEntry(recipe);
       const number = cookbookNumber(recipe);
       const query = COOKBOOK_IMAGE_QUERIES[number] || recipe.name;
       const params = new URLSearchParams({
         action:'query', format:'json', origin:'*', generator:'search',
-        gsrsearch:query + ' food', gsrnamespace:'6', gsrlimit:'4',
-        prop:'imageinfo', iiprop:'url|extmetadata', iiurlwidth:'900',
-        iiextmetadatafilter:'Artist|LicenseShortName'
+        gsrsearch:query + ' food', gsrnamespace:'6', gsrlimit:'12',
+        prop:'imageinfo', iiprop:'url|size|mime|extmetadata', iiurlwidth:'900',
+        iiextmetadatafilter:'Artist|LicenseShortName|ImageDescription|ObjectName'
       });
       try {
         const response = await root.fetch('https://commons.wikimedia.org/w/api.php?' + params.toString(), { credentials:'omit' });
         if (!response.ok) return null;
         const payload = await response.json();
         const pages = Object.values(payload && payload.query && payload.query.pages || {});
-        const page = pages.find(item => item && item.imageinfo && item.imageinfo[0] && (item.imageinfo[0].thumburl || item.imageinfo[0].url));
-        if (!page) return null;
-        const info = page.imageinfo[0], metadata = info.extmetadata || {};
+        const ranked = pages.map(page => ({ page, score: cookbookImageScore(page, query) }))
+          .filter(row => Number.isFinite(row.score) && row.score >= 6)
+          .sort((a,b) => b.score - a.score);
+        const chosen = ranked[0] && ranked[0].page;
+        if (!chosen || !chosen.imageinfo || !chosen.imageinfo[0]) return null;
+        const info = chosen.imageinfo[0], metadata = info.extmetadata || {};
         const entry = {
           url: info.thumburl || info.url,
-          source: info.descriptionurl || ('https://commons.wikimedia.org/wiki/' + encodeURIComponent(page.title || '')),
+          source: info.descriptionurl || ('https://commons.wikimedia.org/wiki/' + encodeURIComponent(chosen.title || '')),
           artist: cleanCommonsText(metadata.Artist && metadata.Artist.value),
           license: cleanCommonsText(metadata.LicenseShortName && metadata.LicenseShortName.value),
-          query
+          query,
+          score: ranked[0].score
         };
         cookbookImageCache[recipe.id] = entry; writeCookbookImageCache(cookbookImageCache); updateCookbookImageNodes(recipe, entry);
         return entry;
       } catch (_) { return null; }
     }
+
     function hydrateCookbookImages(recipes) {
       if (cookbookImageHydrating || !Array.isArray(recipes) || !recipes.length || typeof root.fetch !== 'function') return;
       const queue = recipes.filter(recipe => !cookbookImageEntry(recipe));
