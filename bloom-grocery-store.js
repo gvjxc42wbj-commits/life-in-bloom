@@ -516,6 +516,12 @@
         if (request !== authNumber || suppressAuth || destroyed) throw new Error('This sign-in attempt was cancelled.');
         replaceUser(data && (data.user || (data.session && data.session.user)));
         if (!state.user) throw new Error('Sign-in did not return an account. Please try again.');
+        try {
+          const signedInUser=data && (data.user || (data.session && data.session.user));
+          if(signedInUser && signedInUser.user_metadata && signedInUser.user_metadata.signup_token) {
+            await client.auth.updateUser({data:{signup_token:null}});
+          }
+        } catch (_) {}
         authBusy = false;
         await refresh();
         return snapshot();
