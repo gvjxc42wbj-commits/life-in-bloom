@@ -554,6 +554,96 @@
       if(readingView==='coach'&&selected)return renderReadingCoach(current,selected);
       return renderReadingHome(current);
     }
+    function renderMathDashboard(current, skills, sessions, today) {
+      const mathSkills=skills.filter(skill=>skill.category==='math');
+      const ids=new Set(mathSkills.map(skill=>skill.id));
+      const mathSessions=sessions.filter(row=>ids.has(row.skill_id));
+      const weekAgo=M.addDays(today,-6);
+      const weekMinutes=mathSessions.filter(row=>row.occurred_on>=weekAgo&&row.occurred_on<=today).reduce((sum,row)=>sum+Number(row.minutes||0),0);
+      const month=today.slice(0,7);
+      const monthMinutes=mathSessions.filter(row=>String(row.occurred_on||'').slice(0,7)===month).reduce((sum,row)=>sum+Number(row.minutes||0),0);
+      const due=mathSkills.filter(skill=>M.skillProgress(skill,mathSessions,today).due).length;
+      const baseline=[
+        ['Foundations',53,'Strongest documented algebra-foundation unit'],
+        ['Algebraic Expressions',18,'Expressions, like terms, distribution'],
+        ['Linear Equations & Inequalities',21,'Multi-step equations, proportions, inequalities'],
+        ['Integrated Math 1',4,'Recorded higher-level exposure'],
+        ['AP / College Statistics',2,'Recorded higher-level exposure'],
+        ['College Algebra',1,'Recorded higher-level exposure']
+      ];
+      const queue=[
+        ['1','Fractions & signed division','Close prerequisite gaps'],
+        ['2','Percentages & decimals','Strengthen arithmetic fluency'],
+        ['3','Ratios & proportions','Build pre-algebra fluency'],
+        ['4','Writing algebraic expressions','Move beyond evaluation'],
+        ['5','Combining like terms','Build expression fluency'],
+        ['6','Distributive property','Prepare for equation solving'],
+        ['7','Multi-step equations','Extend one/two-step mastery'],
+        ['8','Proportional reasoning','Connect equations and real problems'],
+        ['9','Graphing lines & slope','Prepare for Algebra 1 functions']
+      ];
+      const roadmap=[
+        ['1','Current · Strengthening pre-algebra','Integers, roots, order of operations, basic equations; close fraction/percent/ratio gaps.'],
+        ['2','Next · Algebra readiness','Fractions, percentages, ratios, expressions, equations, coordinate graphs, and basic geometry.'],
+        ['3','College Ready · College Algebra level','Demonstrate algebra, functions, geometry, and quantitative reasoning for credit-bearing college math.'],
+        ['4','STEM Ready · Calculus I preparation','Strong Algebra 2, trigonometry, functions, and precalculus before calculus-based engineering/science.'],
+        ['5','College Proficient · University mathematics','Actual college-level work: calculus, statistics, linear algebra, differential equations, or equivalent rigor.']
+      ];
+      const sequence=[
+        ['Foundations','Fractions, signed division, percentages, decimals','Close prerequisite gaps'],
+        ['Grade 5–7 selective review','Ratios, proportions, arithmetic applications','Demonstrate pre-algebra fluency'],
+        ['Algebraic Expressions','Writing expressions, like terms, distribution','80%+ unit mastery target'],
+        ['Linear Equations & Inequalities','Word problems, multi-step equations, proportions','80%+ unit mastery target'],
+        ['Graphing Lines & Slope','Coordinates, linear relationships, slope','Pass a fresh unit assessment'],
+        ['Algebra 1','Functions, equations, systems, quadratics','80%+ course mastery target'],
+        ['Geometry & Algebra 2','Proofs, factoring, polynomials, advanced functions','Build college-algebra readiness'],
+        ['Trigonometry & Precalculus','Trig functions, identities, advanced functions','Build Calculus I readiness'],
+        ['College Mathematics','College Algebra, Statistics, Calculus I and beyond','Demonstrate actual college-level proficiency']
+      ];
+      const twoYear=[
+        ['Months 1–3','Diagnose and reinforce arithmetic, fractions, percentages, and pre-algebra'],
+        ['Months 4–6','Strengthen algebraic expressions, equations, graphs, and ratios'],
+        ['Months 7–12','Work systematically through Algebra 1 and essential geometry'],
+        ['Months 13–18','Advance into Algebra 2, functions, and more geometry'],
+        ['Months 19–24','Continue Algebra 2, then trigonometry and precalculus as readiness permits']
+      ];
+      const readiness=[
+        ['SAT Math','530','Published college/career readiness benchmark'],
+        ['ACT Math','22','Readiness benchmark associated with College Algebra'],
+        ['ACCUPLACER','Institution-specific','Placement depends on the college'],
+        ['Khan Academy','No official cutoff','Use mastery plus independent testing']
+      ];
+      const umaine=[
+        ['30+','MAT 111 · Algebra for College Mathematics'],
+        ['61+','MAT 122 · Pre-Calculus and other eligible courses'],
+        ['76+','MAT 126 · Calculus I']
+      ];
+      return '<section class="math-dashboard">'
+        + '<section class="math-banner"><div><p class="page-kicker">Skills in Bloom · Math</p><h2>Math in Bloom</h2><p>From foundations to college mathematics.</p></div><span aria-hidden="true">🧮</span></section>'
+        + '<section class="math-top-grid">'
+          + '<article class="panel math-status"><p class="page-kicker">Current focus</p><h2>Algebra Basics</h2><p class="habit-help">Your strongest documented starting point is Foundations at 53% mastery. The next priority is closing prerequisite gaps rather than restarting from the beginning.</p><div class="habit-actions">'+button('new-skill','+ Add Math Topic','',true,Boolean(attempt))+'</div></article>'
+          + '<article class="panel math-readiness"><p class="page-kicker">College readiness</p><h2>Not yet assessed</h2><p class="habit-help">Khan percentages are skill-mastery records, not placement-test scores. College readiness should be confirmed with independent testing and your future college placement requirements.</p></article>'
+          + '<article class="panel math-practice"><p class="page-kicker">Your Math practice</p><div class="math-metrics"><span><strong>'+weekMinutes+' min</strong><small>this week</small></span><span><strong>'+monthMinutes+' min</strong><small>this month</small></span><span><strong>'+due+'</strong><small>ready to revisit</small></span></div></article>'
+        + '</section>'
+        + '<section class="panel math-baseline"><div class="habit-heading"><div><p class="page-kicker">November 7, 2026 · initial record</p><h2>Your Khan Academy Baseline</h2><p class="habit-help">These percentages represent the proportion of course skills at Proficient or Mastered. They should not be averaged into one overall math score.</p></div></div><div class="math-baseline-grid">'
+          + baseline.map(row=>'<article><div class="math-baseline-head"><strong>'+esc(row[0])+'</strong><b>'+row[1]+'%</b></div><div class="math-progress"><span style="width:'+row[1]+'%"></span></div><small>'+esc(row[2])+'</small></article>').join('')
+        + '</div><p class="habit-help math-not-assessed"><strong>Not yet assessed:</strong> Geometry, Algebra 2, Calculus, and any other listed course without a visible mastery percentage.</p></section>'
+        + '<div class="math-two-col">'
+          + '<section class="panel math-queue"><div class="habit-heading"><div><p class="page-kicker">Immediate study queue</p><h2>What to Work on Next</h2><p class="habit-help">This queue comes from the Algebra Basics records you supplied.</p></div></div><div class="math-queue-list">'+queue.map(row=>'<article><b>'+row[0]+'</b><div><strong>'+esc(row[1])+'</strong><small>'+esc(row[2])+'</small></div></article>').join('')+'</div></section>'
+          + '<section class="panel math-tools"><p class="page-kicker">Your learning tools</p><h2>Math Toolkit</h2><div class="math-tool-grid"><button type="button"><span>🧪</span><strong>Skill Diagnostic</strong><small>Test what you already know</small></button><a href="https://www.khanacademy.org/math" target="_blank" rel="noopener noreferrer"><span>🎓</span><strong>Khan Academy</strong><small>Open assigned lessons</small></a><button type="button"><span>📓</span><strong>Math Notebook</strong><small>Save working & corrections</small></button><button type="button"><span>📈</span><strong>Progress Reports</strong><small>Compare monthly mastery</small></button><button type="button"><span>🗓️</span><strong>Study Planner</strong><small>Schedule Khan & tutor work</small></button><button type="button"><span>🏁</span><strong>College Milestones</strong><small>Track algebra to calculus</small></button></div></section>'
+        + '</div>'
+        + '<section class="panel math-roadmap"><p class="page-kicker">Your mathematics roadmap</p><h2>From Pre-Algebra to University Mathematics</h2><div class="math-roadmap-list">'+roadmap.map(row=>'<article><span>'+row[0]+'</span><div><h3>'+esc(row[1])+'</h3><p>'+esc(row[2])+'</p></div></article>').join('')+'</div></section>'
+        + '<section class="panel math-sequence"><div class="habit-heading"><div><p class="page-kicker">Recommended Khan Academy sequence</p><h2>Mastery Path</h2><p class="habit-help">The 80% targets below are Life in Bloom planning targets for priority units/courses, not official college-placement requirements.</p></div></div><div class="math-sequence-table"><div class="math-sequence-row header"><span>Area</span><span>Focus</span><span>Target</span></div>'+sequence.map(row=>'<div class="math-sequence-row"><strong>'+esc(row[0])+'</strong><span>'+esc(row[1])+'</span><span>'+esc(row[2])+'</span></div>').join('')+'</div></section>'
+        + '<div class="math-two-col">'
+          + '<section class="panel math-benchmarks"><p class="page-kicker">Published readiness benchmarks</p><h2>Future Checkpoints</h2><div class="math-benchmark-list">'+readiness.map(row=>'<article><strong>'+esc(row[0])+'</strong><b>'+esc(row[1])+'</b><small>'+esc(row[2])+'</small></article>').join('')+'</div><p class="habit-help">These are separate assessments. Your Khan Academy percentages cannot be converted directly into SAT, ACT, ACCUPLACER, or ALEKS scores.</p></section>'
+          + '<section class="panel math-umaine"><p class="page-kicker">Example · University of Maine</p><h2>ALEKS Placement Targets</h2>'+umaine.map(row=>'<article><strong>'+esc(row[0])+'</strong><span>'+esc(row[1])+'</span></article>').join('')+'<p class="habit-help">Useful as future placement targets if UMaine becomes your school choice.</p></section>'
+        + '</div>'
+        + '<section class="panel math-two-year"><p class="page-kicker">Two-year preparation roadmap</p><h2>College Prep Timeline</h2><div class="math-timeline">'+twoYear.map(row=>'<article><strong>'+esc(row[0])+'</strong><p>'+esc(row[1])+'</p></article>').join('')+'</div><p class="habit-help">The sequence should advance based on demonstrated understanding, not simply because time has passed.</p></section>'
+        + '<section class="panel math-finish-lines"><div><p class="page-kicker">Finish line 1</p><h2>College Ready</h2><p>Independently solve representative algebra and quantitative-reasoning problems, show strong prerequisite mastery, and meet the placement requirement for the college/course you intend to enter.</p></div><div><p class="page-kicker">Finish line 2</p><h2>College Proficient</h2><p>Successfully complete actual credit-bearing college mathematics or comparable rigorous assessment. For engineering, continue toward Calculus I, Calculus II, multivariable calculus, differential equations, and/or linear algebra.</p></div></section>'
+        + '<section class="panel math-practice-topics"><div class="habit-heading"><h2>Your Math Topics & Practice</h2></div>'+(mathSkills.length?'<div class="habit-skill-grid">'+mathSkills.map(skill=>renderSkillCard(skill,current)).join('')+'</div>':'<div class="habit-empty"><span aria-hidden="true">🧮</span><h3>Start your Math learning record</h3><p>Add specific skills such as fraction operations, percentages, distributive property, or multi-step equations, then log independent practice and review.</p>'+button('new-skill','+ Add a Math Topic','',true,Boolean(attempt))+'</div>')+'</section>'
+        + '</section>';
+    }
+
     function renderEngineeringDashboard(current, skills, sessions, today) {
       const engineeringSkills=skills.filter(skill=>skill.category==='engineering');
       const ids=new Set(engineeringSkills.map(skill=>skill.id));
@@ -623,6 +713,7 @@
         html += '<section class="panel habit-area-header"><div class="habit-heading"><div><p class="page-kicker">Skills in Bloom · '+esc(area.label)+'</p><h2><span aria-hidden="true">'+area.icon+'</span> '+esc(area.label)+'</h2><p class="habit-help">Your saved '+esc(area.label.toLowerCase())+' topics, practice records, and review reminders.</p></div>'+button('category','← All Skills',' data-category="all"')+'</div></section>';
       }
       if (selectedCategory === 'reading') return renderReading(current);
+      if (selectedCategory === 'math') return renderMathDashboard(current, skills, sessions, today);
       if (selectedCategory === 'engineering') html += renderEngineeringDashboard(current, skills, sessions, today);
       if (skillOpen) html += renderSkillForm(current);
       if (sessionOpen) html += renderSessionForm(current);
