@@ -1185,6 +1185,61 @@
       snapshot(); if (busy || M.dateNumber(date) == null) return false;
       if (selectedDate !== date) { selectedDate = date; persist(); } return true;
     }
+
+    function productStockRows(current,product){
+      return (current.inventory||[]).filter(row=>row.product_id===product.id&&Number(row.quantity)>0);
+    }
+    function productStockServings(current,product){
+      const perPackage=Number(product&&product.servings_per_package)>0?Number(product.servings_per_package):1;
+      return productStockRows(current,product).reduce((sum,row)=>{
+        const remaining=Number(row.servings_remaining);
+        if(Number.isFinite(remaining)&&remaining>=0)return sum+remaining;
+        const quantity=Number(row.quantity)||0,unit=String(row.unit||'').toLowerCase();
+        return sum+(unit.includes('pack')||unit.includes('case')?quantity*perPackage:quantity);
+      },0);
+    }
+    async function quickConsumeProduct(productId,person,occurredOn){
+      const current=snapshot();
+      ready(current);
+      if(current.offline)throw new Error('Reconnect before using quick Boost logging so inventory and nutrition stay in sync.');
+      const product=(current.products||[]).find(row=>row.id===productId&&!row.archived&&row.category==='food');
+      if(!product)throw new Error('This Boost product is not available in your saved food catalog.');
+      const rows=productStockRows(current,product);
+      const available=productStockServings(current,product);
+      if(available<1)throw new Error('No Boost is left in recorded inventory.');
+      const stockRow=rows.find(row=>{
+        const remaining=Number(row.servings_remaining);
+        if(Number.isFinite(remaining)&&remaining>0)return true;
+        return Number(row.quantity)>0;
+      });
+      if(!stockRow)throw new Error('No Boost is left in recorded inventory.');
+      const date=M.dateNumber(occurredOn)==null?dayKey(getNow()):occurredOn;
+      const entry={
+        request_id:uuid(),
+        occurred_on:date,
+        person_slot:Number(person)===2?2:1,
+        kind:'eaten',
+        recipe_id:null,
+        product_id:product.id,
+        servings:1,
+        label:product.name,
+        nutrition_snapshot:M.productNutrition(product,1),
+        notes:'Quick-added from Home'
+      };
+      let savedEntry=null;
+      try{
+        savedEntry=await store.saveMealEntry(entry);
+        const perPackage=Number(product.servings_per_package)>0?Number(product.servings_per_package):1;
+        const oldRemaining=Number(stockRow.servings_remaining);
+        const computed=Number.isFinite(oldRemaining)&&oldRemaining>=0?oldRemaining:
+          ((String(stockRow.unit||'').toLowerCase().includes('pack')||String(stockRow.unit||'').toLowerCase().includes('case'))?(Number(stockRow.quantity)||0)*perPackage:(Number(stockRow.quantity)||0));
+        await store.saveInventory({...stockRow,servings_remaining:Math.max(0,computed-1)});
+        return {entry:savedEntry,remaining:Math.max(0,available-1)};
+      }catch(error){
+        if(savedEntry){try{await store.deleteMealEntry(savedEntry);}catch(_){/* keep original error */}}
+        throw error;
+      }
+    }
     function startProductLog(productId, person, occurredOn) {
       const current = snapshot();
       if (current.status !== 'ready' || !current.user || !current.household || busy) return false;
@@ -1361,7 +1416,7 @@
     }
     function selectTab(value) { snapshot(); if (busy || !['home','cookbook','recipes','plans','cooking','soon','log'].includes(value)) return false; tab = value; persist(); refresh(); return true; }
     function hasUnpersistedChanges() { snapshot(); return Boolean(selectedFile || ((dirty('recipe') || dirty('log') || dirty('plan') || planAttempt) && !draftSaved)); }
-    return { render, handleClick, handleSubmit, handleInput, handleChange, hasUnsavedDraft, hasUnpersistedChanges, discardDraft, selectTab, startProductLog, setSelectedDate, getSelectedDate: () => { snapshot(); return selectedDate; }, isBusy: () => Boolean(busy), whenIdle: () => pending, getHomeSummary: () => { const current = snapshot(); return { due: M.dueItems(current.inventory || [], dayKey(getNow())).length, recipes: (current.recipes || []).filter(row => !row.archived).length }; } };
+    return { render, handleClick, handleSubmit, handleInput, handleChange, hasUnsavedDraft, hasUnpersistedChanges, discardDraft, selectTab, startProductLog, quickConsumeProduct, productStockServings:(productId)=>{const current=snapshot(),product=(current.products||[]).find(row=>row.id===productId);return product?productStockServings(current,product):0;}, setSelectedDate, getSelectedDate: () => { snapshot(); return selectedDate; }, isBusy: () => Boolean(busy), whenIdle: () => pending, getHomeSummary: () => { const current = snapshot(); return { due: M.dueItems(current.inventory || [], dayKey(getNow())).length, recipes: (current.recipes || []).filter(row => !row.archived).length }; } };
   }
   const api = { createController, buildExpiryCalendar, allergyMatches, scaledSnapshot, actualNutrition };
   if (typeof module === 'object' && module.exports) module.exports = api;
