@@ -75,6 +75,11 @@
     let skillOpen = false, sessionOpen = false, settingsOpen = false, purchaseOpen = false, draftSaved = false, draftWarning = false;
     let engineeringHomeworkOpen = false;
     let engineeringHomeworkDraft = { title:'', due_on:'', notes:'' };
+    let readingView='home', selectedReadingBookId='', readingCoachTab='vocabulary', readingSeedChecked='';
+    let readingBookOpen=false, readingSessionOpen=false, readingNoteOpen=false;
+    let readingBookDraft={id:'',title:'',author:'',isbn:'',edition:'',total_pages:'',current_page:'',current_section:'',status:'not_started',cover_url:'',notes:''};
+    let readingSessionDraft={minutes:'20',start_page:'',end_page:'',section:'',notes:''};
+    let readingNoteDraft={page_number:'',section:'',note_type:'note',body:''};
     let drafts = makeDrafts(), baselines = copy(drafts), sourceKeys = {};
     function makeDrafts() { return { skill: skillDraft(), session: sessionDraft(selectedDate), settings: settingsDraft(), smoke: smokeDraft(selectedDate), purchase: purchaseDraft(selectedDate) }; }
     const dirty = group => JSON.stringify(drafts[group]) !== JSON.stringify(baselines[group]);
@@ -123,7 +128,7 @@
       const today = M.dayKey(getNow());
       if (key !== identity) {
         identity = key; generation++; busy = null; attempt = null; problem = ''; backupReview = null; selectedDate = today; lastToday = today; selectedCategory = 'all'; selectedSkillId = '';
-        skillOpen = false; sessionOpen = false; settingsOpen = false; purchaseOpen = false; draftSaved = false; draftWarning = false; engineeringHomeworkOpen = false; engineeringHomeworkDraft = { title:'', due_on:'', notes:'' };
+        skillOpen = false; sessionOpen = false; settingsOpen = false; purchaseOpen = false; draftSaved = false; draftWarning = false; engineeringHomeworkOpen = false; engineeringHomeworkDraft = { title:'', due_on:'', notes:'' }; readingView='home'; selectedReadingBookId=''; readingCoachTab='vocabulary'; readingSeedChecked=''; readingBookOpen=false; readingSessionOpen=false; readingNoteOpen=false;
         drafts = makeDrafts(); baselines = copy(drafts); sourceKeys = {};
         const settings = settingsRow(current); reset('settings', rowDraft('settings', settings, today)); sourceKeys.settings = settings ? settings.id + ':' + settings.revision : 'new';
         loadDay(current);
@@ -194,6 +199,86 @@
       const sessions = privateRows(current, 'skillSessions', true).filter(row => row.skill_id === skill.id).slice().sort((a, b) => b.occurred_on.localeCompare(a.occurred_on) || String(b.created_at || '').localeCompare(String(a.created_at || '')));
       return '<section class="panel" id="habit-skill-history"><div class="habit-heading"><div><p class="page-kicker">Your saved practice</p><h2>' + esc(skill.name) + '</h2></div>' + button('close-history', 'Close history') + '</div>' + (sessions.length ? '<ul class="habit-history-list">' + sessions.map(row => '<li' + (row.archived ? ' class="is-archived"' : '') + '><div><strong>' + esc(dateLabel(row.occurred_on)) + ' · ' + esc(count(row.minutes)) + ' min</strong><p>' + esc((M.REVIEW_RESULTS.find(item => item.key === row.result) || {}).label || row.result) + (row.archived ? ' · Archived' : '') + '</p>' + (row.notes ? '<p class="habit-prose">' + esc(row.notes) + '</p>' : '') + '</div>' + (!row.archived ? '<div class="habit-actions">' + button('edit-session', 'Edit entry', ' data-id="' + esc(row.id) + '"', false, Boolean(attempt)) + button('archive', 'Remove mistaken entry', ' data-kind="skill_session" data-id="' + esc(row.id) + '"', false, Boolean(attempt) || current.offline) + '</div>' : '') + '</li>').join('') + '</ul>' : '<p class="habit-empty">No practice entries yet.</p>') + '</section>';
     }
+    function readingBooks(current) {
+      const user=current.user&&current.user.id, household=current.household&&current.household.id;
+      return (current.readingBooks||[]).filter(row=>row&&row.user_id===user&&row.household_id===household&&row.status!=='archived')
+        .sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')));
+    }
+    function readingBook(current,id) { return readingBooks(current).find(row=>row.id===id)||null; }
+    function readingSessions(current,bookId) { return (current.readingSessions||[]).filter(row=>row.book_id===bookId).sort((a,b)=>String(b.occurred_on).localeCompare(String(a.occurred_on))); }
+    function readingNotes(current,bookId) { return (current.readingNotes||[]).filter(row=>row.book_id===bookId).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))); }
+    function readingVocabulary(current,bookId) { return (current.readingVocabulary||[]).filter(row=>row.book_id===bookId).sort((a,b)=>String(a.word||'').localeCompare(String(b.word||''))); }
+    function readingFiles(current,bookId) { return (current.readingFiles||[]).filter(row=>!bookId||row.book_id===bookId).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))); }
+    function bookProgress(book) {
+      const total=Number(book&&book.total_pages), page=Number(book&&book.current_page);
+      return Number.isFinite(total)&&total>0&&Number.isFinite(page)&&page>=0?Math.max(0,Math.min(100,Math.round(page/total*100))):null;
+    }
+    function bookCover(book) {
+      const title=esc(book.title||'Book'), author=esc(book.author||'');
+      return '<div class="reading-cover" aria-hidden="true"><span>'+title+'</span><small>'+author+'</small></div>';
+    }
+    function readingStarterMaterial(title) {
+      if(title==='Cold Sassy Tree') return {
+        subtitle:'Historical fiction · Coming of age',
+        focus:'Family expectations, gossip, social convention, grief, independence, and early-20th-century Georgia.',
+        vocab:[
+          ['elopement','noun','a marriage undertaken secretly or without a conventional ceremony'],
+          ['milliner','noun','someone who makes or sells hats'],
+          ['widower','noun','a man whose spouse has died'],
+          ['audacity','noun','boldness that may surprise or offend others'],
+          ['propriety','noun','behavior considered acceptable by social standards'],
+          ['confidant','noun','someone entrusted with private thoughts']
+        ],
+        quiz:[
+          {q:'Who narrates Cold Sassy Tree?',options:['Will Tweedy','Rucker Blakeslee','Miss Love Simpson','A town historian'],answer:0},
+          {q:'What event causes major controversy in the town?',options:['A business closes','Rucker marries Miss Love soon after being widowed','Will leaves Georgia','A train arrives'],answer:1}
+        ],
+        prompts:['How does Will’s perspective affect how you understand the adults around him?','When can community expectations become unfair to individuals?']
+      };
+      if(title==='The Book Thief') return {
+        subtitle:'Historical fiction · Literary fiction',
+        focus:'Narrative voice, grief, friendship, morality, wartime Germany, language, and symbolism.',
+        vocab:[
+          ['narrator','noun','the voice that tells a story'],
+          ['omniscient','adjective','having knowledge beyond that of individual characters'],
+          ['foreshadowing','noun','hints about events that will happen later'],
+          ['bereavement','noun','the experience of losing someone through death'],
+          ['compassion','noun','concern for another person’s suffering'],
+          ['persecution','noun','sustained cruel or unjust treatment']
+        ],
+        quiz:[
+          {q:'Who narrates The Book Thief?',options:['Liesel','Hans','Death','Rudy'],answer:2},
+          {q:'Who helps Liesel begin learning to read?',options:['Hans Hubermann','Rudy Steiner','Rosa Hubermann','The mayor'],answer:0}
+        ],
+        prompts:['How does the unusual narrator change the way you experience the story?','How can language be used both to help and to harm people?']
+      };
+      return {
+        subtitle:'Historical fiction',
+        focus:'Early American history, public health, scientific knowledge, responsibility, and resilience.',
+        vocab:[
+          ['epidemic','noun','an unusually widespread occurrence of disease within a population'],
+          ['contagion','noun','the spread of infectious illness'],
+          ['quarantine','noun','restriction of movement to reduce possible disease transmission'],
+          ['mortality','noun','deaths within a population or the likelihood of death'],
+          ['apothecary','noun','a historical person who prepared or sold medicines'],
+          ['resilience','noun','the capacity to adapt and recover during hardship']
+        ],
+        quiz:[
+          {q:'Where does Mattie Cook live?',options:['Above her family’s coffeehouse in Philadelphia','On a farm outside Boston','In New York City','In a boarding school'],answer:0},
+          {q:'What does Mattie hope to do with the family business?',options:['Close it','Expand and improve it','Sell it immediately','Move it to New York'],answer:1}
+        ],
+        prompts:['How does fear influence the characters’ choices?','What does Mattie learn about independence and responsibility?']
+      };
+    }
+    function hydrateReadingFiles(files) {
+      if(!root.document||!store.getReadingFileUrl)return;
+      for(const file of files){
+        if(!/^image\//.test(file.mime_type||''))continue;
+        const img=root.document.querySelector('[data-reading-file-preview="'+file.id+'"]');
+        if(!img||img.dataset.loaded==='true')continue;
+        Promise.resolve(store.getReadingFileUrl(file)).then(url=>{const live=root.document&&root.document.querySelector('[data-reading-file-preview="'+file.id+'"]');if(live){live.src=url;live.dataset.loaded='true';}}).catch(()=>{});
+      }
+    }
     function engineeringHomeworkRows(current) {
       const user=current.user&&current.user.id, household=current.household&&current.household.id;
       return (current.engineeringHomework||[]).filter(row=>row&&row.user_id===user&&row.household_id===household)
@@ -215,6 +300,63 @@
           if(live){ live.src=url; live.dataset.loaded='true'; }
         }).catch(()=>{});
       }
+    }
+    function renderReadingHome(current) {
+      const books=readingBooks(current), reading=books.filter(b=>b.status==='reading'), completed=books.filter(b=>b.status==='completed'&&String(b.completed_on||'').slice(0,7)===M.dayKey(getNow()).slice(0,7));
+      const featured=reading[0]||books[0]||null;
+      let html='<section class="reading-dashboard"><section class="reading-banner"><div><p class="page-kicker">Skills in Bloom · Reading</p><h2>Reading in Bloom</h2><p>A place for the stories you are growing through.</p></div><span>📚</span></section>';
+      html+='<section class="panel reading-stats"><div><span>📖</span><strong>'+books.length+'</strong><small>books in library</small></div><div><span>📘</span><strong>'+reading.length+'</strong><small>currently reading</small></div><div><span>✓</span><strong>'+completed.length+'</strong><small>completed this month</small></div></section>';
+      if(featured){
+        const p=bookProgress(featured);
+        html+='<section class="panel reading-featured"><div>'+bookCover(featured)+'</div><div><p class="page-kicker">'+(featured.status==='reading'?'Currently reading':'Your library')+'</p><h2>'+esc(featured.title)+'</h2><p>'+esc(featured.author)+'</p>'+(p==null?'<p class="habit-help">Add your edition page count and current page to start percentage tracking.</p>':'<div class="reading-progress"><span style="width:'+p+'%"></span></div><p class="habit-help">'+p+'% complete</p>')+'<div class="habit-actions">'+button('reading-open','Open book',' data-id="'+esc(featured.id)+'"',true)+button('reading-coach','Reading Coach',' data-id="'+esc(featured.id)+'"')+'</div></div></section>';
+      }
+      html+='<section class="panel reading-library"><div class="habit-heading"><div><p class="page-kicker">My library</p><h2>Your Physical Books</h2></div>'+button('reading-add-book','+ Add a book','',true)+'</div>';
+      if(readingBookOpen) html+=renderReadingBookForm();
+      html+='<div class="reading-library-list">'+books.map(book=>{const p=bookProgress(book);return '<article><div>'+bookCover(book)+'</div><div><h3>'+esc(book.title)+'</h3><p>'+esc(book.author)+'</p><small>'+esc(book.status.replace('_',' '))+(book.current_page!=null?' · p. '+esc(book.current_page):'')+(book.total_pages?' of '+esc(book.total_pages):'')+'</small>'+(p==null?'':'<div class="reading-progress small"><span style="width:'+p+'%"></span></div>')+'</div>'+button('reading-open',book.status==='not_started'?'Details':'Open',' data-id="'+esc(book.id)+'"')+'</article>';}).join('')+'</div></section>';
+      html+='<div class="reading-two-col"><section class="panel"><p class="page-kicker">Today’s reading plan</p><h2>Read for 20 minutes</h2><p class="habit-help">A small, steady step toward your reading goals. Log the real session when you finish.</p>'+(featured?button('reading-start-session','Start / log reading',' data-id="'+esc(featured.id)+'"',true):'')+'</section><section class="panel"><p class="page-kicker">Recent vocabulary practice</p><h2>Words to Review</h2><div class="reading-word-chips">'+(current.readingVocabulary||[]).slice(-6).map(v=>'<span>'+esc(v.word)+'</span>').join('')+'</div>'+button('reading-coach','Practice more words',featured?' data-id="'+esc(featured.id)+'"':'',false,!featured)+'</section></div>';
+      html+='<section class="panel habit-explainer"><details><summary>How the reading features work</summary><p class="habit-help">Reading progress, vocabulary, spelling, comprehension, and notes are tracked separately. Your physical books remain the source of truth for page and chapter content.</p><p class="habit-help">Starter lessons are thematic study material. Exact chapter vocabulary and questions require text you supply from your own copy.</p></details></section></section>';
+      return html;
+    }
+    function renderReadingBookForm(){
+      const d=readingBookDraft;
+      return '<form class="habit-form reading-book-form" data-reading-book-form><div class="habit-form-grid"><label class="habit-field"><span>Title</span><input required maxlength="240" data-reading-book-field="title" value="'+esc(d.title)+'"></label><label class="habit-field"><span>Author</span><input maxlength="240" data-reading-book-field="author" value="'+esc(d.author)+'"></label><label class="habit-field"><span>ISBN (optional)</span><input maxlength="40" data-reading-book-field="isbn" value="'+esc(d.isbn)+'"></label><label class="habit-field"><span>Edition (optional)</span><input maxlength="240" data-reading-book-field="edition" value="'+esc(d.edition)+'"></label><label class="habit-field"><span>Total printed pages</span><input type="number" min="1" max="10000" data-reading-book-field="total_pages" value="'+esc(d.total_pages)+'"></label><label class="habit-field"><span>Current page</span><input type="number" min="0" max="10000" data-reading-book-field="current_page" value="'+esc(d.current_page)+'"></label><label class="habit-field"><span>Current chapter / part</span><input maxlength="240" data-reading-book-field="current_section" value="'+esc(d.current_section)+'"></label><label class="habit-field"><span>Status</span><select data-reading-book-field="status"><option value="not_started"'+(d.status==='not_started'?' selected':'')+'>Not started</option><option value="reading"'+(d.status==='reading'?' selected':'')+'>Currently reading</option><option value="completed"'+(d.status==='completed'?' selected':'')+'>Completed</option></select></label></div><label class="habit-field"><span>Notes (optional)</span><textarea rows="3" maxlength="5000" data-reading-book-field="notes">'+esc(d.notes)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save book</button>'+button('reading-cancel-book','Cancel')+'</div></form>';
+    }
+    function renderReadingDetail(current,book){
+      const p=bookProgress(book),sessions=readingSessions(current,book.id),notes=readingNotes(current,book.id),vocab=readingVocabulary(current,book.id),files=readingFiles(current,book.id);
+      const pagesRemaining=book.total_pages!=null&&book.current_page!=null?Math.max(0,Number(book.total_pages)-Number(book.current_page)):null;
+      const minutes=sessions.reduce((sum,row)=>sum+Number(row.minutes||0),0), pages=sessions.reduce((sum,row)=>sum+Math.max(0,Number(row.end_page||0)-Number(row.start_page||0)),0);
+      const pace=minutes>0&&pages>0?pages/minutes:null, est=pace&&pagesRemaining!=null?Math.round(pagesRemaining/pace):null;
+      let html='<section class="reading-dashboard"><section class="reading-banner"><div><p class="page-kicker">Reading in Bloom</p><h2>Book Detail</h2></div>'+button('reading-home','← Library')+'</section><section class="panel reading-book-hero"><div>'+bookCover(book)+'</div><div><h1>'+esc(book.title)+'</h1><p>by '+esc(book.author)+'</p>'+(p==null?'<p class="habit-help">Progress percentage will appear after you add total pages and your current page.</p>':'<div class="reading-progress"><span style="width:'+p+'%"></span></div><p>'+p+'% complete</p>')+'<div class="habit-actions">'+button('reading-start-session','Resume / log reading',' data-id="'+esc(book.id)+'"',true)+button('reading-edit-book','Edit book',' data-id="'+esc(book.id)+'"')+button('reading-coach','Reading Coach',' data-id="'+esc(book.id)+'"')+'</div></div></section>';
+      if(readingBookOpen)html+=renderReadingBookForm();
+      if(readingSessionOpen)html+='<form class="panel habit-form" data-reading-session-form><p class="page-kicker">Reading session</p><h2>Log what you actually read</h2><div class="habit-form-grid"><label class="habit-field"><span>Minutes</span><input type="number" min="0" max="1440" required data-reading-session-field="minutes" value="'+esc(readingSessionDraft.minutes)+'"></label><label class="habit-field"><span>Start page</span><input type="number" min="0" max="10000" data-reading-session-field="start_page" value="'+esc(readingSessionDraft.start_page)+'"></label><label class="habit-field"><span>End page</span><input type="number" min="0" max="10000" data-reading-session-field="end_page" value="'+esc(readingSessionDraft.end_page)+'"></label><label class="habit-field"><span>Chapter / part</span><input maxlength="240" data-reading-session-field="section" value="'+esc(readingSessionDraft.section)+'"></label></div><label class="habit-field"><span>Session notes</span><textarea rows="3" data-reading-session-field="notes">'+esc(readingSessionDraft.notes)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save session</button>'+button('reading-cancel-session','Cancel')+'</div></form>';
+      html+='<section class="panel reading-progress-stats"><div><span>📄</span><strong>'+(book.current_page==null?'—':esc(book.current_page))+'</strong><small>current page</small></div><div><span>📚</span><strong>'+(pagesRemaining==null?'—':pagesRemaining)+'</strong><small>pages remaining</small></div><div><span>⏱️</span><strong>'+minutes+' min</strong><small>reading logged</small></div><div><span>⌛</span><strong>'+(est==null?'—':Math.floor(est/60)+'h '+(est%60)+'m')+'</strong><small>estimated time left</small></div></section>';
+      html+='<div class="reading-two-col"><section class="panel"><div class="habit-heading"><div><p class="page-kicker">My notes & quotes</p><h2>Reading Journal</h2></div>'+button('reading-add-note','+ Add note','',true)+'</div>';
+      if(readingNoteOpen)html+='<form class="habit-form" data-reading-note-form><div class="habit-form-grid"><label class="habit-field"><span>Type</span><select data-reading-note-field="note_type"><option value="note">Note</option><option value="quote">Quote</option><option value="question">Question</option><option value="character">Character</option><option value="theme">Theme</option></select></label><label class="habit-field"><span>Page</span><input type="number" min="0" max="10000" data-reading-note-field="page_number" value="'+esc(readingNoteDraft.page_number)+'"></label><label class="habit-field"><span>Chapter / part</span><input data-reading-note-field="section" value="'+esc(readingNoteDraft.section)+'"></label></div><label class="habit-field"><span>Your note</span><textarea required rows="4" data-reading-note-field="body">'+esc(readingNoteDraft.body)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save note</button>'+button('reading-cancel-note','Cancel')+'</div></form>';
+      html+=(notes.length?'<div class="reading-note-list">'+notes.slice(0,8).map(n=>'<article><small>'+esc(n.note_type)+' '+(n.page_number!=null?'· p. '+n.page_number:'')+'</small><p>'+esc(n.body)+'</p></article>').join('')+'</div>':'<p class="habit-help">No notes saved yet.</p>')+'</section><section class="panel"><p class="page-kicker">Words from your reading</p><h2>Vocabulary</h2><div class="reading-word-chips">'+vocab.slice(0,12).map(v=>'<span>'+esc(v.word)+'</span>').join('')+'</div>'+button('reading-coach','Open Reading Coach',' data-id="'+esc(book.id)+'"',true)+'</section></div>';
+      html+='<section class="panel reading-scans"><div class="habit-heading"><div><p class="page-kicker">Physical-book lesson source</p><h2>Scan Reading Pages</h2><p class="habit-help">Upload short page images from your own copy and keep them private. Exact OCR-generated lessons should be created only from verified supplied text.</p></div><label class="button primary">Upload page photos / PDF<input type="file" data-reading-upload accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label></div><div class="reading-file-grid">'+(files.length?files.map(file=>'<article>'+(/^image\//.test(file.mime_type)?'<img data-reading-file-preview="'+esc(file.id)+'" alt="">':'<div class="reading-pdf">PDF</div>')+'<strong>'+esc(file.name)+'</strong>'+button('reading-file-open','Open',' data-id="'+esc(file.id)+'"')+'</article>').join(''):'<p class="habit-help">No page scans saved for this book yet.</p>')+'</div><p class="habit-help"><strong>Generate My Lesson:</strong> the storage/review step is ready. OCR + source-grounded automatic lesson generation still needs the text-extraction integration; the app will not invent exact page content in the meantime.</p></section></section>';
+      if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydrateReadingFiles(files)));
+      return html;
+    }
+    function renderReadingCoach(current,book){
+      const starter=readingStarterMaterial(book.title),saved=readingVocabulary(current,book.id);
+      const words=saved.length?saved:starter.vocab.map(row=>({word:row[0],part_of_speech:row[1],definition:row[2],source_label:'coach_suggested'}));
+      let body='';
+      if(readingCoachTab==='vocabulary') body='<section class="panel reading-coach-panel"><p class="page-kicker">Starter thematic material</p><h2>Vocabulary</h2><p class="habit-help">These terms are introductory study material, not claims that they appear in your current chapter. Save exact book words after confirming them from your copy.</p><div class="reading-vocab-list">'+words.map(w=>'<article><button type="button" class="reading-speak" data-habit-action="reading-speak" data-word="'+esc(w.word)+'">🔊</button><div><h3>'+esc(w.word)+'</h3><small>'+esc(w.part_of_speech||'')+'</small><p>'+esc(w.definition||'')+'</p></div>'+(!saved.length?button('reading-save-word','Save',' data-word="'+esc(w.word)+'"'):'')+'</article>').join('')+'</div></section>';
+      else if(readingCoachTab==='spelling') body='<section class="panel reading-coach-panel"><p class="page-kicker">Spelling practice</p><h2>Hear & Spell</h2><p class="habit-help">Use the speaker to hear a word, then spell it without looking. Saved book-confirmed vocabulary can be added to spelling practice.</p><div class="reading-spelling-list">'+words.slice(0,8).map(w=>'<article><strong>'+esc(w.word)+'</strong>'+button('reading-speak','Hear',' data-word="'+esc(w.word)+'"')+'<input type="text" aria-label="Spell '+esc(w.word)+'" placeholder="Type from memory"></article>').join('')+'</div></section>';
+      else body='<section class="panel reading-coach-panel"><p class="page-kicker">Introductory comprehension</p><h2>Practice Questions</h2><p class="habit-help">These are broad introductory questions from verified public book information, not a chapter-specific quiz. Chapter quizzes should wait for your supplied pages.</p><form data-reading-quiz-form>'+starter.quiz.map((q,i)=>'<fieldset><legend>Q'+(i+1)+'. '+esc(q.q)+'</legend>'+q.options.map((opt,j)=>'<label><input type="radio" name="q'+i+'" value="'+j+'"> '+esc(opt)+'</label>').join('')+'</fieldset>').join('')+'<button class="button primary" type="submit">Submit practice quiz</button></form><div class="reading-written-prompts"><h3>Written response prompts</h3>'+starter.prompts.map(p=>'<label>'+esc(p)+'<textarea rows="3" placeholder="Write your response here..."></textarea></label>').join('')+'</div></section>';
+      return '<section class="reading-dashboard"><section class="reading-banner"><div><p class="page-kicker">Reading Coach</p><h2>'+esc(book.title)+'</h2><p>'+esc(starter.focus)+'</p></div>'+button('reading-detail','← Book Detail',' data-id="'+esc(book.id)+'"')+'</section><nav class="reading-book-switcher">'+readingBooks(current).map(b=>'<button data-habit-action="reading-coach" data-id="'+esc(b.id)+'" aria-pressed="'+(b.id===book.id)+'">'+bookCover(b)+'<strong>'+esc(b.title)+'</strong></button>').join('')+'</nav><nav class="reading-coach-tabs"><button data-habit-action="reading-coach-tab" data-tab="spelling" aria-pressed="'+(readingCoachTab==='spelling')+'">✎ Spelling Words</button><button data-habit-action="reading-coach-tab" data-tab="vocabulary" aria-pressed="'+(readingCoachTab==='vocabulary')+'">📖 Vocabulary</button><button data-habit-action="reading-coach-tab" data-tab="comprehension" aria-pressed="'+(readingCoachTab==='comprehension')+'">💬 Comprehension</button></nav>'+body+'<section class="panel habit-explainer"><details><summary>How the Reading Coach works</summary><p class="habit-help">Starter terms and introductory questions are separated from material confirmed in your physical book. Exact passage lessons should cite the supplied page scans or text.</p></details></section></section>';
+    }
+    function renderReading(current){
+      const books=readingBooks(current);
+      if(current.user&&current.household&&!current.offline&&current.status==='ready'&&books.length<3&&readingSeedChecked!==current.user.id+':'+current.household.id&&store.ensureReadingStarterBooks){
+        readingSeedChecked=current.user.id+':'+current.household.id;
+        Promise.resolve(store.ensureReadingStarterBooks()).catch(()=>{readingSeedChecked='';});
+      }
+      const selected=readingBook(current,selectedReadingBookId)||books[0]||null;
+      if(selected&&!selectedReadingBookId)selectedReadingBookId=selected.id;
+      if(readingView==='detail'&&selected)return renderReadingDetail(current,selected);
+      if(readingView==='coach'&&selected)return renderReadingCoach(current,selected);
+      return renderReadingHome(current);
     }
     function renderEngineeringDashboard(current, skills, sessions, today) {
       const engineeringSkills=skills.filter(skill=>skill.category==='engineering');
@@ -284,6 +426,7 @@
         const area=M.category(selectedCategory);
         html += '<section class="panel habit-area-header"><div class="habit-heading"><div><p class="page-kicker">Skills in Bloom · '+esc(area.label)+'</p><h2><span aria-hidden="true">'+area.icon+'</span> '+esc(area.label)+'</h2><p class="habit-help">Your saved '+esc(area.label.toLowerCase())+' topics, practice records, and review reminders.</p></div>'+button('category','← All Skills',' data-category="all"')+'</div></section>';
       }
+      if (selectedCategory === 'reading') return renderReading(current);
       if (selectedCategory === 'engineering') html += renderEngineeringDashboard(current, skills, sessions, today);
       if (skillOpen) html += renderSkillForm(current);
       if (sessionOpen) html += renderSessionForm(current);
@@ -430,6 +573,24 @@
     }
     function handleSubmit(event) {
       const form=event.target;
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'readingBookForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();if(busy)return true;
+        try{requireReady(current);run('Saving book…',()=>store.saveReadingBook(readingBookDraft),book=>{selectedReadingBookId=book.id;readingBookOpen=false;readingView='detail';notify('Book saved.');});}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'readingSessionForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot(),book=readingBook(current,selectedReadingBookId);if(!book)return true;
+        try{requireReady(current);run('Saving reading session…',()=>store.saveReadingSession({...readingSessionDraft,book_id:book.id,occurred_on:M.dayKey(getNow())}),()=>{readingSessionOpen=false;notify('Reading session saved.');});}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'readingNoteForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot(),book=readingBook(current,selectedReadingBookId);if(!book)return true;
+        try{requireReady(current);run('Saving reading note…',()=>store.saveReadingNote({...readingNoteDraft,book_id:book.id}),()=>{readingNoteOpen=false;notify('Reading note saved.');});}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'readingQuizForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot(),book=readingBook(current,selectedReadingBookId);if(!book)return true;
+        const quiz=readingStarterMaterial(book.title).quiz,answers=quiz.map((q,i)=>{const checked=form.querySelector('input[name="q'+i+'"]:checked');return checked?Number(checked.value):null;});
+        const correct=answers.reduce((sum,a,i)=>sum+(a===quiz[i].answer?1:0),0);
+        try{requireReady(current);run('Saving practice quiz…',()=>store.saveReadingQuizAttempt({book_id:book.id,scope_label:'Introductory study quiz',score:Math.round(correct/quiz.length*100),total_questions:quiz.length,correct_questions:correct,answers}),()=>notify('Practice quiz saved: '+correct+' of '+quiz.length+' correct.'));}catch(error){notify(error.message,true);}return true;
+      }
       if(form&&form.dataset&&Object.hasOwn(form.dataset,'engineeringHomeworkForm')){
         if(event.preventDefault)event.preventDefault();
         const current=snapshot(); if(busy)return true;
@@ -461,6 +622,9 @@
       const element = event.target, data = element && element.dataset;
       if (!data) return false;
       const current = snapshot();
+      if(Object.hasOwn(data,'readingBookField')){const key=data.readingBookField;if(Object.hasOwn(readingBookDraft,key))readingBookDraft[key]=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'readingSessionField')){const key=data.readingSessionField;if(Object.hasOwn(readingSessionDraft,key))readingSessionDraft[key]=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'readingNoteField')){const key=data.readingNoteField;if(Object.hasOwn(readingNoteDraft,key))readingNoteDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'engineeringHomeworkField')){
         const key=String(data.engineeringHomeworkField||'');
         if(['title','due_on','notes'].includes(key)) engineeringHomeworkDraft[key]=String(element.value||'');
@@ -496,6 +660,10 @@
     }
     function handleChange(event) {
       const element = event.target, data = element && element.dataset;
+      if(data&&Object.hasOwn(data,'readingUpload')){
+        const current=snapshot(),book=readingBook(current,selectedReadingBookId),files=Array.from(element.files||[]);element.value='';if(!files.length||!book)return true;
+        try{requireReady(current);run('Saving reading scans…',async()=>{const out=[];for(const file of files.slice(0,12))out.push(await store.uploadReadingFile({file,book_id:book.id,section:book.current_section||''}));return out;},rows=>notify((rows||[]).length+' reading scan'+((rows||[]).length===1?'':'s')+' saved.'));}catch(error){notify(error.message,true);}return true;
+      }
       if(data&&Object.hasOwn(data,'engineeringUpload')){
         const current=snapshot(), files=Array.from(element.files||[]); element.value='';
         if(!files.length)return true;
@@ -571,7 +739,7 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-habit-action]') : null;
       const data = element && element.dataset, action = data && data.habitAction;
-      if (!['grocery', 'money', 'category', 'new-skill', 'edit-skill', 'log-skill', 'skill-history', 'close-history', 'edit-session', 'resume', 'discard', 'archive', 'retry', 'reload-record', 'grams', 'trigger', 'reset-baseline', 'open-settings', 'close-settings', 'edit-day', 'new-purchase', 'export', 'restore-backup', 'cancel-backup', 'engineering-homework-add', 'engineering-homework-cancel', 'engineering-homework-toggle', 'engineering-homework-delete', 'engineering-file-open', 'engineering-file-delete'].includes(action)) return false;
+      if (!['grocery', 'money', 'category', 'new-skill', 'edit-skill', 'log-skill', 'skill-history', 'close-history', 'edit-session', 'resume', 'discard', 'archive', 'retry', 'reload-record', 'grams', 'trigger', 'reset-baseline', 'open-settings', 'close-settings', 'edit-day', 'new-purchase', 'export', 'restore-backup', 'cancel-backup', 'engineering-homework-add', 'engineering-homework-cancel', 'engineering-homework-toggle', 'engineering-homework-delete', 'engineering-file-open', 'engineering-file-delete', 'reading-home', 'reading-open', 'reading-detail', 'reading-coach', 'reading-coach-tab', 'reading-add-book', 'reading-edit-book', 'reading-cancel-book', 'reading-start-session', 'reading-cancel-session', 'reading-add-note', 'reading-cancel-note', 'reading-speak', 'reading-save-word', 'reading-file-open'].includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery' || action === 'money') { navigate(action); return true; }
@@ -597,6 +765,20 @@
           if(!confirm('Delete this saved Engineering file?'))return true;
           run('Deleting Engineering file…',()=>store.deleteEngineeringFile(row),()=>notify('Engineering file deleted.'),null,'#engineering-homework');return true;
         }
+        else if(action==='reading-home'){readingView='home';readingBookOpen=false;readingSessionOpen=false;readingNoteOpen=false;refresh();return true;}
+        else if(action==='reading-open'||action==='reading-detail'){if(data.id)selectedReadingBookId=data.id;readingView='detail';readingBookOpen=false;readingSessionOpen=false;readingNoteOpen=false;refresh();return true;}
+        else if(action==='reading-coach'){if(data.id)selectedReadingBookId=data.id;readingView='coach';refresh();return true;}
+        else if(action==='reading-coach-tab'){if(['spelling','vocabulary','comprehension'].includes(data.tab))readingCoachTab=data.tab;refresh();return true;}
+        else if(action==='reading-add-book'){readingBookDraft={id:'',title:'',author:'',isbn:'',edition:'',total_pages:'',current_page:'',current_section:'',status:'not_started',cover_url:'',notes:''};readingBookOpen=true;refresh();return true;}
+        else if(action==='reading-edit-book'){const book=readingBook(current,data.id);if(!book)throw new Error('Refresh to find that book.');readingBookDraft={...book,total_pages:book.total_pages==null?'':book.total_pages,current_page:book.current_page==null?'':book.current_page};readingBookOpen=true;refresh();return true;}
+        else if(action==='reading-cancel-book'){readingBookOpen=false;refresh();return true;}
+        else if(action==='reading-start-session'){if(data.id)selectedReadingBookId=data.id;const book=readingBook(current,selectedReadingBookId);readingSessionDraft={minutes:'20',start_page:book&&book.current_page!=null?String(book.current_page):'',end_page:'',section:book&&book.current_section||'',notes:''};readingSessionOpen=true;readingView='detail';refresh();return true;}
+        else if(action==='reading-cancel-session'){readingSessionOpen=false;refresh();return true;}
+        else if(action==='reading-add-note'){readingNoteDraft={page_number:'',section:'',note_type:'note',body:''};readingNoteOpen=true;refresh();return true;}
+        else if(action==='reading-cancel-note'){readingNoteOpen=false;refresh();return true;}
+        else if(action==='reading-speak'){if(root.speechSynthesis&&data.word){root.speechSynthesis.cancel();root.speechSynthesis.speak(new SpeechSynthesisUtterance(data.word));}return true;}
+        else if(action==='reading-save-word'){const book=readingBook(current,selectedReadingBookId),starter=book&&readingStarterMaterial(book.title),row=starter&&starter.vocab.find(v=>v[0]===data.word);if(!book||!row)throw new Error('That starter word is unavailable.');run('Saving vocabulary…',()=>store.saveReadingVocabulary({book_id:book.id,word:row[0],part_of_speech:row[1],definition:row[2],source_label:'coach_suggested'}),()=>notify('Vocabulary word saved.'));return true;}
+        else if(action==='reading-file-open'){const file=readingFiles(current).find(x=>x.id===data.id);if(!file)throw new Error('Refresh to find that scan.');const popup=root.open?root.open('about:blank','_blank'):null;run('Opening reading scan…',()=>store.getReadingFileUrl(file),url=>{if(popup)popup.location.href=url;},()=>{try{if(popup)popup.close();}catch(_){}});return true;}
         else if (action === 'new-skill') { const category = selectedCategory === 'all' ? 'piano' : selectedCategory; openGroup('skill', current, null, { category, memory_type: M.category(category).memory_type }); return true; }
         else if (action === 'edit-skill' || action === 'log-skill') {
           const row = privateRows(current, 'skills').find(skill => skill.id === data.id); if (!row) throw new Error('Refresh to find this saved skill.');
