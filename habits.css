@@ -1127,3 +1127,213 @@
 .sewing-fabric-grid h3{margin:0 0 5px;color:#6a574e}.sewing-fabric-grid p{margin:0;color:#71645f;line-height:1.5}
 .sewing-rules ul{margin:10px 0 0;padding-left:20px}.sewing-rules li{margin:6px 0;color:#6f625d;line-height:1.5}
 @media(max-width:760px){.sewing-banner{grid-template-columns:1fr}.sewing-banner>span{display:none}.sewing-setup-grid,.sewing-checklist,.sewing-machine-grid,.sewing-term-grid,.sewing-fabric-grid,.sewing-project-grid{grid-template-columns:1fr}}
+
+
+/* Engineering layout cleanup · readable on desktop and iPhone */
+.engineering-dashboard{
+  max-width:1180px;
+  margin:14px auto 24px;
+  gap:16px;
+}
+.engineering-banner{
+  padding:22px 24px;
+  border-radius:18px;
+}
+.engineering-banner h2{
+  font-size:clamp(2rem,4vw,3.5rem);
+  line-height:1.05;
+}
+.engineering-overview-grid,
+.engineering-support-grid,
+.engineering-learning-grid,
+.engineering-plan-grid{
+  display:grid;
+  gap:14px;
+}
+.engineering-overview-grid{
+  grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr);
+}
+.engineering-support-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+.engineering-learning-grid{
+  grid-template-columns:minmax(0,1.15fr) minmax(300px,.85fr);
+}
+.engineering-plan-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+.engineering-plan-grid .engineering-projects{
+  grid-column:1/-1;
+}
+.engineering-quick{
+  display:block;
+}
+.engineering-quick .habit-heading{
+  align-items:center;
+}
+.engineering-quick-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.engineering-quick-actions .button{
+  width:auto;
+}
+.engineering-dashboard .panel{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+.engineering-dashboard h2{
+  line-height:1.15;
+}
+.engineering-dashboard p,
+.engineering-dashboard li,
+.engineering-dashboard small{
+  line-height:1.5;
+}
+.engineering-tutor-profile{
+  align-items:flex-start;
+}
+.engineering-tutor-avatar{
+  width:58px;
+  height:58px;
+  font-size:32px;
+}
+.engineering-tutor-card .button{
+  width:100%;
+  white-space:normal;
+}
+.engineering-proposal-grid{
+  grid-template-columns:88px minmax(0,1fr);
+  align-items:start;
+}
+.engineering-proposal-icon{
+  min-height:88px;
+  font-size:42px;
+}
+.engineering-vocab-list summary{
+  min-height:46px;
+}
+.engineering-lab-grid{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+.engineering-project-grid{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+.engineering-project-grid article{
+  min-width:0;
+}
+.engineering-project-grid h3{
+  font-size:14px;
+  line-height:1.25;
+}
+.engineering-project-grid p,
+.engineering-lab-grid p{
+  font-size:12px;
+}
+.engineering-metrics{
+  grid-template-columns:repeat(4,minmax(0,1fr));
+}
+.engineering-file-grid{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+.engineering-homework-list article{
+  min-width:0;
+}
+@media(max-width:980px){
+  .engineering-overview-grid,
+  .engineering-learning-grid{
+    grid-template-columns:1fr;
+  }
+  .engineering-lab-grid,
+  .engineering-project-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .engineering-file-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media(max-width:700px){
+  .engineering-dashboard{
+    gap:12px;
+  }
+  .engineering-banner{
+    padding:18px;
+  }
+  .engineering-support-grid,
+  .engineering-plan-grid{
+    grid-template-columns:1fr;
+  }
+  .engineering-plan-grid .engineering-projects{
+    grid-column:auto;
+  }
+  .engineering-lab-grid,
+  .engineering-project-grid,
+  .engineering-file-grid,
+  .engineering-metrics{
+    grid-template-columns:1fr;
+  }
+  .engineering-quick .habit-heading{
+    align-items:flex-start;
+  }
+  .engineering-quick-actions{
+    width:100%;
+  }
+  .engineering-quick-actions .button{
+    flex:1 1 160px;
+  }
+  .engineering-proposal-grid{
+    grid-template-columns:1fr;
+  }
+  .engineering-proposal-icon{
+    min-height:72px;
+  }
+  .engineering-homework-actions{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+  .engineering-homework-actions .button,
+  .engineering-upload-button{
+    width:100%;
+    text-align:center;
+  }
+  .engineering-homework-list article{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .engineering-homework-list article .button{
+    width:100%;
+  }
+  .engineering-tutor-profile{
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr);
+  }
+  .engineering-tutor-card .button{
+    padding:.7rem .8rem;
+  }
+  .engineering-timeline article{
+    grid-template-columns:30px minmax(0,1fr);
+  }
+}
+@media(max-width:430px){
+  .engineering-banner h2{
+    font-size:2rem;
+  }
+  .engineering-dashboard .panel{
+    padding:14px;
+  }
+  .engineering-tutor-profile{
+    grid-template-columns:1fr;
+  }
+  .engineering-tutor-avatar{
+    width:52px;
+    height:52px;
+  }
+  .engineering-quick-actions{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+  .engineering-quick-actions .button{
+    width:100%;
+  }
+}
