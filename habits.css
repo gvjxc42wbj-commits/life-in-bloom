@@ -121,3 +121,26 @@
 @media (prefers-reduced-motion: reduce) {
   .habits-page * { scroll-behavior: auto !important; }
 }
+
+
+/* Engineering dashboard */
+.engineering-dashboard{display:grid;gap:14px;margin:14px 0}
+.engineering-hero{background:linear-gradient(135deg,#fff7fa,#fffdf7)}
+.engineering-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.engineering-metrics>div{display:grid;gap:3px;padding:12px;border:1px solid #eed8e1;border-radius:14px;background:#fff}
+.engineering-metrics span{font-size:20px}.engineering-metrics strong{font-size:22px;color:#934565}.engineering-metrics small{color:#7b5d6a;font-size:11px}
+.engineering-roadmap-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.engineering-roadmap-grid article{position:relative;padding:16px 14px;border:1px solid #ead4dd;border-radius:16px;background:linear-gradient(180deg,#fff9fb,#fff)}
+.engineering-stage{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#f4dbe6;color:#8d3f60;font-weight:800}
+.engineering-roadmap-grid h3{margin:8px 0 9px}.engineering-roadmap-grid ul{padding-left:18px;margin:0;color:#6e5360;font-size:12px;line-height:1.6}
+.engineering-two-col{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}
+.engineering-tutor-link{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding:13px;border:1px solid #e8cbd7;border-radius:14px;background:#fff2f7;color:#673548;text-decoration:none}
+.engineering-tutor-link>span{font-size:24px}.engineering-tutor-link strong,.engineering-tutor-link small{display:block}.engineering-tutor-link small{margin-top:3px;color:#805d6d}
+.engineering-check-groups{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.engineering-check-groups h3{margin:0 0 7px}.engineering-check-groups label{display:flex;gap:7px;align-items:flex-start;margin:7px 0;color:#674c59;font-size:12px}
+.engineering-check-groups input{accent-color:#a6476d}
+.engineering-vocab-list{display:grid;gap:6px}.engineering-vocab-list details{border:1px solid #ead9e0;border-radius:12px;background:#fff;padding:0 10px}.engineering-vocab-list summary{display:flex;align-items:center;gap:8px;min-height:42px;cursor:pointer}.engineering-vocab-list summary span{font-size:18px}.engineering-vocab-list p{margin:0 0 10px;color:#755969;font-size:12px;line-height:1.5}
+.engineering-lab-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.engineering-lab-grid article{padding:14px;border:1px solid #e9d5de;border-radius:14px;background:#fff}.engineering-lab-grid article>span{font-size:25px}.engineering-lab-grid h3{margin:8px 0 5px;font-size:14px}.engineering-lab-grid p{margin:0 0 8px;color:#745b67;font-size:11px;line-height:1.45}.engineering-lab-grid small{display:inline-block;padding:4px 7px;border-radius:999px;background:#e8f3e9;color:#3f6d49;font-weight:700}
+.engineering-project-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}.engineering-project-grid article{padding:13px;border:1px solid #e9d3dc;border-radius:14px;background:#fff9fb}.engineering-project-grid article>span{font-size:24px}.engineering-project-grid h3{margin:8px 0 5px;font-size:13px}.engineering-project-grid b{display:inline-block;margin-bottom:6px;padding:3px 7px;border-radius:999px;background:#f1dce6;color:#874260;font-size:10px}.engineering-project-grid p{margin:0;color:#765966;font-size:11px;line-height:1.45}
+.engineering-success-grid{display:flex;flex-wrap:wrap;gap:8px}.engineering-success-grid span{padding:9px 12px;border:1px solid #e8cfd9;border-radius:999px;background:#fff;color:#78445a;font-size:12px;font-weight:700}
+@media(max-width:950px){.engineering-roadmap-grid{grid-template-columns:1fr 1fr}.engineering-lab-grid{grid-template-columns:1fr 1fr}.engineering-project-grid{grid-template-columns:1fr 1fr}.engineering-two-col{grid-template-columns:1fr}}
+@media(max-width:620px){.engineering-metrics{grid-template-columns:1fr 1fr}.engineering-roadmap-grid,.engineering-lab-grid,.engineering-project-grid,.engineering-check-groups{grid-template-columns:1fr}}
