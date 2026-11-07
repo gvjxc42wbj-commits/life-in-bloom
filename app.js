@@ -331,7 +331,15 @@
     return false;
   };
   if (F) food = F.createController({ ...sharedOptions, openGrocery, onDateChange: date => { if (wellness && wellness.setSelectedDate) wellness.setSelectedDate(date); } });
-  if (H) habits = H.createController(sharedOptions);
+  if (H) {
+    try {
+      habits = H.createController(sharedOptions);
+    } catch (error) {
+      habits = null;
+      console.error('Skills in Bloom failed to initialize:', error);
+      showNotice('Skills in Bloom could not start, but the rest of Life in Bloom is still available. '+(error && error.message ? error.message : ''), true);
+    }
+  }
   if (Dog) dog = Dog.createController({ ...sharedOptions, openGrocery,
     openReceipt: receiptId => commerce ? commerce.openReceipt(receiptId) : false });
   if (W) wellness = W.createController({ ...sharedOptions,
