@@ -160,3 +160,6 @@
 .food-buy-recommendation li span,.food-buy-recommendation li small{display:block}.food-buy-recommendation li small{color:#765967;margin-top:.12rem}
 .food-mini-buy-list{font-size:.86rem}.food-mini-buy-list li span:last-child{text-align:right;color:#765967}
 @media(max-width:560px){.food-cost-summary{grid-template-columns:1fr}.food-buy-recommendation li,.food-mini-buy-list li{align-items:flex-start}}
+
+.food-hub-card.is-primary{grid-column:1/-1;background:linear-gradient(135deg,#fff1f5,#fde2ec);border-color:#d990aa;box-shadow:0 14px 30px rgba(132,57,88,.12)}
+.food-hub-card.is-primary>span{font-size:1.9rem}.food-hub-card.is-primary strong{font-size:1.4rem}
