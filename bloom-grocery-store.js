@@ -15,7 +15,8 @@
     readingBooks: 'bloom_reading_books', readingSessions: 'bloom_reading_sessions', readingNotes: 'bloom_reading_notes',
     readingVocabulary: 'bloom_reading_vocabulary', readingQuizAttempts: 'bloom_reading_quiz_attempts', readingFiles: 'bloom_reading_files',
     readingPageText: 'bloom_reading_page_text', readingAssignments: 'bloom_reading_assignments', readingAudioRecordings: 'bloom_reading_audio_recordings',
-    pianoAppProgress: 'bloom_piano_app_progress', pianoPracticeSessions: 'bloom_piano_practice_sessions', pianoAbilities: 'bloom_piano_abilities', pianoRepertoire: 'bloom_piano_repertoire', pianoMedia: 'bloom_piano_media'
+    pianoAppProgress: 'bloom_piano_app_progress', pianoPracticeSessions: 'bloom_piano_practice_sessions', pianoAbilities: 'bloom_piano_abilities', pianoRepertoire: 'bloom_piano_repertoire', pianoMedia: 'bloom_piano_media',
+    animationTutor: 'bloom_animation_tutor', animationResources: 'bloom_animation_resources', animationSkills: 'bloom_animation_skills', animationProjects: 'bloom_animation_projects', animationMedia: 'bloom_animation_media'
   };
   const PRIVATE_FIELDS = ['display_name', 'age_years', 'height_cm', 'weight_kg', 'activity_level', 'notes'];
   const DIET_FIELDS = ['display_name', 'color', 'calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'allergies', 'restrictions', 'preferences', 'notes'];
@@ -30,7 +31,7 @@
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia'];
   const LIFE_COLLECTIONS = {
     hydrationSettings:'hydration_settings', hydrationEntries:'hydration_entry',
     skills:'skill', skillSessions:'skill_session', smokingSettings:'smoking_settings', smokingDays:'smoking_day',
@@ -150,6 +151,7 @@
     const signedReadingFiles = new Map();
     const signedReadingAudio = new Map();
     const signedPianoMedia = new Map();
+    const signedAnimationMedia = new Map();
     let client = options.client || null;
     let state = emptyState('loading');
     let generation = 0;
@@ -211,7 +213,7 @@
         const cached = JSON.parse(cacheStorage.getItem(cachePrefix + user.id) || 'null');
         if (!cached || cached.version !== 1 || cached.user.id !== user.id || !cached.household || !cached.members.some(row=>row.user_id===user.id && row.household_id===cached.household.id)) return false;
         if (verifiedHouseholdId !== undefined && cached.household.id !== verifiedHouseholdId) { clearCache(user.id); return false; }
-        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia']) if (!Object.hasOwn(cached, key)) cached[key] = [];
+        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia']) if (!Object.hasOwn(cached, key)) cached[key] = [];
         if (!SHARED_LISTS.every(key=>Array.isArray(cached[key]))) return false;
         state = { ...emptyState('ready'), user:userSummary(user), household:cached.household,
           ...Object.fromEntries(SHARED_LISTS.map(key=>[key,cached[key]])), offline:true, cachedAt:cached.savedAt,
@@ -268,6 +270,7 @@
         signedReadingFiles.clear();
         signedReadingAudio.clear();
         signedPianoMedia.clear();
+        signedAnimationMedia.clear();
         uploads.clear();
         generation++;
         requestNumber++;
@@ -1243,6 +1246,86 @@
       const data=assertResult(await client.from(TABLES.pianoMedia).delete().eq('id',saved.id).eq('user_id',current.userId).select('id'));if(!Array.isArray(data)||data.length!==1)throw new Error('The Piano media record could not be removed.');
       await refresh();return true;
     }
+    async function ensureAnimationDefaults(){
+      requireOnline(); const current=context(true);
+      const skills=['principles','keyframes','2d','3d','graph_editor','rigging','character_movement','rendering','storytelling'].map(key=>({
+        id:newUuid(),household_id:current.householdId,user_id:current.userId,skill_key:key,state:'not_assessed',evidence:''
+      }));
+      try{
+        assertResult(await client.from(TABLES.animationSkills).upsert(skills,{onConflict:'user_id,household_id,skill_key',ignoreDuplicates:true}));
+        checkContext(current); await refresh(); return true;
+      }catch(error){if(current.generation===generation)throw fail(error);throw error;}
+    }
+    async function saveAnimationTutor(row){
+      requireOnline(); const current=context(true); row=row||{};
+      const existing=(state.animationTutor||[]).find(item=>item.user_id===current.userId&&item.household_id===current.householdId);
+      const payload={id:existing&&existing.id||row.id||newUuid(),household_id:current.householdId,user_id:current.userId,
+        name:String(row.name||'').slice(0,240),specialty:String(row.specialty||'').slice(0,240),platform:String(row.platform||'').slice(0,120),
+        profile_url:String(row.profile_url||'').slice(0,1000),notes:String(row.notes||'').slice(0,5000),updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.animationTutor).upsert(payload,{onConflict:'user_id,household_id'}).select('*'));
+      checkContext(current); await refresh(); return data&&data[0];
+    }
+    async function saveAnimationResource(row){
+      requireOnline(); const current=context(true); row=row||{};
+      const title=String(row.title||'').trim(); if(!title||title.length>300)throw new Error('Enter a learning resource title.');
+      const source=['Coursera','YouTube','Blender','Adobe','Other'].includes(row.source)?row.source:'Other';
+      const duration=row.duration_minutes===''||row.duration_minutes==null?null:Number(row.duration_minutes);
+      if(duration!=null&&(!Number.isInteger(duration)||duration<1||duration>100000))throw new Error('Duration must be a whole number of minutes.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,source,title,url:String(row.url||'').slice(0,1200),
+        subject:String(row.subject||'').slice(0,240),duration_minutes:duration,skill_target:String(row.skill_target||'').slice(0,240),
+        watched:row.watched===true,practiced:row.practiced===true,demonstrated:row.demonstrated===true,notes:String(row.notes||'').slice(0,6000),updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.animationResources).upsert(payload,{onConflict:'id'}).select('*'));
+      checkContext(current); await refresh(); return data&&data[0];
+    }
+    async function saveAnimationSkill(row){
+      requireOnline(); const current=context(true); row=row||{};
+      const key=String(row.skill_key||'');
+      if(!['principles','keyframes','2d','3d','graph_editor','rigging','character_movement','rendering','storytelling'].includes(key))throw new Error('Choose a valid animation skill.');
+      const stateValue=['not_assessed','learning','practicing','independent','demonstrated'].includes(row.state)?row.state:'not_assessed';
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,skill_key:key,state:stateValue,evidence:String(row.evidence||'').slice(0,6000),updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.animationSkills).upsert(payload,{onConflict:'user_id,household_id,skill_key'}).select('*'));
+      checkContext(current); await refresh(); return data&&data[0];
+    }
+    async function saveAnimationProject(row){
+      requireOnline(); const current=context(true); row=row||{};
+      const title=String(row.title||'').trim(); if(!title||title.length>300)throw new Error('Enter an animation project title.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,title,software:String(row.software||'').slice(0,240),
+        skills:String(row.skills||'').slice(0,1000),started_on:row.started_on||null,status:['not_started','planning','in_progress','revision','finished'].includes(row.status)?row.status:'not_started',
+        independence:['guided','assisted','independent'].includes(row.independence)?row.independence:'guided',game_ready:row.game_ready===true,
+        notes:String(row.notes||'').slice(0,6000),self_review:String(row.self_review||'').slice(0,6000),updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.animationProjects).upsert(payload,{onConflict:'id'}).select('*'));
+      checkContext(current); await refresh(); return data&&data[0];
+    }
+    async function uploadAnimationMedia(value){
+      requireOnline(); const current=context(true),file=value&&value.file;
+      const allowed=['image/jpeg','image/png','image/webp','image/gif','video/webm','video/mp4','video/quicktime','application/pdf'];
+      if(!file||!file.size||file.size>100*1024*1024||!allowed.includes(file.type))throw new Error('Choose an image, GIF, video, or PDF up to 100 MB.');
+      const id=newUuid(),ext=(file.name.split('.').pop()||'bin').replace(/[^a-zA-Z0-9]/g,'').slice(0,8)||'bin',path=current.userId+'/'+id+'.'+ext;
+      const uploaded=await client.storage.from('bloom-animation-media').upload(path,file,{contentType:file.type,upsert:false,cacheControl:'3600'});
+      if(uploaded.error)throw errorOf(uploaded.error); checkContext(current);
+      try{
+        const mediaType=file.type==='image/gif'?'gif':file.type.startsWith('video/')?'video':file.type==='application/pdf'?'pdf':'image';
+        const meta={id,household_id:current.householdId,user_id:current.userId,project_id:value.project_id||null,title:String(value.title||file.name||'Animation media').slice(0,240),
+          version_label:String(value.version_label||'').slice(0,120),media_type:mediaType,path,mime_type:file.type,size_bytes:file.size};
+        const saved=assertResult(await client.from(TABLES.animationMedia).insert(meta).select('*'));
+        checkContext(current); await refresh(); return saved&&saved[0];
+      }catch(error){try{await client.storage.from('bloom-animation-media').remove([path]);}catch(_){}throw error;}
+    }
+    async function getAnimationMediaUrl(row){
+      requireOnline(); const current=context(true),saved=state.animationMedia.find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/'))throw new Error('That Animation media file is not available.');
+      const prior=signedAnimationMedia.get(saved.path); if(prior&&prior.expires>Date.now())return prior.url;
+      const result=assertResult(await client.storage.from('bloom-animation-media').createSignedUrl(saved.path,120)); checkContext(current);
+      signedAnimationMedia.set(saved.path,{url:result.signedUrl,expires:Date.now()+90000}); return result.signedUrl;
+    }
+    async function deleteAnimationMedia(row){
+      requireOnline(); const current=context(true),saved=state.animationMedia.find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/'))throw new Error('Refresh Animation media before removing it.');
+      assertResult(await client.storage.from('bloom-animation-media').remove([saved.path])); checkContext(current); signedAnimationMedia.delete(saved.path);
+      const data=assertResult(await client.from(TABLES.animationMedia).delete().eq('id',saved.id).eq('user_id',current.userId).select('id'));
+      if(!Array.isArray(data)||data.length!==1)throw new Error('The Animation media record could not be removed.');
+      await refresh(); return true;
+    }
     function exportHousehold() {
       if(!state.user || !state.household || state.status!=='ready') throw new Error('Open your household before exporting a backup.');
       return { app:'Life in Bloom Household',version:1,household_id:state.household.id,exported_at:new Date().toISOString(),
@@ -1293,6 +1376,7 @@
       uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveEngineeringHomework, deleteEngineeringHomework, uploadEngineeringFile, getEngineeringFileUrl, deleteEngineeringFile,
       ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingFile, deleteReadingRow, saveReadingPageText, saveReadingPageTexts, deleteReadingPageText, setReadingFilePageCount, saveReadingAssignment, deleteReadingAssignment, uploadReadingAudio, updateReadingAudio, getReadingAudioUrl, deleteReadingAudio, exportReadingRecords, importReadingRecords,
       ensurePianoDefaults, savePianoAppProgress, savePianoPracticeSession, savePianoAbility, savePianoRepertoire, uploadPianoMedia, getPianoMediaUrl, deletePianoMedia,
+      ensureAnimationDefaults, saveAnimationTutor, saveAnimationResource, saveAnimationSkill, saveAnimationProject, uploadAnimationMedia, getAnimationMediaUrl, deleteAnimationMedia,
       saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };
