@@ -340,3 +340,34 @@
 @media(max-width:620px){
   .dog-category-menu{position:static;margin-top:.35rem;box-shadow:none}
 }
+
+
+.dog-image-slot{
+  display:grid;
+  justify-items:center;
+  gap:8px;
+  flex:none;
+  background:transparent;
+}
+.dog-image-slot .dog-companion{
+  width:132px;
+  height:150px;
+  object-fit:contain;
+  background:transparent;
+}
+.dog-image-upload{
+  position:relative;
+  cursor:pointer;
+  text-align:center;
+}
+.dog-image-slot small{
+  max-width:150px;
+  text-align:center;
+  color:#75667f;
+  font-size:10px;
+  line-height:1.35;
+}
+@media(max-width:620px){
+  .dog-image-slot{width:100%}
+  .dog-image-slot .dog-companion{width:120px;height:135px}
+}
