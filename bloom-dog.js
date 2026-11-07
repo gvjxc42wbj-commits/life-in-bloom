@@ -95,6 +95,7 @@
     let selectedDate = M.dayKey(getNow()), lastToday = selectedDate, person = '1', showDog = true, refillOnly = false;
     let opened = '', busy = null, pending = Promise.resolve(), attempt = null, problem = '', draftSaved = false, draftWarning = false;
     let houseworkCategoryOpen = false;
+    let defaultsEnsuredHousehold = '';
     let drafts = Object.fromEntries(GROUPS.map(group => [group, blank(group, selectedDate)])), baselines = copy(drafts);
     const dirty = group => JSON.stringify(drafts[group]) !== JSON.stringify(baselines[group]);
     const anyDirty = () => GROUPS.some(dirty);
@@ -128,7 +129,7 @@
       if (key !== identity) {
         identity = key; generation++; busy = null; page = 'dog'; renderedPage = 'dog'; tab = 'today'; houseworkTab = 'today'; selectedDate = today; lastToday = today;
         person = (current.members || []).some(member => member.user_id === (current.user || {}).id && member.role === 'member') ? '2' : '1';
-        showDog = true; refillOnly = false; opened = ''; houseworkCategoryOpen = false; attempt = null; problem = ''; draftSaved = false; draftWarning = false;
+        showDog = true; refillOnly = false; opened = ''; houseworkCategoryOpen = false; defaultsEnsuredHousehold = ''; attempt = null; problem = ''; draftSaved = false; draftWarning = false;
         drafts = Object.fromEntries(GROUPS.map(group => [group, blank(group, selectedDate)])); baselines = copy(drafts);
         if (draftStore && current.user && current.household) {
           try { const saved = draftStore.read(current.user.id, current.household.id, 'dog'); draftSaved = Boolean(saved && restore(saved.data)); }
@@ -330,6 +331,13 @@
         } else page=nextPage;
       }
       if (!current.user || !current.household || current.status !== 'ready') return '<section class="panel dog-page"><h2>' + (page === 'dog' ? 'Dog care' : 'Housework') + '</h2><p>Connect your household to keep care plans, purchases and who did what together.</p>' + button('grocery', 'Open household setup', ' data-tab="household"', true) + '</section>';
+      if (page === 'dog' && !current.offline && current.household && current.household.id && defaultsEnsuredHousehold !== current.household.id && typeof store.ensureDogDefaultRoutines === 'function') {
+        defaultsEnsuredHousehold = current.household.id;
+        Promise.resolve().then(() => store.ensureDogDefaultRoutines()).catch(error => {
+          if (defaultsEnsuredHousehold === current.household.id) defaultsEnsuredHousehold = '';
+          notify(error && error.message || 'The default dog schedule could not be checked.', true);
+        });
+      }
       const activeTab = page === 'dog' ? tab : houseworkTab;
       const tabs = page === 'dog' ? [['today', '🐾', 'Today'], ['plan', '🌿', 'Care plan'], ['supplies', '🧺', 'Supplies'], ['notes', '📝', 'Notes'], ['history', '🗓️', 'History']] : [['today', '🏡', 'Today'], ['plan', '🌿', 'Routines'], ['history', '🗓️', 'History']];
       let html = '<div class="dog-page' + (page === 'housework' ? ' dog-housework' : '') + '">' + (page === 'dog' ? renderProfile(current) : '<section class="panel dog-housework-intro"><p class="page-kicker">A home you care for together</p><h2>Housework</h2><p class="dog-help">Household chores and Dog care share one completion history for Person 1 and Person 2.</p><div class="housework-category-strip">'+M.HOUSEWORK_CATEGORIES.map(row=>'<span><b aria-hidden="true">'+row[2]+'</b>'+esc(row[1])+'</span>').join('')+'</div></section>');
