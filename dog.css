@@ -242,3 +242,15 @@
     box-shadow:none;
   }
 }
+
+
+/* Dog notes split view */
+.dog-note-columns{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:.85rem;
+}
+.dog-note-columns>.panel{margin:0}
+@media(max-width:760px){
+  .dog-note-columns{grid-template-columns:1fr}
+}
