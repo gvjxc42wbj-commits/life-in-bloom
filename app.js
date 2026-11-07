@@ -594,6 +594,33 @@ function renderCircle(){
   ${renderMonthInsights()}`;
 }
 
+  function formatTrashCountdown(milliseconds) {
+    const total=Math.max(0,Math.floor(milliseconds/1000));
+    const hours=Math.floor(total/3600);
+    const minutes=Math.floor((total%3600)/60);
+    const seconds=total%60;
+    if(hours>0) return hours+'h '+String(minutes).padStart(2,'0')+'m '+String(seconds).padStart(2,'0')+'s';
+    return minutes+'m '+String(seconds).padStart(2,'0')+'s';
+  }
+  function updateTrashDashboard() {
+    if(state.page!=='home'||!wellness||typeof wellness.trashReminderState!=='function')return;
+    const reminder=wellness.trashReminderState(new Date());
+    const node=content.querySelector('[data-trash-reminder]');
+    if(!reminder) {
+      if(node) renderKeepScroll();
+      return;
+    }
+    if(!node) {
+      renderKeepScroll();
+      return;
+    }
+    node.dataset.trashDeadline=reminder.deadline;
+    node.classList.toggle('is-urgent',Boolean(reminder.urgent));
+    const title=node.querySelector('[data-trash-title]');
+    const countdown=node.querySelector('[data-trash-countdown]');
+    if(title) title.textContent=reminder.title;
+    if(countdown) countdown.textContent=formatTrashCountdown(reminder.remaining);
+  }
   function render() {
     const isSleepMood = state.page === 'sleep-mood';
     const [heading, subtitle] = PAGE_DETAILS[state.page];
@@ -640,6 +667,7 @@ function renderCircle(){
     $('#export-btn').disabled = !personalAvailable();
     $('#menu-export-btn').disabled = !personalAvailable();
     updateSaveState();
+    if (state.page === 'home' && wellness) requestAnimationFrame(updateTrashDashboard);
   }
   function commitSlot(index) {
     if (!canEdit()) return;
@@ -1055,6 +1083,7 @@ function renderCircle(){
   };
   window.addEventListener('focus', checkCalendarDay);
   if (W && typeof window.setInterval === 'function') window.setInterval(checkCalendarDay, 60000);
+  if (typeof window.setInterval === 'function') window.setInterval(updateTrashDashboard, 1000);
   window.addEventListener('online', () => cloud.init().catch(() => {}));
   window.addEventListener('offline', () => cloud.refresh().catch(() => {}));
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
