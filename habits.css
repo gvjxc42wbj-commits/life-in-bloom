@@ -819,3 +819,100 @@
   .spanish-schedule-grid,.spanish-vocab-grid,.spanish-skill-grid,.spanish-week-grid{grid-template-columns:1fr}
   .spanish-lesson-card,.spanish-homework-list article,.spanish-prepare-list article{grid-template-columns:1fr}
 }
+
+
+/* Daily Journal */
+.journal-dashboard{
+  display:grid;
+  gap:14px;
+  margin:14px 0 24px;
+}
+.journal-banner{
+  display:grid;
+  grid-template-columns:1fr auto;
+  align-items:center;
+  gap:16px;
+  padding:20px 24px;
+  border:1px solid #e6d2dd;
+  border-radius:22px;
+  background:linear-gradient(110deg,#fae6ee,#fffafc 65%,#f8f1ff);
+  box-shadow:0 10px 24px rgba(84,52,70,.06);
+}
+.journal-banner h2{
+  margin:.1rem 0 .25rem;
+  font-family:Georgia,serif;
+  font-size:clamp(2.2rem,6vw,3.6rem);
+  color:#563448;
+}
+.journal-banner p{margin:0;color:#775d6b}
+.journal-banner>span{font-size:52px}
+.journal-entry-panel{margin:0}
+.journal-date-row{
+  display:flex;
+  align-items:end;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:12px;
+}
+.journal-date-row label{
+  display:grid;
+  gap:5px;
+  color:#6d4658;
+  font-size:12px;
+  font-weight:800;
+}
+.journal-date-row input{
+  min-height:42px;
+  border:1px solid #dfbdcb;
+  border-radius:10px;
+  background:#fff;
+  padding:8px 10px;
+  color:#533747;
+  font:inherit;
+}
+.journal-entry-panel textarea{
+  width:100%;
+  min-height:360px;
+  padding:18px;
+  border:1px solid #e0c3cf;
+  border-radius:14px;
+  background:#fffdfd;
+  color:#3e3037;
+  font-family:Georgia,'Times New Roman',serif;
+  font-size:17px;
+  line-height:1.7;
+  resize:vertical;
+}
+.journal-history-list{
+  display:grid;
+  gap:7px;
+}
+.journal-history-list button{
+  display:grid;
+  grid-template-columns:150px 1fr;
+  gap:12px;
+  align-items:start;
+  width:100%;
+  padding:11px 12px;
+  border:1px solid #ead7df;
+  border-radius:12px;
+  background:#fff;
+  color:#5d394a;
+  text-align:left;
+  cursor:pointer;
+}
+.journal-history-list button:hover{background:#fff5f9}
+.journal-history-list strong{font-size:12px}
+.journal-history-list span{
+  color:#806674;
+  font-size:11px;
+  line-height:1.45;
+  overflow:hidden;
+}
+@media(max-width:620px){
+  .journal-banner{grid-template-columns:1fr}
+  .journal-banner>span{display:none}
+  .journal-date-row{align-items:stretch;flex-direction:column}
+  .journal-history-list button{grid-template-columns:1fr}
+  .journal-entry-panel textarea{min-height:300px}
+}
