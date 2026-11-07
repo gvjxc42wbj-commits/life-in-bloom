@@ -82,7 +82,7 @@
     let readerTextSize=18, readerLineHeight=1.75, readerSpeechRate=1;
     let readingAssignmentOpen=false, readingAssignmentDraft={id:'',title:'',prompt:'',body:'',tutor_questions:'',due_on:'',status:'draft'};
     let readAloudRecorder=null, readAloudStream=null, readAloudChunks=[], readAloudStartedAt=0, readAloudBlob=null, readAloudDuration=0, readAloudPreviewUrl='', readAloudClarity='', readAloudConfidence='', readAloudNotes='';
-    let pianoSeedChecked='', pianoPracticeOpen=false, pianoRepertoireOpen=false, pianoAppEditId='';
+    let pianoSeedChecked='', pianoPracticeOpen=false, pianoRepertoireOpen=false, pianoAppEditId='', pianoAppDraft=null;
     let pianoPracticeDraft={duration_minutes:'20',source:'independent',course_name:'',lesson_name:'',piece_name:'',accuracy_percent:'',notes:''};
     let pianoRepertoireDraft={title:'',kind:'piece',status:'learning',source:'',notes:''};
     let pianoMediaMeta={title:'Practice sample',piece_name:'',notes:''};
@@ -641,7 +641,7 @@
       const appCards=apps.length?apps.map(row=>'<article class="piano-app-card"><div class="piano-app-icon">'+(row.app_name==='PianoSessions'?'🎹':'🎧')+'</div><div><p class="page-kicker">'+esc(row.app_name)+'</p><h3>'+esc(row.course_name)+'</h3><p>'+esc(row.lesson_name||'Lesson not entered')+'</p><small>'+esc(row.status.replace('_',' '))+(row.progress_percent!=null?' · '+Math.round(Number(row.progress_percent))+'% progress':' · progress not entered')+(row.accuracy_percent!=null?' · '+Math.round(Number(row.accuracy_percent))+'% accuracy':'')+'</small></div>'+button('piano-edit-app','Log progress',' data-id="'+esc(row.id)+'"')+'</article>').join(''):'<p class="habit-help">Setting up your learning-app records…</p>';
       let appForm='';
       if(pianoAppEditId){
-        const row=apps.find(item=>item.id===pianoAppEditId);
+        const row=pianoAppDraft||apps.find(item=>item.id===pianoAppEditId);
         if(row)appForm='<form class="habit-form piano-inline-form" data-piano-app-form><input type="hidden" data-piano-app-field="id" value="'+esc(row.id)+'"><div class="habit-form-grid"><label class="habit-field"><span>App</span><input disabled value="'+esc(row.app_name)+'"></label><label class="habit-field"><span>Course</span><input disabled value="'+esc(row.course_name)+'"></label><label class="habit-field"><span>Current lesson / exercise</span><input maxlength="240" data-piano-app-field="lesson_name" value="'+esc(row.lesson_name||'')+'"></label><label class="habit-field"><span>Progress %</span><input type="number" min="0" max="100" step="any" data-piano-app-field="progress_percent" value="'+esc(row.progress_percent==null?'':row.progress_percent)+'"></label><label class="habit-field"><span>Accuracy % (if app reports it)</span><input type="number" min="0" max="100" step="any" data-piano-app-field="accuracy_percent" value="'+esc(row.accuracy_percent==null?'':row.accuracy_percent)+'"></label><label class="habit-field"><span>Status</span><select data-piano-app-field="status">'+['not_started','started','active','completed'].map(v=>'<option value="'+v+'"'+(row.status===v?' selected':'')+'>'+esc(v.replace('_',' '))+'</option>').join('')+'</select></label></div><label class="habit-field"><span>Notes</span><textarea rows="3" data-piano-app-field="notes">'+esc(row.notes||'')+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save progress</button>'+button('piano-cancel-app','Cancel')+'</div></form>';
       }
       let practiceForm='';
