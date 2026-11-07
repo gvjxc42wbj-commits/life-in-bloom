@@ -100,6 +100,10 @@
     let paintingView='portfolio', selectedPaintingArtworkId='', paintingArtworkOpen=false, paintingVersionOpen=false;
     let paintingArtworkDraft={id:'',title:'',medium:'',started_on:'',completed_on:'',status:'in_progress',description:'',overall_notes:''};
     let paintingVersionDraft={id:'',artwork_id:'',version_date:'',stage_label:'',comments:'',corrections:'',what_changed:'',what_learned:'',next_steps:''};
+    let plantView='collection', selectedPlantId='', plantProfileOpen=false, plantScheduleOpen=false, plantEventOpen=false;
+    let plantDraft={id:'',name:'',species:'',variety:'',acquired_on:'',planted_on:'',source:'',location:'',pot_size:'',substrate:'',stage:'growing',notes:'',archived:false};
+    let plantScheduleDraft={id:'',plant_id:'',care_type:'water',interval_days:'',days_of_week:[],time_of_day:'',duration_minutes:'',amount_text:'',instructions:'',start_on:'',active:true};
+    let plantEventDraft={id:'',plant_id:'',occurred_at:'',event_type:'note',title:'',value_numeric:'',value_unit:'',notes:''};
     let pianoPracticeDraft={duration_minutes:'20',source:'independent',course_name:'',lesson_name:'',piece_name:'',accuracy_percent:'',notes:''};
     let pianoRepertoireDraft={title:'',kind:'piece',status:'learning',source:'',notes:''};
     let pianoMediaMeta={title:'Practice sample',piece_name:'',notes:''};
@@ -911,6 +915,41 @@
         + '</section>';
     }
 
+    function plantRows(current,key){
+      const user=current.user&&current.user.id,household=current.household&&current.household.id;
+      return (current[key]||[]).filter(row=>row&&row.user_id===user&&row.household_id===household);
+    }
+    function plantAgeLabel(plant,today){
+      const source=plant&&(plant.planted_on||plant.acquired_on);
+      if(!source)return 'Age not entered';
+      const start=new Date(source+'T12:00:00'),end=new Date((today||M.dayKey(getNow()))+'T12:00:00');
+      if(Number.isNaN(start.getTime())||Number.isNaN(end.getTime())||end<start)return 'Age not available';
+      const days=Math.floor((end-start)/86400000);
+      if(days<60)return days+' day'+(days===1?'':'s')+' old';
+      if(days<730){const months=Math.max(1,Math.floor(days/30.44));return months+' month'+(months===1?'':'s')+' old';}
+      const years=Math.floor(days/365.2425),months=Math.floor((days-years*365.2425)/30.44);
+      return years+' year'+(years===1?'':'s')+(months>0?' · '+months+' mo':'');
+    }
+    function plantEventIcon(type){
+      return {water:'💧',feed:'🧪',light:'☀️',mist:'🌫️',rotate:'🔄',prune:'✂️',repot:'🪴',measure:'📏',photo:'📷',problem:'⚠️',treatment:'🩹',flower:'🌸',harvest:'🧺',note:'📝',other:'🌱'}[type]||'🌱';
+    }
+    function plantCareIcon(type){
+      return {water:'💧',feed:'🧪',light:'💡',mist:'🌫️',rotate:'🔄',prune:'✂️',repot:'🪴',check:'👀',other:'🌱'}[type]||'🌱';
+    }
+    function plantMediaRows(current,plantId){
+      return plantRows(current,'plantMedia').filter(row=>!plantId||row.plant_id===plantId).sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')));
+    }
+    function hydratePlantMedia(rows){
+      if(!root.document||!store.getPlantMediaUrl)return;
+      for(const row of rows){
+        const node=root.document.querySelector('[data-plant-media-id="'+row.id+'"]');
+        if(!node||node.dataset.loaded==='true')continue;
+        Promise.resolve(store.getPlantMediaUrl(row)).then(url=>{
+          const live=root.document&&root.document.querySelector('[data-plant-media-id="'+row.id+'"]');
+          if(live){if(live.tagName==='A')live.href=url;else live.src=url;live.dataset.loaded='true';}
+        }).catch(()=>{});
+      }
+    }
     function renderPaintingPortfolio(current,today){
       const artworks=paintingRows(current,'paintingArtworks').slice().sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
       const versions=paintingRows(current,'paintingVersions').slice().sort((a,b)=>String(a.version_date||'').localeCompare(String(b.version_date||''))||String(a.created_at||'').localeCompare(String(b.created_at||'')));
