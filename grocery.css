@@ -171,3 +171,27 @@
 .grocery-meal-source { color: var(--accent, #9e436d); line-height: 1.5; overflow-wrap: anywhere; }
 
 .grocery-master-import{border-style:dashed}.grocery-import-result{display:grid;gap:.3rem;background:#fff7fa;border:1px solid #efd4dd;border-radius:16px;padding:.85rem;margin:.8rem 0}.grocery-list-summary>span{display:grid;gap:.15rem}.grocery-list-summary>span>strong{font-size:1.15rem}
+
+
+/* Searchable saved-product picker */
+.grocery-product-search{
+  margin-bottom:.75rem;
+  padding:.75rem;
+  border:1px solid #edd3de;
+  border-radius:14px;
+  background:#fffafd;
+}
+.grocery-product-search input[type="search"]{
+  min-height:44px;
+  border:1px solid #ddbdcd;
+  border-radius:10px;
+  padding:.65rem .75rem;
+  background:#fff;
+  color:#49303b;
+  font:inherit;
+}
+.grocery-product-search small{
+  margin-top:.3rem;
+  color:#806673;
+  font-weight:400;
+}
