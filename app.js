@@ -80,6 +80,7 @@
   let habits = null;
   let dog = null;
   let wellness = null;
+  let settingsPerson2Invite = null;
   const connectedControllers = () => [grocery, commerce, food, habits, dog, wellness].filter(Boolean);
   const anySaving = () => connectedControllers().some(controller => controller.isBusy());
   const draftStore = window.BloomDrafts ? window.BloomDrafts.create() : null;
@@ -703,9 +704,25 @@ function renderCircle(){
     html+='<section class="panel settings-account"><div class="panel-title-row"><div><p class="page-kicker">Account</p><h3>'+escapeText(user.email||'Signed-in account')+'</h3></div><button type="button" class="button" data-settings-action="signout">Sign out</button></div></section>';
     html+='<section class="panel settings-profile"><div class="panel-title-row"><div><p class="page-kicker">Personal</p><h3>Your profile</h3><p class="caption">This is your private profile information. It is separate from shared household Food, Money, recipes, inventory, Dog, and other app records.</p></div></div><form data-settings-form="profile" class="settings-form"><div class="settings-grid"><label class="form-field"><span>Display name</span><input name="display_name" maxlength="120" value="'+escapeText(profile.display_name||'')+'"></label><label class="form-field"><span>Age</span><input name="age_years" type="number" min="0" max="130" step="1" value="'+escapeText(profile.age_years==null?'':profile.age_years)+'"></label><label class="form-field"><span>Height (cm)</span><input name="height_cm" type="number" min="0" max="300" step=".1" value="'+escapeText(profile.height_cm==null?'':profile.height_cm)+'"></label><label class="form-field"><span>Weight (kg)</span><input name="weight_kg" type="number" min="0" max="1000" step=".1" value="'+escapeText(profile.weight_kg==null?'':profile.weight_kg)+'"></label><label class="form-field"><span>Activity level</span><input name="activity_level" maxlength="120" value="'+escapeText(profile.activity_level||'')+'" placeholder="Optional"></label></div><label class="form-field"><span>Personal notes</span><textarea name="notes" maxlength="4000" rows="4">'+escapeText(profile.notes||'')+'</textarea></label><div class="page-actions"><button type="submit" class="button primary">Save personal profile</button></div></form></section>';
     if(household){
-      html+='<section class="panel settings-household"><div class="panel-title-row"><div><p class="page-kicker">Household</p><h3>'+escapeText(household.name||'Life in Bloom Household')+'</h3><p class="caption">'+Number((shared.members||[]).length)+' member'+((shared.members||[]).length===1?'':'s')+' connected.</p></div></div><div class="settings-warning"><strong>Leave this household</strong><p>This removes only your membership. It does not delete the household or its shared data.</p><button type="button" class="button" data-settings-action="leave-household">Remove me from this household</button></div></section>';
+      const members=shared.members||[];
+      const mine=members.find(member=>member.user_id===user.id);
+      const owner=mine&&mine.role==='owner';
+      html+='<section class="panel settings-household"><div class="panel-title-row"><div><p class="page-kicker">Household</p><h3>'+escapeText(household.name||'Life in Bloom Household')+'</h3><p class="caption">'+Number(members.length)+' of 2 household members connected.</p></div></div>';
+      if(owner&&members.length<2){
+        html+='<div class="settings-person2-invite"><p class="page-kicker">Person 2</p><h4>Add your second household member</h4><p>Create a one-use household code after Person 2 has their own Life in Bloom account. Give them this code; they sign in, open Settings, and choose <strong>Join as Person 2</strong>.</p>';
+        if(settingsPerson2Invite&&settingsPerson2Invite.invite_code){
+          const expiry=new Date(settingsPerson2Invite.expires_at);
+          html+='<label class="form-field"><span>Person 2 household code</span><input type="text" readonly value="'+escapeText(settingsPerson2Invite.invite_code)+'" data-settings-person2-code spellcheck="false"></label><p class="caption">'+(!Number.isNaN(expiry.getTime())?'Expires '+escapeText(expiry.toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'}))+'. ':'')+'This code can be used once.</p><div class="page-actions"><button type="button" class="button primary" data-settings-action="copy-person2-code">Copy code</button><button type="button" class="button" data-settings-action="create-person2-code">Create a new code</button></div>';
+        } else {
+          html+='<div class="page-actions"><button type="button" class="button primary" data-settings-action="create-person2-code">Create Person 2 code</button></div>';
+        }
+        html+='</div>';
+      } else if(owner&&members.length>=2){
+        html+='<div class="settings-person2-invite is-complete"><strong>Person 2 is connected.</strong><p>Your household already has both member spots filled.</p></div>';
+      }
+      html+='<div class="settings-warning"><strong>Leave this household</strong><p>This removes only your membership. It does not delete the household or its shared data unless you are the only remaining owner.</p><button type="button" class="button" data-settings-action="leave-household">Remove me from this household</button></div></section>';
     } else {
-      html+='<section class="panel settings-household"><p class="page-kicker">Household</p><h3>Add yourself to a household</h3><div class="settings-household-grid"><form data-settings-form="join-household" class="settings-form"><label class="form-field"><span>Invite code</span><input name="code" required maxlength="100" placeholder="Enter household invite code"></label><button class="button primary" type="submit">Join household</button></form><form data-settings-form="create-household" class="settings-form"><label class="form-field"><span>New household name</span><input name="name" required maxlength="160" placeholder="Life in Bloom Household"></label><button class="button" type="submit">Create household</button></form></div></section>';
+      html+='<section class="panel settings-household"><p class="page-kicker">Household</p><h3>Join as Person 2</h3><p class="caption">If the household owner gave you a Person 2 code, enter it here. Your signed-in account will be added automatically as the second household member.</p><div class="settings-household-grid"><form data-settings-form="join-household" class="settings-form"><label class="form-field"><span>Person 2 household code</span><input name="code" required maxlength="128" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Paste the code from Person 1"></label><button class="button primary" type="submit">Join as Person 2</button></form><form data-settings-form="create-household" class="settings-form"><label class="form-field"><span>Or create a new household</span><input name="name" required maxlength="160" placeholder="Life in Bloom Household"></label><button class="button" type="submit">Create household</button></form></div></section>';
     }
     html+='<section class="panel settings-danger"><p class="page-kicker">Personal reset</p><h3>Restart my personal setup</h3><p>This removes your <strong>personal profile setup only</strong> so that profile can start fresh. It does <strong>not</strong> delete shared household data, Food, Grocery, recipes, inventory, Money, Dog records, Skills history, or the rest of Life in Bloom.</p><button type="button" class="button" data-settings-action="reset-profile">Restart my personal profile</button></section></section>';
     return html;
@@ -945,6 +962,27 @@ function renderCircle(){
         Promise.resolve(cloud.leaveHousehold()).then(()=>{showNotice('You left the household.');renderKeepScroll();}).catch(error=>showNotice(error.message,true));
         return;
       }
+      if(action==='create-person2-code'){
+        Promise.resolve(cloud.createInvite()).then(result=>{
+          settingsPerson2Invite=result&&result.invite_code?result:null;
+          showNotice('Person 2 household code created.');
+          renderKeepScroll();
+        }).catch(error=>showNotice(error.message,true));
+        return;
+      }
+      if(action==='copy-person2-code'){
+        const input=content.querySelector('[data-settings-person2-code]');
+        const value=input&&input.value;
+        if(!value){showNotice('Create a Person 2 code first.',true);return;}
+        const fallback=()=>{
+          try{input.focus();input.select();document.execCommand('copy');showNotice('Person 2 code copied.');}
+          catch(_){showNotice('Select and copy the code manually.',true);}
+        };
+        if(navigator.clipboard&&navigator.clipboard.writeText){
+          navigator.clipboard.writeText(value).then(()=>showNotice('Person 2 code copied.')).catch(fallback);
+        } else fallback();
+        return;
+      }
       if(action==='reset-profile'){
         if(!window.confirm('Restart your personal profile setup? This will remove only your private profile fields. Shared household data and your other Life in Bloom records will not be deleted.'))return;
         Promise.resolve(cloud.deletePrivateProfile()).then(()=>{showNotice('Your personal profile was reset. The rest of Life in Bloom was kept.');renderKeepScroll();}).catch(error=>showNotice(error.message,true));
@@ -1089,7 +1127,11 @@ function renderCircle(){
           task=cloud.savePrivateProfile({...p,display_name:String(form.get('display_name')||'').trim(),age_years:num('age_years'),height_cm:num('height_cm'),weight_kg:num('weight_kg'),activity_level:String(form.get('activity_level')||'').trim(),notes:String(form.get('notes')||'').trim()});
         } else return;
       }catch(error){showNotice(error.message,true);return;}
-      Promise.resolve(task).then(()=>{showNotice(kind==='signin'?'Signed in.':kind==='profile'?'Personal profile saved.':kind==='join-household'?'Household joined.':'Household created.');renderKeepScroll();}).catch(error=>showNotice(error.message,true));
+      Promise.resolve(task).then(()=>{
+        if(kind==='join-household'||kind==='create-household') settingsPerson2Invite=null;
+        showNotice(kind==='signin'?'Signed in.':kind==='profile'?'Personal profile saved.':kind==='join-household'?'You joined the household as Person 2.':'Household created.');
+        renderKeepScroll();
+      }).catch(error=>showNotice(error.message,true));
       return;
     }
     if (wellness && wellness.handleSubmit(event)) return;
