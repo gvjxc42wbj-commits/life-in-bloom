@@ -248,17 +248,19 @@
     function recipeCostMarkup(recipe, current, compact) {
       if (!M.recipeCost) return '';
       const cost = M.recipeCost(recipe, current.products || [], current.inventory || [], dayKey(getNow()));
-      const makeLabel = (cost.complete ? 'Estimated cost to make' : 'Known cost to make · incomplete');
-      const shoppingLabel = cost.shopping_complete ? 'Estimated shopping total' : 'Known shopping total · incomplete';
+      const makeLabel = cost.complete ? 'Estimated cost to make' : 'Estimated cost so far';
+      const shoppingLabel = cost.shopping_complete ? 'Estimated shopping total' : 'Estimated shopping total so far';
       const perServing = cost.complete && Number(recipe.servings) > 0 ? Math.round(cost.known_make_cost_cents / Number(recipe.servings)) : null;
       const review = [];
-      if (cost.missing_links) review.push(cost.missing_links + ' ingredient link' + (cost.missing_links === 1 ? '' : 's'));
+      if (cost.missing_links) review.push(cost.missing_links + ' unlinked ingredient' + (cost.missing_links === 1 ? '' : 's'));
       if (cost.incompatible_units) review.push(cost.incompatible_units + ' amount/unit review' + (cost.incompatible_units === 1 ? '' : 's'));
-      if (cost.missing_prices) review.push(cost.missing_prices + ' price' + (cost.missing_prices === 1 ? '' : 's'));
-      let html = '<div class="food-cost-summary' + (compact ? ' is-compact' : '') + '"><div><span>' + makeLabel + '</span><strong>' + money(cost.known_make_cost_cents) + '</strong>' + (perServing != null ? '<small>' + money(perServing) + ' per serving</small>' : '') + '</div><div><span>' + shoppingLabel + '</span><strong>' + money(cost.estimated_shopping_total_cents) + '</strong><small>' + money(cost.known_shopping_subtotal_cents) + ' subtotal + ' + money(cost.estimated_shopping_tax_cents) + ' estimated tax</small></div></div>';
+      if (cost.missing_prices) review.push(cost.missing_prices + ' missing price' + (cost.missing_prices === 1 ? '' : 's'));
+      const makeValue = money(cost.known_make_cost_cents) + (cost.complete ? '' : '+');
+      const shopValue = money(cost.estimated_shopping_total_cents) + (cost.shopping_complete ? '' : '+');
+      let html = '<div class="food-cost-summary' + (compact ? ' is-compact' : '') + '"><div><span>' + makeLabel + '</span><strong>' + makeValue + '</strong>' + (perServing != null ? '<small>' + money(perServing) + ' per serving</small>' : '') + '</div><div><span>' + shoppingLabel + '</span><strong>' + shopValue + '</strong><small>' + money(cost.known_shopping_subtotal_cents) + ' subtotal + ' + money(cost.estimated_shopping_tax_cents) + ' estimated tax</small></div></div>';
       if (!compact && cost.to_buy.length) html += '<div class="food-buy-recommendation"><h4>Recommended to buy or review</h4><ul>' + cost.to_buy.slice(0, 12).map(item => '<li><span><strong>' + esc(item.name) + '</strong>' + (item.shortage_quantity != null ? '<small>' + esc(fmt(item.shortage_quantity)) + ' ' + esc(item.unit || '') + ' still needed</small>' : '<small>Amount needs review</small>') + '</span><span>' + (item.packs != null && item.packs > 0 ? esc(item.packs) + ' package' + (item.packs === 1 ? '' : 's') : 'Review') + (item.shopping_cost_cents != null ? '<small>' + money(item.shopping_cost_cents) + '</small>' : '') + '</span></li>').join('') + '</ul><p class="food-help">Plan this meal to send its reviewed shortages to Grocery. Shopping totals use current reference prices and include the generic 3% tax estimate.</p></div>';
       if (cost.estimated_conversions) html += '<p class="food-help"><strong>Includes estimated kitchen conversions.</strong> ' + esc((cost.conversion_notes || []).join(' · ')) + '</p>';
-      if (review.length) html += '<p class="food-help">Still needed for a complete estimate: ' + esc(review.join(' · ')) + '.</p>';
+      if (review.length) html += '<p class="food-help"><strong>Still needs review:</strong> ' + esc(review.join(' · ')) + '. The + means the shown total is a minimum known estimate, not the final recipe cost.</p>';
       return html;
     }
     function allergyNotice(recipe, current, slot) {
@@ -346,9 +348,9 @@
       if(cost.missing_links) review.push(cost.missing_links+' unlinked');
       if(cost.incompatible_units) review.push(cost.incompatible_units+' unit review');
       if(cost.missing_prices) review.push(cost.missing_prices+' price');
-      let html='<div class="food-cost-summary"><div><span>'+(cost.complete?'Estimated meal cost':'Known meal cost · incomplete')+'</span><strong>'+money(cost.known_make_cost_cents)+'</strong></div><div><span>'+(cost.shopping_complete?'Shopping needed':'Known shopping needed · incomplete')+'</span><strong>'+money(cost.estimated_shopping_total_cents)+'</strong><small>'+money(cost.known_shopping_subtotal_cents)+' subtotal + '+money(cost.estimated_shopping_tax_cents)+' estimated tax</small></div></div>';
+      let html='<div class="food-cost-summary"><div><span>'+(cost.complete?'Estimated meal cost':'Estimated meal cost so far')+'</span><strong>'+money(cost.known_make_cost_cents)+(cost.complete?'':'+')+'</strong></div><div><span>'+(cost.shopping_complete?'Estimated shopping needed':'Estimated shopping needed so far')+'</span><strong>'+money(cost.estimated_shopping_total_cents)+(cost.shopping_complete?'':'+')+'</strong><small>'+money(cost.known_shopping_subtotal_cents)+' subtotal + '+money(cost.estimated_shopping_tax_cents)+' estimated tax</small></div></div>';
       if(cost.estimated_conversions) html+='<p class="food-help"><strong>Includes estimated kitchen conversions.</strong> '+esc((cost.conversion_notes||[]).join(' · '))+'</p>';
-      if(review.length) html+='<p class="food-help">Still needs '+esc(review.join(' · '))+'.</p>';
+      if(review.length) html+='<p class="food-help"><strong>Still needs review:</strong> '+esc(review.join(' · '))+'. The + means the shown total is the minimum currently supported by linked prices.</p>';
       return html;
     }
     function renderPlanCard(plan, current, history) {
