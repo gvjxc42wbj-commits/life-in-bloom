@@ -944,3 +944,15 @@ html { scroll-padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
 .weather-conditions{margin:.35rem 0 0;color:#6f7769}
 .weather-advice{margin:.6rem 0 0;padding:.65rem .75rem;border-radius:12px;background:rgba(255,255,255,.58);color:#5f6859;line-height:1.45;font-weight:650}
 @media(max-width:620px){.weather-location{font-size:11px}.weather-advice{font-size:12px}}
+
+.bloom-dog-avatar{
+  width:64px;
+  height:70px;
+  object-fit:contain;
+  object-position:center;
+  background:transparent;
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+  display:block;
+}
