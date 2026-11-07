@@ -1098,3 +1098,32 @@
 .me-history-bars strong{text-align:right;font-size:12px;color:#665b69}
 .me-history-foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #eee5ef;color:#6f6473}
 @media(max-width:760px){.me-banner{grid-template-columns:1fr}.me-banner>span{display:none}.me-skill-grid,.me-check-grid,.me-slider-grid{grid-template-columns:1fr}.me-history-bars>div{grid-template-columns:110px minmax(0,1fr) 58px}}
+
+
+/* Sewing in Bloom */
+.sewing-dashboard{display:grid;gap:14px;margin:14px 0 24px}
+.sewing-banner{display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center;padding:24px;border:1px solid #eadfda;border-radius:20px;background:linear-gradient(135deg,#fffaf7,#fbf6f1)}
+.sewing-banner h2{margin:.1rem 0 .25rem;font-family:Georgia,serif;font-size:clamp(2.2rem,6vw,3.8rem);color:#6f594f}
+.sewing-banner p{margin:0;color:#796b64}.sewing-banner>span{font-size:58px}
+.sewing-dashboard .panel{margin:0}
+.sewing-setup-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.sewing-setup-grid article{display:grid;gap:7px;padding:14px;border:1px solid #eadfd9;border-radius:14px;background:#fff}
+.sewing-setup-grid article>span{font-size:28px}.sewing-setup-grid small{color:#7c706b;line-height:1.45}
+.sewing-checklist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.sewing-checklist article{display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start;padding:11px;border:1px solid #eadfd9;border-radius:12px;background:#fff}
+.sewing-checklist b{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#8d7166;color:#fff}
+.sewing-checklist p{margin:3px 0 0;color:#6f625d;line-height:1.45}
+.sewing-machine-grid,.sewing-project-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:12px}
+.sewing-machine-grid article,.sewing-project-grid article{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:12px;border:1px solid #eadfd9;border-radius:13px;background:#fff}
+.sewing-machine-grid article>span,.sewing-project-grid article>span{font-size:25px}
+.sewing-machine-grid p,.sewing-project-grid p{margin:4px 0 0;color:#71645f;line-height:1.45}
+.sewing-project-grid small{display:block;margin-top:6px;color:#8a766e;font-weight:700}
+.sewing-term-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.sewing-term-grid details{border:1px solid #eadfd9;border-radius:12px;background:#fff}
+.sewing-term-grid summary{cursor:pointer;padding:11px 12px;font-weight:800;color:#6b574f}
+.sewing-term-grid p{margin:0;padding:0 12px 12px;color:#70645f;line-height:1.5}
+.sewing-fabric-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:12px}
+.sewing-fabric-grid article{padding:12px;border:1px solid #eadfd9;border-radius:13px;background:#fff}
+.sewing-fabric-grid h3{margin:0 0 5px;color:#6a574e}.sewing-fabric-grid p{margin:0;color:#71645f;line-height:1.5}
+.sewing-rules ul{margin:10px 0 0;padding-left:20px}.sewing-rules li{margin:6px 0;color:#6f625d;line-height:1.5}
+@media(max-width:760px){.sewing-banner{grid-template-columns:1fr}.sewing-banner>span{display:none}.sewing-setup-grid,.sewing-checklist,.sewing-machine-grid,.sewing-term-grid,.sewing-fabric-grid,.sewing-project-grid{grid-template-columns:1fr}}
