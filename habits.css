@@ -1337,3 +1337,50 @@
     width:100%;
   }
 }
+
+
+/* Painting portfolio image uploads */
+.painting-card-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  padding:0 12px 12px;
+}
+.painting-upload-button{
+  position:relative;
+  cursor:pointer;
+}
+@media(max-width:620px){
+  .painting-card-actions{display:grid;grid-template-columns:1fr}
+  .painting-card-actions .button,.painting-upload-button{width:100%;text-align:center}
+}
+
+/* Animation standalone video log */
+.animation-video-log-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  margin-top:12px;
+}
+.animation-video-log-card{
+  display:grid;
+  gap:9px;
+  padding:12px;
+  border:1px solid #ddd0e9;
+  border-radius:14px;
+  background:#fcfaff;
+}
+.animation-video-log-card video{
+  width:100%;
+  max-height:320px;
+  border-radius:10px;
+  background:#241d27;
+}
+.animation-video-log-card>div{
+  display:grid;
+  gap:2px;
+}
+.animation-video-log-card small{color:#75667f}
+@media(max-width:700px){
+  .animation-video-log-grid{grid-template-columns:1fr}
+}
