@@ -1068,6 +1068,18 @@
     }
     function handleSubmit(event) {
       const form=event.target;
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'animationTutorForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving Animation tutor…',()=>store.saveAnimationTutor(animationTutorDraft),()=>{animationTutorOpen=false;notify('Animation tutor saved.');},null,'.animation-tutor');}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'animationResourceForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving Animation resource…',()=>store.saveAnimationResource(animationResourceDraft),()=>{animationResourceOpen=false;animationResourceDraft={id:'',source:'YouTube',title:'',url:'',subject:'',duration_minutes:'',skill_target:'',watched:false,practiced:false,demonstrated:false,notes:''};notify('Animation learning resource saved.');},null,'.animation-learning');}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'animationProjectForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving Animation project…',()=>store.saveAnimationProject(animationProjectDraft),()=>{animationProjectOpen=false;animationProjectDraft={id:'',title:'',software:'Blender',skills:'',started_on:'',status:'not_started',independence:'guided',game_ready:false,notes:'',self_review:''};notify('Animation project saved.');},null,'.animation-projects');}catch(error){notify(error.message,true);}return true;
+      }
       if(form&&form.dataset&&Object.hasOwn(form.dataset,'pianoAppForm')){
         if(event.preventDefault)event.preventDefault();const current=snapshot();if(!pianoAppDraft)return true;
         try{requireReady(current);run('Saving Piano app progress…',()=>store.savePianoAppProgress(pianoAppDraft),()=>{pianoAppEditId='';pianoAppDraft=null;notify('Piano app progress saved.');},null,'.piano-apps');}catch(error){notify(error.message,true);}return true;
@@ -1133,6 +1145,9 @@
       const element = event.target, data = element && element.dataset;
       if (!data) return false;
       const current = snapshot();
+      if(Object.hasOwn(data,'animationTutorField')){const key=data.animationTutorField;if(Object.hasOwn(animationTutorDraft,key))animationTutorDraft[key]=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'animationResourceField')){const key=data.animationResourceField;if(Object.hasOwn(animationResourceDraft,key))animationResourceDraft[key]=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'animationProjectField')){const key=data.animationProjectField;if(Object.hasOwn(animationProjectDraft,key))animationProjectDraft[key]=key==='game_ready'?Boolean(element.checked):String(element.value||'');return true;}
       if(Object.hasOwn(data,'pianoAppField')){const key=data.pianoAppField;if(pianoAppDraft&&Object.hasOwn(pianoAppDraft,key))pianoAppDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'pianoPracticeField')){const key=data.pianoPracticeField;if(Object.hasOwn(pianoPracticeDraft,key))pianoPracticeDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'pianoRepertoireField')){const key=data.pianoRepertoireField;if(Object.hasOwn(pianoRepertoireDraft,key))pianoRepertoireDraft[key]=String(element.value||'');return true;}
@@ -1181,6 +1196,19 @@
     }
     function handleChange(event) {
       const element = event.target, data = element && element.dataset;
+      if(data&&Object.hasOwn(data,'animationSkill')){
+        const current=snapshot(),key=data.key,row=animationRows(current,'animationSkills').find(item=>item.skill_key===key)||{skill_key:key,evidence:''};
+        try{requireReady(current);run('Updating Animation skill…',()=>store.saveAnimationSkill({...row,skill_key:key,state:element.value}),()=>notify(animationSkillInfo(key)[1]+' updated.'),null,'.animation-skills');}catch(error){notify(error.message,true);}return true;
+      }
+      if(data&&Object.hasOwn(data,'animationResourceToggle')){
+        const current=snapshot(),row=animationRows(current,'animationResources').find(item=>item.id===data.id),field=data.field;
+        if(!row||!['watched','practiced','demonstrated'].includes(field))return true;
+        try{requireReady(current);run('Updating learning status…',()=>store.saveAnimationResource({...row,[field]:element.checked===true}),()=>notify('Animation learning status updated.'),null,'.animation-learning');}catch(error){notify(error.message,true);}return true;
+      }
+      if(data&&Object.hasOwn(data,'animationMediaUpload')){
+        const current=snapshot(),project=animationRows(current,'animationProjects').find(item=>item.id===data.id),files=Array.from(element.files||[]);element.value='';if(!project||!files.length)return true;
+        try{requireReady(current);run('Uploading Animation preview…',async()=>{const out=[];for(const file of files.slice(0,8))out.push(await store.uploadAnimationMedia({file,project_id:project.id,title:animationMediaMeta.title||file.name,version_label:animationMediaMeta.version_label||''}));return out;},rows=>notify((rows||[]).length+' Animation preview'+((rows||[]).length===1?'':'s')+' saved.'),null,'.animation-projects');}catch(error){notify(error.message,true);}return true;
+      }
       if(data&&Object.hasOwn(data,'pianoAbility')){
         const current=snapshot(),key=data.key,row=pianoRows(current,'pianoAbilities').find(item=>item.ability_key===key)||{ability_key:key,evidence:''};
         try{requireReady(current);run('Updating Piano ability…',()=>store.savePianoAbility({...row,ability_key:key,state:element.value}),()=>notify(pianoAbilityInfo(key)[1]+' updated.'),null,'.piano-abilities');}catch(error){notify(error.message,true);}return true;
@@ -1314,11 +1342,32 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-habit-action]') : null;
       const data = element && element.dataset, action = data && data.habitAction;
-      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete'].includes(action)) return false;
+      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete','animation-tutor-edit','animation-tutor-cancel','animation-resource-add','animation-resource-cancel','animation-project-add','animation-project-edit','animation-project-cancel','animation-media-delete'].includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery' || action === 'money') { navigate(action); return true; }
         if (action === 'category') { if (data.category === 'all' || M.CATEGORIES.some(item => item.key === data.category)) selectedCategory = data.category; }
+        else if(action==='animation-tutor-edit'){
+          const row=animationRows(current,'animationTutor')[0];
+          animationTutorDraft=row?{...row}:{name:'',specialty:'',platform:'',profile_url:'',notes:''};
+          animationTutorOpen=true;refresh('.animation-tutor');return true;
+        }
+        else if(action==='animation-tutor-cancel'){animationTutorOpen=false;refresh('.animation-tutor');return true;}
+        else if(action==='animation-resource-add'){animationResourceDraft={id:'',source:'YouTube',title:'',url:'',subject:'',duration_minutes:'',skill_target:'',watched:false,practiced:false,demonstrated:false,notes:''};animationResourceOpen=true;refresh('.animation-learning');return true;}
+        else if(action==='animation-resource-cancel'){animationResourceOpen=false;refresh('.animation-learning');return true;}
+        else if(action==='animation-project-add'){animationProjectDraft={id:'',title:'',software:'Blender',skills:'',started_on:'',status:'not_started',independence:'guided',game_ready:false,notes:'',self_review:''};animationProjectOpen=true;refresh('.animation-projects');return true;}
+        else if(action==='animation-project-edit'){
+          const row=animationRows(current,'animationProjects').find(item=>item.id===data.id);
+          if(!row)throw new Error('Refresh to find that Animation project.');
+          animationProjectDraft={...row,started_on:row.started_on||''};animationProjectOpen=true;refresh('.animation-projects');return true;
+        }
+        else if(action==='animation-project-cancel'){animationProjectOpen=false;refresh('.animation-projects');return true;}
+        else if(action==='animation-media-delete'){
+          const row=animationMediaRows(current).find(item=>item.id===data.id);
+          if(!row)throw new Error('Refresh to find that Animation preview.');
+          if(!confirm('Remove this private Animation preview?'))return true;
+          run('Removing Animation media…',()=>store.deleteAnimationMedia(row),()=>notify('Animation preview removed.'),null,'.animation-projects');return true;
+        }
         else if(action==='piano-log-practice'){pianoPracticeDraft={duration_minutes:'20',source:'independent',course_name:'',lesson_name:'',piece_name:'',accuracy_percent:'',notes:''};pianoPracticeOpen=true;refresh('.piano-today');return true;}
         else if(action==='piano-cancel-practice'){pianoPracticeOpen=false;refresh('.piano-today');return true;}
         else if(action==='piano-edit-app'){
