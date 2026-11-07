@@ -103,6 +103,62 @@
   function escapeText(value) {
     return String(value).replace(/[&<>\"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' })[character]);
   }
+  function pdfEscape(value){
+    return String(value==null?'':value).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)').replace(/[^\x20-\x7E]/g,' ');
+  }
+  function buildShoppingListPdf(items,dateLabelText){
+    const active=Array.isArray(items)?items:[];
+    const pageWidth=612,pageHeight=792,left=54,top=732,lineHeight=28;
+    const lines=active.length?active.map((item,index)=>{
+      const qty=String(item.quantity||'').trim();
+      return (index+1)+'. '+String(item.name||'Unnamed item')+(qty?' — '+qty:'');
+    }):['Shopping cart empty'];
+    const pages=[];
+    for(let i=0;i<lines.length;i+=20)pages.push(lines.slice(i,i+20));
+    const objects=[null];
+    const add=value=>{objects.push(value);return objects.length-1;};
+    const font=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+    const pageIds=[],contentIds=[];
+    for(let p=0;p<pages.length;p++){
+      const body=[];
+      body.push('BT /F1 24 Tf '+left+' '+top+' Td ('+pdfEscape('Life in Bloom Shopping List')+') Tj ET');
+      body.push('BT /F1 12 Tf '+left+' '+(top-28)+' Td ('+pdfEscape(dateLabelText||'')+') Tj ET');
+      let y=top-78;
+      for(const line of pages[p]){
+        body.push('BT /F1 18 Tf '+left+' '+y+' Td ('+pdfEscape(line)+') Tj ET');
+        y-=lineHeight;
+      }
+      if(pages.length>1)body.push('BT /F1 10 Tf 500 35 Td ('+(p+1)+' / '+pages.length+') Tj ET');
+      const stream=body.join('\n');
+      const contentId=add('<< /Length '+stream.length+' >>\nstream\n'+stream+'\nendstream');
+      contentIds.push(contentId);
+      pageIds.push(add(''));
+    }
+    const pagesId=add('');
+    for(let p=0;p<pageIds.length;p++)objects[pageIds[p]]='<< /Type /Page /Parent '+pagesId+' 0 R /MediaBox [0 0 '+pageWidth+' '+pageHeight+'] /Resources << /Font << /F1 '+font+' 0 R >> >> /Contents '+contentIds[p]+' 0 R >>';
+    objects[pagesId]='<< /Type /Pages /Count '+pageIds.length+' /Kids ['+pageIds.map(id=>id+' 0 R').join(' ')+'] >>';
+    const catalog=add('<< /Type /Catalog /Pages '+pagesId+' 0 R >>');
+    let pdf='%PDF-1.4\n',offsets=[0];
+    for(let i=1;i<objects.length;i++){offsets[i]=pdf.length;pdf+=i+' 0 obj\n'+objects[i]+'\nendobj\n';}
+    const xref=pdf.length;
+    pdf+='xref\n0 '+objects.length+'\n0000000000 65535 f \n';
+    for(let i=1;i<objects.length;i++)pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';
+    pdf+='trailer\n<< /Size '+objects.length+' /Root '+catalog+' 0 R >>\nstartxref\n'+xref+'\n%%EOF';
+    return new Blob([pdf],{type:'application/pdf'});
+  }
+  function openShoppingListPdf(){
+    const shared=cloud && cloud.snapshot ? cloud.snapshot() : {};
+    if(!shared || !shared.user){showNotice('Sign in to open your saved shopping list.',true);return false;}
+    const month=new Date().toISOString().slice(0,7);
+    const items=(shared.shoppingItems||[]).filter(item=>!item.checked && (!item.month || String(item.month).slice(0,7)===month));
+    const label=new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    const blob=buildShoppingListPdf(items,label),url=URL.createObjectURL(blob);
+    const popup=window.open(url,'_blank','noopener');
+    if(!popup){URL.revokeObjectURL(url);showNotice('Your browser blocked the PDF window. Allow pop-ups for Life in Bloom and try again.',true);return false;}
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    return true;
+  }
+
   function trackingToday() {
     const now = new Date();
     if (now.getHours() < 8) now.setDate(now.getDate() - 1);
@@ -347,6 +403,7 @@
     onDateChange: date => { if (food && food.setSelectedDate) food.setSelectedDate(date); },
     getHabitsSummary: date => habits ? habits.getHomeSummary(date) : {},
     getDogSummary: date => dog ? dog.getHomeSummary(date) : {},
+    openShoppingListPdf,
     quickConsumeBoost: (productId, person, date) => {
       if (!food || !food.quickConsumeProduct) return Promise.reject(new Error('Refresh Life in Bloom to load quick Boost logging.'));
       return food.quickConsumeProduct(productId, person, date);
