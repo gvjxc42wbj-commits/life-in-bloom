@@ -183,6 +183,54 @@
     44:'roasted cauliflower garlic plated',
     45:'strawberry cake sliced plated'
   };
+  const COOKBOOK_IMAGE_MAP = {
+    1: { url: 'https://images.pexels.com/photos/10095837/pexels-photo-10095837.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/10095837/', artist: 'Pexels', license: 'Pexels License' },
+    2: { url: 'https://images.pexels.com/photos/5670958/pexels-photo-5670958.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/5670958/', artist: 'Pexels', license: 'Pexels License' },
+    3: { url: 'https://images.pexels.com/photos/6210959/pexels-photo-6210959.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/6210959/', artist: 'Pexels', license: 'Pexels License' },
+    4: { url: 'https://images.pexels.com/photos/341044/pexels-photo-341044.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/341044/', artist: 'Pexels', license: 'Pexels License' },
+    5: { url: 'https://images.pexels.com/photos/14146060/pexels-photo-14146060.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/14146060/', artist: 'Pexels', license: 'Pexels License' },
+    6: { url: 'https://images.pexels.com/photos/22698511/pexels-photo-22698511.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/22698511/', artist: 'Pexels', license: 'Pexels License' },
+    7: { url: 'https://images.pexels.com/photos/31233881/pexels-photo-31233881.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/31233881/', artist: 'Pexels', license: 'Pexels License' },
+    8: { url: 'https://images.pexels.com/photos/14866629/pexels-photo-14866629.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/14866629/', artist: 'Pexels', license: 'Pexels License' },
+    9: { url: 'https://images.pexels.com/photos/10692537/pexels-photo-10692537.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/10692537/', artist: 'Pexels', license: 'Pexels License' },
+    10: { url: 'https://images.pexels.com/photos/6605342/pexels-photo-6605342.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/6605342/', artist: 'Pexels', license: 'Pexels License' },
+    11: { url: 'https://images.pexels.com/photos/3129826/pexels-photo-3129826.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/3129826/', artist: 'Pexels', license: 'Pexels License' },
+    12: { url: 'https://images.pexels.com/photos/6174884/pexels-photo-6174884.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/6174884/', artist: 'Pexels', license: 'Pexels License' },
+    13: { url: 'https://images.pexels.com/photos/26207767/pexels-photo-26207767.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/26207767/', artist: 'Pexels', license: 'Pexels License' },
+    14: { url: 'https://images.pexels.com/photos/40011111/pexels-photo-40011111.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/40011111/', artist: 'Pexels', license: 'Pexels License' },
+    15: { url: 'https://images.pexels.com/photos/13803819/pexels-photo-13803819.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/13803819/', artist: 'Pexels', license: 'Pexels License' },
+    16: { url: 'https://images.pexels.com/photos/248428/pexels-photo-248428.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/248428/', artist: 'Pexels', license: 'Pexels License' },
+    17: { url: 'https://images.pexels.com/photos/19503821/pexels-photo-19503821.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/19503821/', artist: 'Pexels', license: 'Pexels License' },
+    18: { url: 'https://images.pexels.com/photos/31233887/pexels-photo-31233887.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/31233887/', artist: 'Pexels', license: 'Pexels License' },
+    19: { url: 'https://images.pexels.com/photos/28573021/pexels-photo-28573021.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/28573021/', artist: 'Pexels', license: 'Pexels License' },
+    20: { url: 'https://images.pexels.com/photos/38934831/pexels-photo-38934831.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/38934831/', artist: 'Pexels', license: 'Pexels License' },
+    21: { url: 'https://images.pexels.com/photos/7421877/pexels-photo-7421877.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/7421877/', artist: 'Pexels', license: 'Pexels License' },
+    22: { url: 'https://images.pexels.com/photos/38714623/pexels-photo-38714623.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/38714623/', artist: 'Pexels', license: 'Pexels License' },
+    23: { url: 'https://images.pexels.com/photos/33859572/pexels-photo-33859572.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/33859572/', artist: 'Pexels', license: 'Pexels License' },
+    24: { url: 'https://images.pexels.com/photos/5774004/pexels-photo-5774004.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/5774004/', artist: 'Pexels', license: 'Pexels License' },
+    25: { url: 'https://images.pexels.com/photos/6605654/pexels-photo-6605654.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/6605654/', artist: 'Pexels', license: 'Pexels License' },
+    26: { url: 'https://images.pexels.com/photos/2397401/pexels-photo-2397401.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/2397401/', artist: 'Pexels', license: 'Pexels License' },
+    27: { url: 'https://images.pexels.com/photos/5774000/pexels-photo-5774000.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/5774000/', artist: 'Pexels', license: 'Pexels License' },
+    28: { url: 'https://images.pexels.com/photos/10560087/pexels-photo-10560087.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/10560087/', artist: 'Pexels', license: 'Pexels License' },
+    29: { url: 'https://images.pexels.com/photos/35112963/pexels-photo-35112963.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/35112963/', artist: 'Pexels', license: 'Pexels License' },
+    30: { url: 'https://images.pexels.com/photos/27626493/pexels-photo-27626493.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/27626493/', artist: 'Pexels', license: 'Pexels License' },
+    31: { url: 'https://images.pexels.com/photos/341044/pexels-photo-341044.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/341044/', artist: 'Pexels', license: 'Pexels License' },
+    32: { url: 'https://images.pexels.com/photos/19585042/pexels-photo-19585042.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/19585042/', artist: 'Pexels', license: 'Pexels License' },
+    33: { url: 'https://images.pexels.com/photos/19798789/pexels-photo-19798789.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/19798789/', artist: 'Pexels', license: 'Pexels License' },
+    34: { url: 'https://images.pexels.com/photos/18015006/pexels-photo-18015006.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/18015006/', artist: 'Pexels', license: 'Pexels License' },
+    35: { url: 'https://images.pexels.com/photos/17308548/pexels-photo-17308548.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/17308548/', artist: 'Pexels', license: 'Pexels License' },
+    36: { url: 'https://images.pexels.com/photos/7776546/pexels-photo-7776546.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/7776546/', artist: 'Pexels', license: 'Pexels License' },
+    37: { url: 'https://images.pexels.com/photos/21822134/pexels-photo-21822134.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/21822134/', artist: 'Pexels', license: 'Pexels License' },
+    38: { url: 'https://images.pexels.com/photos/7421877/pexels-photo-7421877.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/7421877/', artist: 'Pexels', license: 'Pexels License' },
+    39: { url: 'https://images.pexels.com/photos/5956828/pexels-photo-5956828.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/5956828/', artist: 'Pexels', license: 'Pexels License' },
+    40: { url: 'https://images.pexels.com/photos/19503821/pexels-photo-19503821.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/19503821/', artist: 'Pexels', license: 'Pexels License' },
+    41: { url: 'https://images.pexels.com/photos/12349437/pexels-photo-12349437.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/12349437/', artist: 'Pexels', license: 'Pexels License' },
+    42: { url: 'https://images.pexels.com/photos/5305435/pexels-photo-5305435.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/5305435/', artist: 'Pexels', license: 'Pexels License' },
+    43: { url: 'https://images.pexels.com/photos/16811678/pexels-photo-16811678.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/16811678/', artist: 'Pexels', license: 'Pexels License' },
+    44: { url: 'https://images.pexels.com/photos/6544491/pexels-photo-6544491.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/6544491/', artist: 'Pexels', license: 'Pexels License' },
+    45: { url: 'https://images.pexels.com/photos/37262556/pexels-photo-37262556.jpeg?auto=compress&cs=tinysrgb&w=900', source: 'https://www.pexels.com/photo/37262556/', artist: 'Pexels', license: 'Pexels License' }
+  };
+
   function readCookbookImageCache() {
     try {
       const parsed = JSON.parse(root.localStorage && root.localStorage.getItem(COOKBOOK_IMAGE_CACHE_KEY) || '{}');
@@ -608,7 +656,8 @@
     }
 
     function cookbookImageEntry(recipe) {
-      return recipe && cookbookImageCache[recipe.id] && cookbookImageCache[recipe.id].url ? cookbookImageCache[recipe.id] : null;
+      const number = cookbookNumber(recipe);
+      return number && COOKBOOK_IMAGE_MAP[number] ? COOKBOOK_IMAGE_MAP[number] : null;
     }
     function cookbookImageMarkup(recipe, number, large) {
       const entry = cookbookImageEntry(recipe);
@@ -619,93 +668,11 @@
     }
     function updateCookbookImageNodes(recipe, entry) {
       if (!root.document || !entry || !entry.url) return;
-      for (const image of root.document.querySelectorAll('[data-cookbook-image-id="' + recipe.id + '"]')) {
-        image.src = entry.url;
-        image.classList.add('is-loaded');
-      }
-      for (const credit of root.document.querySelectorAll('[data-cookbook-image-credit="' + recipe.id + '"]')) {
-        const author = entry.artist || 'Wikimedia Commons contributor';
-        credit.innerHTML = 'Image: <a href="' + esc(entry.source) + '" target="_blank" rel="noopener noreferrer">' + esc(author) + '</a>' + (entry.license ? ' · ' + esc(entry.license) : '');
-      }
+      for (const image of root.document.querySelectorAll('[data-cookbook-image-id="' + recipe.id + '"]')) image.src = entry.url;
     }
-    function cookbookImageScore(page, query) {
-      if (!page || !page.imageinfo || !page.imageinfo[0]) return -Infinity;
-      const info = page.imageinfo[0], meta = info.extmetadata || {};
-      const mime = String(info.mime || '').toLowerCase();
-      if (mime && !/^image\/(jpeg|png|webp)$/.test(mime)) return -Infinity;
-      const width = Number(info.width) || 0, height = Number(info.height) || 0;
-      if (width && height && (width < 500 || height < 300)) return -Infinity;
-      const title = String(page.title || '').replace(/^File:/i,' ');
-      const description = cleanCommonsText((meta.ImageDescription && meta.ImageDescription.value) || '');
-      const objectName = cleanCommonsText((meta.ObjectName && meta.ObjectName.value) || '');
-      const text = (title + ' ' + description + ' ' + objectName).toLowerCase();
-      const bad = [
-        'menu','advert','advertisement','label','package','packaging','logo','icon','diagram','map','poster',
-        'newspaper','magazine','book page','recipe card','scan','scanned','document','screenshot','drawing',
-        'illustration','painting','engraving','clipart','svg','pdf','text page','cover page','brochure',
-        'nutrition facts','ingredient list','food label','box art','product packaging'
-      ];
-      if (bad.some(term => text.includes(term))) return -Infinity;
-      let score = 0;
-      const generic = new Set(['plated','plate','meal','food','bowl','dinner','dish','homemade','roasted','baked']);
-      const words = String(query || '').toLowerCase().split(/[^a-z0-9]+/).filter(word => word.length > 2 && !generic.has(word));
-      for (const word of words) {
-        if (text.includes(word)) score += word.length >= 7 ? 5 : 3;
-      }
-      if (/\b(food|dish|meal|cuisine|served|plate|bowl|restaurant|homemade)\b/.test(text)) score += 4;
-      if (/\b(photo|photograph|photographed)\b/.test(text)) score += 2;
-      if (width >= 1000 && height >= 600) score += 3;
-      if (width >= height * 1.15) score += 1;
-      if (/\.jpe?g$/i.test(title)) score += 2;
-      return score;
-    }
-    async function resolveCookbookImage(recipe) {
-      if (!recipe || cookbookImageEntry(recipe) || typeof root.fetch !== 'function') return cookbookImageEntry(recipe);
-      const number = cookbookNumber(recipe);
-      const query = COOKBOOK_IMAGE_QUERIES[number] || recipe.name;
-      const params = new URLSearchParams({
-        action:'query', format:'json', origin:'*', generator:'search',
-        gsrsearch:query + ' food', gsrnamespace:'6', gsrlimit:'12',
-        prop:'imageinfo', iiprop:'url|size|mime|extmetadata', iiurlwidth:'900',
-        iiextmetadatafilter:'Artist|LicenseShortName|ImageDescription|ObjectName'
-      });
-      try {
-        const response = await root.fetch('https://commons.wikimedia.org/w/api.php?' + params.toString(), { credentials:'omit' });
-        if (!response.ok) return null;
-        const payload = await response.json();
-        const pages = Object.values(payload && payload.query && payload.query.pages || {});
-        const ranked = pages.map(page => ({ page, score: cookbookImageScore(page, query) }))
-          .filter(row => Number.isFinite(row.score) && row.score >= 6)
-          .sort((a,b) => b.score - a.score);
-        const chosen = ranked[0] && ranked[0].page;
-        if (!chosen || !chosen.imageinfo || !chosen.imageinfo[0]) return null;
-        const info = chosen.imageinfo[0], metadata = info.extmetadata || {};
-        const entry = {
-          url: info.thumburl || info.url,
-          source: info.descriptionurl || ('https://commons.wikimedia.org/wiki/' + encodeURIComponent(chosen.title || '')),
-          artist: cleanCommonsText(metadata.Artist && metadata.Artist.value),
-          license: cleanCommonsText(metadata.LicenseShortName && metadata.LicenseShortName.value),
-          query,
-          score: ranked[0].score
-        };
-        cookbookImageCache[recipe.id] = entry; writeCookbookImageCache(cookbookImageCache); updateCookbookImageNodes(recipe, entry);
-        return entry;
-      } catch (_) { return null; }
-    }
-
     function hydrateCookbookImages(recipes) {
-      if (cookbookImageHydrating || !Array.isArray(recipes) || !recipes.length || typeof root.fetch !== 'function') return;
-      const queue = recipes.filter(recipe => !cookbookImageEntry(recipe));
-      if (!queue.length) return;
-      cookbookImageHydrating = true;
-      let cursor = 0;
-      const worker = async () => {
-        while (cursor < queue.length) {
-          const recipe = queue[cursor++];
-          await resolveCookbookImage(recipe);
-        }
-      };
-      Promise.all([worker(),worker(),worker()]).finally(() => { cookbookImageHydrating = false; });
+      // All 45 cookbook images are pinned in COOKBOOK_IMAGE_MAP.
+      return Array.isArray(recipes) ? recipes.length : 0;
     }
 
     function renderCookbook(current) {
@@ -761,7 +728,7 @@
       html += '</div></div><aside class="food-cookbook-native-detail">'
         + '<div class="food-cookbook-detail-hero">' + cookbookImageMarkup(selected,number,true)
         + '<div><span class="food-date-badge">Recipe ' + String(number).padStart(2,'0') + ' · Original page ' + esc(page) + '</span><h2>' + esc(selected.name) + '</h2><p>' + esc(selected.category_label || '') + (selected.time_text ? ' · ' + esc(selected.time_text) : '') + '</p><span class="food-readiness-pill' + statusClass + '">' + esc(statusLabel) + '</span></div></div>'
-        + '<p class="food-image-credit" data-cookbook-image-credit="' + esc(selected.id) + '">' + (cookbookImageEntry(selected) ? 'Image: <a href="' + esc(cookbookImageEntry(selected).source) + '" target="_blank" rel="noopener noreferrer">' + esc(cookbookImageEntry(selected).artist || 'Wikimedia Commons contributor') + '</a>' + (cookbookImageEntry(selected).license ? ' · ' + esc(cookbookImageEntry(selected).license) : '') : 'Finding an open image…') + '</p>'
+        + '<p class="food-image-credit" data-cookbook-image-credit="' + esc(selected.id) + '">' + (cookbookImageEntry(selected) ? 'Image: <a href="' + esc(cookbookImageEntry(selected).source) + '" target="_blank" rel="noopener noreferrer">Pexels</a> · ' + esc(cookbookImageEntry(selected).license || 'Pexels License') : 'Recipe image') + '</p>'
         + '<section class="food-cook-tools"><div><span>Servings</span><div class="food-serving-stepper">' + button('cookbook-serving-down','−',' data-id="' + esc(selected.id) + '"',false,servingTarget <= .5) + '<strong>' + esc(fmt(servingTarget)) + '</strong>' + button('cookbook-serving-up','+',' data-id="' + esc(selected.id) + '"') + '</div><small>Original recipe: ' + esc(fmt(baseServings)) + '</small></div>'
         + '<div><span>Pantry check</span><strong>' + esc(statusLabel) + '</strong><small>' + (readiness && readiness.missing && readiness.missing.length ? readiness.missing.length + ' item' + (readiness.missing.length === 1 ? '' : 's') + ' to buy or review' : readiness && readiness.status === 'ready' ? 'Recorded inventory covers linked ingredients' : 'Check linked inventory') + '</small></div></section>'
         + recipeCostMarkup(selected,current,true)
@@ -784,8 +751,6 @@
         + (selected.source_name ? '<p class="food-help"><strong>Source:</strong> ' + esc(selected.source_name) + '</p>' : '')
         + (selected.notes ? '<p class="food-help food-prose">' + esc(selected.notes) + '</p>' : '')
         + '</aside></div></section>';
-      if (root.requestAnimationFrame) root.requestAnimationFrame(() => root.requestAnimationFrame(() => hydrateCookbookImages(cookbook)));
-      else hydrateCookbookImages(cookbook);
       return html;
     }
 
