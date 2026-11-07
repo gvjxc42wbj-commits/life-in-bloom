@@ -142,27 +142,49 @@
     function trashReminderState(now) {
       now=now||getNow();
       const p=nyParts(now),weekday={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6}[p.weekday];
-      const hour=Number(p.hour),minute=Number(p.minute),year=Number(p.year),month=Number(p.month),day=Number(p.day);
-      let addDays=null;
-      if(weekday===0 && (hour>18 || hour===18)) addDays=1;
-      else if(weekday===1 && hour<10) addDays=0;
-      else if(weekday===3 && (hour>18 || hour===18)) addDays=1;
-      else if(weekday===4 && hour<10) addDays=0;
-      if(addDays==null) return null;
+      const hour=Number(p.hour),year=Number(p.year),month=Number(p.month),day=Number(p.day);
+
+      // Trash pickup is Monday and Thursday, with a 10:00 a.m. put-out deadline.
+      // Always show the next upcoming deadline on Home.
+      let daysUntilMonday=(1-weekday+7)%7;
+      let daysUntilThursday=(4-weekday+7)%7;
+
+      // If today's deadline already passed, use the next occurrence.
+      if(weekday===1 && hour>=10) daysUntilMonday=7;
+      if(weekday===4 && hour>=10) daysUntilThursday=7;
+
+      const addDays=Math.min(daysUntilMonday,daysUntilThursday);
       const base=new Date(Date.UTC(year,month-1,day+addDays,12,0,0));
       const bp=nyParts(base);
       const deadline=nyLocalDate(Number(bp.year),Number(bp.month),Number(bp.day),10,0,0);
       const remaining=Math.max(0,deadline.getTime()-now.getTime());
-      if(remaining<=0) return null;
-      const urgent=remaining<=60*60*1000;
-      const trashDay=addDays===0;
+
+      const deadlineParts=nyParts(deadline);
+      const deadlineWeekday=deadlineParts.weekday==='Mon'?'Monday':'Thursday';
+      const isPickupDay=addDays===0;
+      const previousNight=(weekday===0&&deadlineParts.weekday==='Mon'&&hour>=18)||(weekday===3&&deadlineParts.weekday==='Thu'&&hour>=18);
+      const urgent=isPickupDay&&remaining<=60*60*1000;
+      const reminderWindow=previousNight||isPickupDay;
+
+      let title='Next trash day · '+deadlineWeekday;
+      let detail='Trash pickup is Monday and Thursday. Trash needs to be out before 10:00 a.m.';
+      if(previousNight) {
+        title='Trash day is tomorrow';
+        detail='Put the trash out tonight or before 10:00 a.m. tomorrow.';
+      } else if(isPickupDay) {
+        title=urgent?'Trash man’s coming — almost 10 a.m.':'Trash day is today';
+        detail=urgent?'Get the trash out now — the 10:00 a.m. deadline is close.':'Trash needs to be out before 10:00 a.m. today.';
+      }
+
       return {
         deadline:deadline.toISOString(),
         remaining,
         urgent,
-        trashDay,
-        title:urgent?'Trash man’s coming — almost 10 a.m.':trashDay?'Trash day is today':'Trash day is tomorrow',
-        detail:trashDay?'Trash needs to be out before 10:00 a.m.':'Trash pickup is Monday/Thursday. Put it out before 10:00 a.m.'
+        reminderWindow,
+        trashDay:isPickupDay,
+        pickupDay:deadlineWeekday,
+        title,
+        detail
       };
     }
     function renderHome(context) {
@@ -171,7 +193,7 @@
       const greeting=hour<12?'Good morning':hour<18?'Good afternoon':'Good evening';
       let html='<div class="bloom-dashboard"><section class="bloom-home-hero"><p class="page-kicker">Your day, in bloom</p><h1 id="home-dashboard-heading" tabindex="-1">'+greeting+' <span aria-hidden="true">'+(hour<18?'☀':'☾')+'</span></h1><p>'+esc(dateLabel(today))+'</p><p class="bloom-home-gentle">A little care. A little practice.<br>Room for the day you’re having.</p></section>';
       if(ready(current)) {
-        html+='<section class="bloom-household-strip"><span aria-hidden="true">⌂</span><div><strong>'+esc(current.household.name||'Your household')+'</strong><small>'+(current.members||[]).length+' of 2 household members · shared Food, Money, Dog & Housework</small></div></section>';
+        html+='<section class="bloom-household-strip"><span aria-hidden="true">⌂</span><div><strong>'+esc(current.household.name||'Your household')+'</strong><small>'+(current.members||[]).length+' of 2 household members · shared Food, Money, Dog & Housework</small></div>'+button('household','Household')+'</section>';
         const trash=trashReminderState(getNow());
         if(trash)html+='<section class="bloom-trash-reminder'+(trash.urgent?' is-urgent':'')+'" data-trash-reminder data-trash-deadline="'+esc(trash.deadline)+'"><span class="bloom-trash-icon" aria-hidden="true">🗑️</span><div><p class="page-kicker">Trash reminder</p><strong data-trash-title>'+esc(trash.title)+'</strong><p>'+esc(trash.detail)+'</p></div><div class="bloom-trash-countdown"><span>Time left</span><strong data-trash-countdown aria-live="polite"></strong><small>Deadline · 10:00 a.m.</small></div></section>';
         const todaysMeals=sharedRows(current,'cookingPlans').filter(row=>row.status==='planned'&&row.cook_on===today).sort((a,b)=>String(a.meal_type||'').localeCompare(String(b.meal_type||'')));
@@ -200,6 +222,7 @@
         if(action==='navigate'){navigate(target.dataset.page);return true;}
         if(action==='water-page'){navigate('wellness');return true;}
         if(action==='meal-plans'){if(options.openFoodPlans)options.openFoodPlans();else navigate('food');return true;}
+        if(action==='household'){if(options.openHousehold)options.openHousehold();else navigate('grocery');return true;}
         if(action==='boost'){if(options.openFoodLog)options.openFoodLog(target.dataset.product,1);else navigate('wellness');return true;}
         if(action==='retry'){submitAttempt();return true;}
         if(action==='close'){if(pending)throw new Error('Confirm the pending save before closing it.');if(dirty()&&!confirm('Discard this water draft?'))return true;form=null;baseline=null;persist();refresh();return true;}
