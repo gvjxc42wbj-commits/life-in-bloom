@@ -62,7 +62,7 @@
     if (group === 'profile') return { ...common, name: '', breed: '', birth_on: '', notes: '' };
     if (group === 'weight') return { ...common, occurred_on: on, weight: '', weight_unit: 'lb', notes: '' };
     if (group === 'task') return { ...common, domain: domain || 'dog', name: '', category: domain === 'housework' ? 'cleaning_shared_spaces' : 'other', frequency: 'daily', interval_days: '1', interval_months: '1', anchor_on: on, end_on: '', times_text: '', rolling: true, active: true, dose_text: '', notes: '' };
-    if (group === 'note') return { ...common, occurred_on: on, kind: 'behavior', minutes: '', notes: '' };
+    if (group === 'note') return { ...common, occurred_on: on, kind: 'general', minutes: '', notes: '' };
     if (group === 'supply') return { ...common, product_id: '', name: '', unit_label: 'package', stock_quantity: '0', refill_threshold: '1', needs_refill: false, reference_price: '', notes: '' };
     return { ...common, supply_id: '', product_id: '', name: '', unit_label: 'package', purchased_on: on, store: '', payer_slot: '', packs: '1', amount: '', notes: '', shopping_item_id: null, shopping_revision: null };
   }
@@ -73,6 +73,7 @@
     result.id = row.id; result.revision = row.revision; result.request_id = uuid();
     if (group === 'weight') { result.weight = Number(row.weight_kg); result.weight_unit = 'kg'; }
     if (group === 'task') result.times_text = (row.times || []).join(', ');
+    if (group === 'note' && !['general','vet'].includes(result.kind)) result.kind = 'general';
     if (group === 'supply') result.reference_price = row.reference_price_cents == null ? '' : (Number(row.reference_price_cents) / 100).toFixed(2);
     return result;
   }
@@ -256,7 +257,15 @@
     }
     function renderNotes(current) {
       const notes = M.usable(current.dogNotes).sort((a, b) => String(b.occurred_on).localeCompare(String(a.occurred_on)) || String(b.created_at || b.id).localeCompare(String(a.created_at || a.id)));
-      return '<section class="panel"><div class="dog-heading"><div><p class="page-kicker">Notice the little things</p><h2>Behavior & training notes</h2></div>' + button('new-note', '+ Add a note', '', true, Boolean(attempt)) + '</div><p class="dog-help">Keep a dated record of behavior, practice and progress that both household members can see.</p></section><section class="panel">' + (notes.length ? '<ul class="dog-notes-list">' + notes.map(note => '<li><div class="dog-task-meta"><span class="dog-badge">' + (note.kind === 'training' ? 'Training' : 'Behavior') + '</span><span>' + esc(M.dateLabel(note.occurred_on, true)) + (note.minutes != null ? ' · ' + esc(M.format(note.minutes)) + ' min' : '') + '</span></div><p class="dog-prose">' + esc(note.notes) + '</p><div class="dog-actions">' + button('edit-note', 'Edit', ' data-id="' + esc(note.id) + '"', false, Boolean(attempt)) + button('archive-record', 'Archive', ' data-group="note" data-id="' + esc(note.id) + '"', false, Boolean(attempt) || current.offline) + '</div></li>').join('') + '</ul>' : '<div class="dog-empty"><strong>A place to keep what you notice.</strong><p>Notes are saved with their date; training time is optional.</p></div>') + '</section>';
+      const general=notes.filter(note=>note.kind!=='vet');
+      const vet=notes.filter(note=>note.kind==='vet');
+      const renderList=rows=>rows.length
+        ? '<ul class="dog-notes-list">'+rows.map(note=>'<li><div class="dog-task-meta"><span class="dog-badge">'+(note.kind==='vet'?'Vet note':'General note')+'</span><span>'+esc(M.dateLabel(note.occurred_on,true))+'</span></div><p class="dog-prose">'+esc(note.notes)+'</p><div class="dog-actions">'+button('edit-note','Edit',' data-id="'+esc(note.id)+'"',false,Boolean(attempt))+button('archive-record','Archive',' data-group="note" data-id="'+esc(note.id)+'"',false,Boolean(attempt)||current.offline)+'</div></li>').join('')+'</ul>'
+        : '<div class="dog-empty"><strong>Nothing saved here yet.</strong><p>Add a note when you want to keep something for later.</p></div>';
+      return '<section class="dog-note-columns">'
+        + '<article class="panel"><div class="dog-heading"><div><p class="page-kicker">Everyday notes</p><h2>General Notes</h2></div>'+button('new-note-kind','+ Add a note',' data-kind="general"',true,Boolean(attempt))+'</div><p class="dog-help">Behavior, training, routines, observations, and anything else you want to remember.</p>'+renderList(general)+'</article>'
+        + '<article class="panel"><div class="dog-heading"><div><p class="page-kicker">Health record</p><h2>Vet Notes</h2></div>'+button('new-note-kind','+ Add vet note',' data-kind="vet"',true,Boolean(attempt))+'</div><p class="dog-help">Veterinary visits, vaccines, medications, symptoms, questions, and health updates.</p>'+renderList(vet)+'</article>'
+        + '</section>';
     }
     function renderHistory(current) {
       const tasks = new Map((current.routineTasks || []).map(row => [row.id, row]));
@@ -279,16 +288,14 @@
       if (group === 'profile') html += '<div class="dog-form-grid">' + field(group, 'name', 'Dog’s name', 'text', ' required maxlength="160"') + field(group, 'breed', 'Breed (optional)', 'text', ' maxlength="160"') + field(group, 'birth_on', 'Date of birth (optional)', 'date', ' min="1900-01-01" max="' + today + '"') + '</div>' + textarea(group, 'notes', 'Profile notes (optional)', 4000);
       if (group === 'weight') html += '<div class="dog-form-grid">' + field(group, 'occurred_on', 'Date measured', 'date', ' required min="1900-01-01" max="' + today + '"') + field(group, 'weight', 'Measured weight', 'number', ' required min="0.001" max="661.3867865" step="any" inputmode="decimal"') + select(group, 'weight_unit', 'Unit', [['lb', 'Pounds (lb)'], ['kg', 'Kilograms (kg)']]) + '</div>' + textarea(group, 'notes', 'Notes (optional)', 4000);
       if (group === 'task') {
-        html += '<div class="dog-form-grid">' + field(group, 'name', 'Task name', 'text', ' required maxlength="160"') + select(group, 'domain', 'Where it belongs', value.domain === 'housework'
-          ? [['housework','Housework'],['dog','Dog care · also shown in Housework']]
-          : [['dog','Dog care'],['housework','Housework']]) + (value.domain === 'housework' ? houseworkCategoryPicker() : select(group, 'category', 'Category', M.CATEGORIES.map(row => [row[0], row[1]]))) + select(group, 'frequency', 'Repeat', [['daily', 'Every day'], ['interval', 'Every set number of days'], ['monthly', 'Every calendar month'], ['once', 'One time']]) + '</div>';
+        html += '<input type="hidden" name="domain" value="'+esc(value.domain)+'"><div class="dog-form-grid">' + field(group, 'name', 'Task name', 'text', ' required maxlength="160"') + (value.domain === 'housework' ? houseworkCategoryPicker() : select(group, 'category', 'Category', M.CATEGORIES.map(row => [row[0], row[1]]))) + select(group, 'frequency', 'Repeat', [['daily', 'Every day'], ['interval', 'Every set number of days'], ['monthly', 'Every calendar month'], ['once', 'One time']]) + '</div>';
         if (value.frequency === 'interval') html += '<div class="dog-form-grid">' + field(group, 'interval_days', 'Days between care', 'number', ' required min="1" max="3650" step="1"') + '</div>' + checkbox(group, 'rolling', 'Start the next interval after this task is completed') + '<p class="dog-help">For tasks with several times, every time must be checked off on a completion day before the next interval begins.</p>';
         if (value.frequency === 'monthly') html += field(group, 'interval_months', 'Months between care', 'number', ' required min="1" max="120" step="1"') + '<p class="dog-help">Monthly care follows the starting day of the month. A shorter month uses its last day.</p>';
         html += '<div class="dog-form-grid">' + field(group, 'anchor_on', value.frequency === 'once' ? 'Scheduled date' : 'First care date', 'date', ' required min="1900-01-01" max="2200-12-31"') + field(group, 'end_on', 'End date (optional)', 'date', ' min="1900-01-01" max="2200-12-31"') + '</div>' + field(group, 'times_text', 'Times (optional, 24-hour format)', 'text', ' maxlength="64" placeholder="07:30, 18:00"') + '<p class="dog-help">Leave blank for any time. You can enter up to eight times separated by commas.</p>';
         if (value.category === 'medication') html += textarea(group, 'dose_text', 'Medication and dose / directions as prescribed', 500) + '<p class="dog-help">Copy the directions from the medication label or your veterinarian. The app records your schedule and does not calculate a dose.</p>';
         html += textarea(group, 'notes', 'Task notes (optional)', 4000) + checkbox(group, 'active', 'Include this task in the checklist');
       }
-      if (group === 'note') html += '<div class="dog-form-grid">' + field(group, 'occurred_on', 'Date', 'date', ' required min="1900-01-01" max="' + today + '"') + select(group, 'kind', 'What are you recording?', [['behavior', 'Behavior / observation'], ['training', 'Training']]) + field(group, 'minutes', 'Minutes (optional)', 'number', ' min="0" max="1440" step="any" inputmode="decimal"') + '</div>' + textarea(group, 'notes', 'What happened?', 4000);
+      if (group === 'note') html += '<div class="dog-form-grid">' + field(group, 'occurred_on', 'Date', 'date', ' required min="1900-01-01" max="' + today + '"') + select(group, 'kind', 'Note category', [['general', 'General note'], ['vet', 'Vet note']]) + '</div>' + textarea(group, 'notes', value.kind === 'vet' ? 'Veterinary note' : 'General note', 4000);
       if (group === 'supply') {
         const products = (current.products || []).filter(row => row.category === 'household' && (!row.archived || row.id === value.product_id));
         html += '<p class="dog-help">Pet supplies stay separate from people’s food inventory. A new supply also gets a matching Household product in your catalog.</p>' + select(group, 'product_id', 'Catalog product', [['', 'Create a matching pet product'], ...products.map(row => [row.id, row.name])]) + '<div class="dog-form-grid">' + field(group, 'name', 'Supply name', 'text', ' required maxlength="160"') + field(group, 'unit_label', 'Stock unit / package', 'text', ' required maxlength="60" placeholder="bag, roll, box…"') + field(group, 'stock_quantity', 'Quantity at home', 'number', ' required min="0" max="1000000000" step="any" inputmode="decimal"') + field(group, 'refill_threshold', 'Flag a refill at or below', 'number', ' required min="0" max="1000000000" step="any" inputmode="decimal"') + field(group, 'reference_price', 'Reference price per unit (optional)', 'text', ' inputmode="decimal" placeholder="Unknown"') + '</div>' + checkbox(group, 'needs_refill', 'I want to mark this as needing a refill') + textarea(group, 'notes', 'Supply notes (optional)', 4000) + '<p class="dog-help">Updating stock is a quantity correction, not a purchase. Use Record purchase for actual spending.</p>';
@@ -389,8 +396,8 @@
           dose_text: text(value.dose_text, 'Medication and prescribed directions', 500, value.category === 'medication'), notes: text(value.notes, 'Task notes', 4000, false) };
       }
       if (group === 'note') {
-        if (!['behavior', 'training'].includes(value.kind)) throw new Error('Choose behavior or training for this note.');
-        return { ...meta, occurred_on: date(value.occurred_on, 'Note date', false, today), kind: value.kind, minutes: numeric(value.minutes, 'Minutes', 0, 1440, true), notes: text(value.notes, 'What happened', 4000, true) };
+        if (!['general', 'vet'].includes(value.kind)) throw new Error('Choose General note or Vet note.');
+        return { ...meta, occurred_on: date(value.occurred_on, 'Note date', false, today), kind: value.kind, minutes: null, notes: text(value.notes, 'Note', 4000, true) };
       }
       if (group === 'supply') {
         if (value.product_id && !(current.products || []).some(row => row.id === value.product_id && row.category === 'household')) throw new Error('Choose a Household catalog product for this dog supply, or create its matching pet product.');
@@ -548,7 +555,7 @@
       const element = event && event.target && event.target.closest && event.target.closest('[data-dog-action]');
       if (!element || !element.dataset) return false;
       const data = element.dataset, action = data.dogAction;
-      const allowed = ['tab', 'today', 'person', 'grocery', 'dog-page', 'housework', 'edit-profile', 'new-weight', 'edit-weight', 'new-task', 'task-template', 'edit-task', 'new-note', 'edit-note', 'new-supply', 'edit-supply', 'purchase-supply', 'add-supply-shopping', 'archive-record', 'undo-log', 'care-calendar', 'open-receipt', 'close-form', 'resume-form', 'discard-form', 'reload-form', 'retry', 'check-result', 'housework-category-toggle', 'housework-category-choice'];
+      const allowed = ['tab', 'today', 'person', 'grocery', 'dog-page', 'housework', 'edit-profile', 'new-weight', 'edit-weight', 'new-task', 'task-template', 'edit-task', 'new-note', 'new-note-kind', 'edit-note', 'new-supply', 'edit-supply', 'purchase-supply', 'add-supply-shopping', 'archive-record', 'undo-log', 'care-calendar', 'open-receipt', 'close-form', 'resume-form', 'discard-form', 'reload-form', 'retry', 'check-result', 'housework-category-toggle', 'housework-category-choice'];
       if (!allowed.includes(action)) return false;
       if (event.preventDefault) event.preventDefault();
       const current = snapshot();
@@ -591,6 +598,15 @@
         else if (action === 'new-weight') { openForm('weight'); return true; }
         else if (action === 'new-task') { openForm('task'); return true; }
         else if (action === 'new-note') { openForm('note'); return true; }
+        else if (action === 'new-note-kind') {
+          openForm('note');
+          drafts.note.kind=data.kind==='vet'?'vet':'general';
+          reset('note', drafts.note);
+          opened='note';
+          persist();
+          refresh('#dog-editor');
+          return true;
+        }
         else if (action === 'new-supply') { openForm('supply'); return true; }
         else if (action === 'task-template') {
           const template = M.TEMPLATES.find(row => row.key === data.template);
