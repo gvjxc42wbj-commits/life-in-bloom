@@ -1027,7 +1027,7 @@
             +'<label class="habit-field"><span>Duration (minutes)</span><input type="number" min="1" max="1440" data-plant-schedule-field="duration_minutes" value="'+esc(d.duration_minutes)+'" placeholder="Useful for lights"></label>'
             +'<label class="habit-field"><span>Amount / setting</span><input maxlength="240" data-plant-schedule-field="amount_text" value="'+esc(d.amount_text)+'" placeholder="1 cup, half-strength, 12 hr..."></label>'
             +'<label class="habit-field"><span>Starts on</span><input type="date" data-plant-schedule-field="start_on" value="'+esc(d.start_on)+'"></label>'
-            +'</div><label class="habit-field"><span>Instructions</span><textarea rows="3" data-plant-schedule-field="instructions">'+esc(d.instructions)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save care schedule</button>'+button('plant-schedule-cancel','Cancel')+'</div></form>';
+            +'</div><fieldset class="plant-weekdays"><legend>Specific weekdays <small>(optional)</small></legend><p class="habit-help">Use this for routines such as lights every day or watering on Tuesday and Friday. You can use weekdays, an interval, or both.</p><div class="plant-weekday-grid">'+[['sun','Sun'],['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat']].map(day=>'<label><input type="checkbox" data-plant-schedule-day="'+day[0]+'"'+((d.days_of_week||[]).includes(day[0])?' checked':'')+'><span>'+day[1]+'</span></label>').join('')+'</div></fieldset><label class="habit-field"><span>Instructions</span><textarea rows="3" data-plant-schedule-field="instructions">'+esc(d.instructions)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save care schedule</button>'+button('plant-schedule-cancel','Cancel')+'</div></form>';
         }
 
         let eventForm='';
@@ -1041,7 +1041,7 @@
             +'</div><label class="habit-field"><span>Notes</span><textarea rows="4" data-plant-event-field="notes">'+esc(d.notes)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save life event</button>'+button('plant-event-cancel','Cancel')+'</div></form>';
         }
 
-        const careCards=ps.length?ps.map(r=>'<article class="plant-care-card"><span>'+plantCareIcon(r.care_type)+'</span><div><strong>'+esc(r.care_type)+'</strong><small>'+(r.interval_days?'Every '+r.interval_days+' day'+(r.interval_days===1?'':'s'):'Custom schedule')+(r.time_of_day?' · '+esc(String(r.time_of_day).slice(0,5)):'')+(r.duration_minutes?' · '+r.duration_minutes+' min':'')+'</small>'+(r.amount_text?'<p>'+esc(r.amount_text)+'</p>':'')+(r.instructions?'<p>'+esc(r.instructions)+'</p>':'')+'</div></article>').join(''):'<p class="habit-help">No care schedules saved yet.</p>';
+        const careCards=ps.length?ps.map(r=>{const dayNames={sun:'Sun',mon:'Mon',tue:'Tue',wed:'Wed',thu:'Thu',fri:'Fri',sat:'Sat'},days=(r.days_of_week||[]).map(day=>dayNames[day]||day).join(', ');return '<article class="plant-care-card"><span>'+plantCareIcon(r.care_type)+'</span><div><strong>'+esc(r.care_type)+'</strong><small>'+(r.interval_days?'Every '+r.interval_days+' day'+(r.interval_days===1?'':'s'):(days?'Selected weekdays':'Custom schedule'))+(days?' · '+esc(days):'')+(r.time_of_day?' · '+esc(String(r.time_of_day).slice(0,5)):'')+(r.duration_minutes?' · '+r.duration_minutes+' min':'')+'</small>'+(r.amount_text?'<p>'+esc(r.amount_text)+'</p>':'')+(r.instructions?'<p>'+esc(r.instructions)+'</p>':'')+'</div></article>';}).join(''):'<p class="habit-help">No care schedules saved yet.</p>';
 
         const timeline=pe.length?pe.map(e=>{
           const files=pm.filter(m=>m.event_id===e.id);
@@ -1509,6 +1509,7 @@
       if (!data) return false;
       const current = snapshot();
       if(Object.hasOwn(data,'plantField')){const key=data.plantField;if(Object.hasOwn(plantDraft,key))plantDraft[key]=key==='archived'?Boolean(element.checked):String(element.value||'');return true;}
+      if(Object.hasOwn(data,'plantScheduleDay')){const day=data.plantScheduleDay;if(!['sun','mon','tue','wed','thu','fri','sat'].includes(day))return true;const set=new Set(plantScheduleDraft.days_of_week||[]);if(element.checked)set.add(day);else set.delete(day);plantScheduleDraft.days_of_week=['sun','mon','tue','wed','thu','fri','sat'].filter(value=>set.has(value));return true;}
       if(Object.hasOwn(data,'plantScheduleField')){const key=data.plantScheduleField;if(Object.hasOwn(plantScheduleDraft,key))plantScheduleDraft[key]=key==='active'?Boolean(element.checked):String(element.value||'');return true;}
       if(Object.hasOwn(data,'plantEventField')){const key=data.plantEventField;if(Object.hasOwn(plantEventDraft,key))plantEventDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'paintingArtworkField')){const key=data.paintingArtworkField;if(Object.hasOwn(paintingArtworkDraft,key))paintingArtworkDraft[key]=String(element.value||'');return true;}
