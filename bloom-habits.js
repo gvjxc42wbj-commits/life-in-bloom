@@ -457,6 +457,38 @@
       if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydrateReadingFiles(files)));
       return html;
     }
+    function renderReadingFluencyProgress(current,book) {
+      const rows=readingAudio(current,book.id)
+        .slice()
+        .sort((a,b)=>String(a.recorded_on||'').localeCompare(String(b.recorded_on||''))||String(a.created_at||'').localeCompare(String(b.created_at||'')));
+      if(!rows.length){
+        return '<section class="panel reading-fluency-progress"><div class="habit-heading"><div><p class="page-kicker">Reading fluency progress</p><h2>Your Read-Aloud Growth</h2><p class="habit-help">Save at least one read-aloud recording to start your fluency timeline.</p></div></div></section>';
+      }
+      const wpmRows=rows.filter(row=>Number.isFinite(Number(row.words_per_minute)));
+      const clarityRows=rows.filter(row=>Number.isFinite(Number(row.clarity_rating)));
+      const confidenceRows=rows.filter(row=>Number.isFinite(Number(row.confidence_rating)));
+      const first=wpmRows[0]||null, latest=wpmRows[wpmRows.length-1]||null;
+      const delta=first&&latest?Math.round(Number(latest.words_per_minute)-Number(first.words_per_minute)):null;
+      const latestClarity=clarityRows.length?Number(clarityRows[clarityRows.length-1].clarity_rating):null;
+      const latestConfidence=confidenceRows.length?Number(confidenceRows[confidenceRows.length-1].confidence_rating):null;
+      const maxWpm=wpmRows.length?Math.max(1,...wpmRows.map(row=>Number(row.words_per_minute)||0)):1;
+      const points=rows.slice(-12).map((row,index)=>{
+        const wpm=Number(row.words_per_minute);
+        return '<div class="fluency-point"><div class="fluency-bar-wrap"><div class="fluency-bar '+(Number.isFinite(wpm)?'':'is-empty')+'" style="height:'+(Number.isFinite(wpm)?Math.max(8,Math.round(wpm/maxWpm*100)):8)+'%"></div></div><strong>'+(Number.isFinite(wpm)?Math.round(wpm):'—')+'</strong><small>'+esc(String(row.recorded_on||'').slice(5).replace('-','/'))+'</small></div>';
+      }).join('');
+      const firstDate=rows[0]&&rows[0].recorded_on?dateLabel(rows[0].recorded_on):'—';
+      const latestDate=rows[rows.length-1]&&rows[rows.length-1].recorded_on?dateLabel(rows[rows.length-1].recorded_on):'—';
+      return '<section class="panel reading-fluency-progress"><div class="habit-heading"><div><p class="page-kicker">Reading fluency progress</p><h2>Your Read-Aloud Growth</h2><p class="habit-help">This uses only your saved recordings for '+esc(book.title)+'. WPM is approximate and is shown only when the recording is tied to verified source text.</p></div><span class="habit-badge">'+rows.length+' recording'+(rows.length===1?'':'s')+'</span></div>'
+        + '<div class="fluency-metrics">'
+        + '<div><span>⚡</span><strong>'+(latest?Math.round(Number(latest.words_per_minute)):'—')+'</strong><small>latest WPM</small></div>'
+        + '<div><span>↗</span><strong>'+(delta==null?'—':(delta>0?'+':'')+delta)+'</strong><small>WPM change</small></div>'
+        + '<div><span>🔊</span><strong>'+(latestClarity==null?'—':latestClarity+'/5')+'</strong><small>latest clarity</small></div>'
+        + '<div><span>🌱</span><strong>'+(latestConfidence==null?'—':latestConfidence+'/5')+'</strong><small>latest confidence</small></div>'
+        + '</div>'
+        + '<div class="fluency-chart"><div class="fluency-chart-head"><span>'+esc(firstDate)+'</span><strong>WPM trend</strong><span>'+esc(latestDate)+'</span></div><div class="fluency-bars">'+points+'</div></div>'
+        + (first&&latest?'<p class="habit-help fluency-summary">'+(delta>0?'You are reading about '+Math.abs(delta)+' WPM faster than your first measured recording.':delta<0?'Your latest measured recording is '+Math.abs(delta)+' WPM slower than your first one; compare clarity and difficulty before treating that as a setback.':'Your first and latest measured WPM are about the same. Look at clarity, confidence, and the difficulty of the passage too.')+'</p>':'<p class="habit-help fluency-summary">More recordings with verified source text will make the WPM trend more meaningful.</p>')
+        + '</section>';
+    }
     function renderReadAloudStudio(current,book,file) {
       const rows=readingAudio(current,book.id),verified=verifiedRangeText(current,file.id,readerRangeStart,readerRangeEnd),sourceWords=wordCount(verified);
       const recording=readAloudRecorder&&readAloudRecorder.state==='recording';
@@ -494,6 +526,7 @@
         + lesson
         + '<section class="panel reader-listen-panel"><div class="habit-heading"><div><p class="page-kicker">Text reader</p><h2>Listen & Follow Along</h2><p class="habit-help">Hear the extracted text while following the page. This uses your browser voice and never uploads the spoken audio.</p></div></div><div class="reader-listen-controls">'+button('reader-listen','▶ Listen')+button('reader-speech-pause','Pause')+button('reader-speech-resume','Resume')+button('reader-speech-stop','Stop')+'<label>Speed <select data-reader-speech-rate><option value=".8"'+(readerSpeechRate===.8?' selected':'')+'>0.8×</option><option value="1"'+(readerSpeechRate===1?' selected':'')+'>1×</option><option value="1.2"'+(readerSpeechRate===1.2?' selected':'')+'>1.2×</option><option value="1.4"'+(readerSpeechRate===1.4?' selected':'')+'>1.4×</option></select></label>'+button('reader-text-smaller','A−')+button('reader-text-larger','A+')+button('reader-line-toggle','Line spacing')+'</div></section>'
         + renderReadAloudStudio(current,book,file)
+        + renderReadingFluencyProgress(current,book)
         + renderReadingTutorWorkspace(current,book)
         + '<section class="panel reader-cache-summary"><details><summary>Cached pages · '+pageTexts.length+'</summary><div class="reader-page-cache">'+pageTexts.map(row=>'<button type="button" data-habit-action="reader-jump" data-page="'+row.page_number+'" class="'+(row.verified?'is-verified':'')+'"><strong>'+row.page_number+'</strong><small>'+esc(row.extraction_method==='ocr'?'OCR':'Text')+(row.verified?' · ✓':'')+'</small></button>').join('')+'</div></details></section></section>';
       if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydrateBloomReader(current,book,file)));
