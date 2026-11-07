@@ -344,6 +344,12 @@
       if (food.startProductLog) food.startProductLog(productId, person, W ? W.dayKey() : undefined);
       renderKeepScroll('#food-log-form');
       return true;
+    },
+    openFoodPlans: () => {
+      if (!navigate('food') || !food) return false;
+      food.selectTab('plans');
+      renderKeepScroll('#food-plans');
+      return true;
     }
   });
   grocery = G.createController({
