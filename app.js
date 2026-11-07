@@ -346,6 +346,10 @@
     onDateChange: date => { if (food && food.setSelectedDate) food.setSelectedDate(date); },
     getHabitsSummary: date => habits ? habits.getHomeSummary(date) : {},
     getDogSummary: date => dog ? dog.getHomeSummary(date) : {},
+    quickConsumeBoost: (productId, person, date) => {
+      if (!food || !food.quickConsumeProduct) return Promise.reject(new Error('Refresh Life in Bloom to load quick Boost logging.'));
+      return food.quickConsumeProduct(productId, person, date);
+    },
     openFoodLog: (productId, person) => {
       if (!navigate('food') || !food) return false;
       food.selectTab('log');
