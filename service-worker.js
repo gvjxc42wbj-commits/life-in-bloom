@@ -1,4 +1,4 @@
-const CACHE = 'life-in-bloom-food-v36-20261107';
+const CACHE = 'life-in-bloom-food-v37-20261107';
 const ASSETS = ['./','./index.html','./styles.css','./grocery.css','./commerce.css','./food.css','./habits.css','./dog.css','./wellness.css','./bloom-data.js','./bloom-personal.js','./bloom-insights.js','./bloom-appointments.js','./bloom-pages.js','./bloom-config.js','./bloom-grocery-store.js','./bloom-drafts.js','./bloom-food-model.js','./bloom-food-import.js','./bloom-commerce.js','./bloom-food.js','./bloom-grocery.js','./bloom-habits-model.js','./bloom-habits.js','./bloom-dog-model.js','./bloom-dog.js','./bloom-wellness.js','./app.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png','./icons/dog-companion.jpeg','./icons/bloom-botanical.svg'];
 const SDK = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';
 const STATIC_PATHS = new Set(ASSETS.map(path => new URL(path, self.location.href).pathname));
