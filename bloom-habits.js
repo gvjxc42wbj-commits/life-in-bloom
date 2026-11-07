@@ -1379,6 +1379,18 @@
     }
     function handleSubmit(event) {
       const form=event.target;
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'plantForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving plant…',()=>store.savePlant(plantDraft),saved=>{plantProfileOpen=false;selectedPlantId=saved.id;plantView='profile';notify('Plant profile saved.');});}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'plantScheduleForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving plant care schedule…',()=>store.savePlantCareSchedule({...plantScheduleDraft,plant_id:selectedPlantId}),()=>{plantScheduleOpen=false;notify('Care schedule saved.');},null,'.plant-care');}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'plantEventForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving plant life event…',()=>store.savePlantEvent({...plantEventDraft,plant_id:selectedPlantId}),()=>{plantEventOpen=false;notify('Plant life event saved.');},null,'.plant-life');}catch(error){notify(error.message,true);}return true;
+      }
       if(form&&form.dataset&&Object.hasOwn(form.dataset,'paintingArtworkForm')){
         if(event.preventDefault)event.preventDefault();const current=snapshot();
         try{requireReady(current);run('Saving artwork…',()=>store.savePaintingArtwork(paintingArtworkDraft),saved=>{paintingArtworkOpen=false;selectedPaintingArtworkId=saved.id;paintingView='detail';notify('Artwork saved.');});}catch(error){notify(error.message,true);}return true;
@@ -1496,6 +1508,9 @@
       const element = event.target, data = element && element.dataset;
       if (!data) return false;
       const current = snapshot();
+      if(Object.hasOwn(data,'plantField')){const key=data.plantField;if(Object.hasOwn(plantDraft,key))plantDraft[key]=key==='archived'?Boolean(element.checked):String(element.value||'');return true;}
+      if(Object.hasOwn(data,'plantScheduleField')){const key=data.plantScheduleField;if(Object.hasOwn(plantScheduleDraft,key))plantScheduleDraft[key]=key==='active'?Boolean(element.checked):String(element.value||'');return true;}
+      if(Object.hasOwn(data,'plantEventField')){const key=data.plantEventField;if(Object.hasOwn(plantEventDraft,key))plantEventDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'paintingArtworkField')){const key=data.paintingArtworkField;if(Object.hasOwn(paintingArtworkDraft,key))paintingArtworkDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'paintingVersionField')){const key=data.paintingVersionField;if(Object.hasOwn(paintingVersionDraft,key))paintingVersionDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'journalBody')){journalBody=String(element.value||'');return true;}
@@ -1558,6 +1573,10 @@
     }
     function handleChange(event) {
       const element = event.target, data = element && element.dataset;
+      if(data&&Object.hasOwn(data,'plantEventUpload')){
+        const current=snapshot(),eventRow=plantRows(current,'plantEvents').find(item=>item.id===data.id),files=Array.from(element.files||[]);element.value='';if(!eventRow||!files.length)return true;
+        try{requireReady(current);run('Uploading plant photos…',async()=>{const out=[];for(const file of files.slice(0,8))out.push(await store.uploadPlantMedia({file,plant_id:eventRow.plant_id,event_id:eventRow.id,title:file.name}));return out;},rows=>notify((rows||[]).length+' plant file'+((rows||[]).length===1?'':'s')+' saved.'),null,'.plant-life');}catch(error){notify(error.message,true);}return true;
+      }
       if(data&&Object.hasOwn(data,'paintingVersionUpload')){
         const current=snapshot(),version=paintingRows(current,'paintingVersions').find(item=>item.id===data.id),files=Array.from(element.files||[]);element.value='';if(!version||!files.length)return true;
         try{requireReady(current);run('Uploading painting progress…',async()=>{const out=[];for(const file of files.slice(0,8))out.push(await store.uploadPaintingMedia({file,artwork_id:version.artwork_id,version_id:version.id,title:file.name}));return out;},rows=>notify((rows||[]).length+' painting file'+((rows||[]).length===1?'':'s')+' saved.'),null,'.painting-timeline');}catch(error){notify(error.message,true);}return true;
@@ -1725,11 +1744,40 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-habit-action]') : null;
       const data = element && element.dataset, action = data && data.habitAction;
-      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete','animation-tutor-edit','animation-tutor-cancel','animation-resource-add','animation-resource-cancel','animation-project-add','animation-project-edit','animation-project-cancel','animation-media-delete','animation-practice-add','animation-practice-cancel','animation-homework-add','animation-homework-edit','animation-homework-cancel','animation-homework-delete','spanish-profile-edit','spanish-profile-cancel','spanish-lesson-add','spanish-lesson-cancel','spanish-vocab-add','spanish-vocab-cancel','spanish-homework-add','spanish-homework-cancel','spanish-prepare-add','spanish-prepare-cancel','spanish-prepare-toggle','journal-today','journal-open','journal-delete','painting-add-artwork','painting-edit-artwork','painting-artwork-cancel','painting-open','painting-back','painting-add-version','painting-version-cancel'].includes(action)) return false;
+      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete','animation-tutor-edit','animation-tutor-cancel','animation-resource-add','animation-resource-cancel','animation-project-add','animation-project-edit','animation-project-cancel','animation-media-delete','animation-practice-add','animation-practice-cancel','animation-homework-add','animation-homework-edit','animation-homework-cancel','animation-homework-delete','spanish-profile-edit','spanish-profile-cancel','spanish-lesson-add','spanish-lesson-cancel','spanish-vocab-add','spanish-vocab-cancel','spanish-homework-add','spanish-homework-cancel','spanish-prepare-add','spanish-prepare-cancel','spanish-prepare-toggle','journal-today','journal-open','journal-delete','painting-add-artwork','painting-edit-artwork','painting-artwork-cancel','painting-open','painting-back','painting-add-version','painting-version-cancel','plant-add','plant-edit','plant-cancel','plant-open','plant-back','plant-schedule-add','plant-schedule-cancel','plant-event-add','plant-event-cancel','plant-quick-event'].includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery' || action === 'money') { navigate(action); return true; }
         if (action === 'category') { if (data.category === 'all' || M.CATEGORIES.some(item => item.key === data.category)) selectedCategory = data.category; }
+        else if(action==='plant-add'){
+          plantDraft={id:'',name:'',species:'',variety:'',acquired_on:M.dayKey(getNow()),planted_on:'',source:'',location:'',pot_size:'',substrate:'',stage:'growing',notes:'',archived:false};
+          plantProfileOpen=true;refresh('.plant-collection');return true;
+        }
+        else if(action==='plant-edit'){
+          const row=plantRows(current,'plants').find(item=>item.id===data.id);if(!row)throw new Error('Refresh to find that plant.');
+          plantDraft={...row,acquired_on:row.acquired_on||'',planted_on:row.planted_on||''};plantProfileOpen=true;refresh();return true;
+        }
+        else if(action==='plant-cancel'){plantProfileOpen=false;refresh();return true;}
+        else if(action==='plant-open'){selectedPlantId=data.id||'';plantView='profile';plantProfileOpen=false;plantScheduleOpen=false;plantEventOpen=false;refresh();return true;}
+        else if(action==='plant-back'){plantView='collection';selectedPlantId='';plantScheduleOpen=false;plantEventOpen=false;refresh();return true;}
+        else if(action==='plant-schedule-add'){
+          if(!selectedPlantId)throw new Error('Open a plant first.');
+          plantScheduleDraft={id:'',plant_id:selectedPlantId,care_type:'water',interval_days:'',days_of_week:[],time_of_day:'',duration_minutes:'',amount_text:'',instructions:'',start_on:M.dayKey(getNow()),active:true};
+          plantScheduleOpen=true;refresh('.plant-care');return true;
+        }
+        else if(action==='plant-schedule-cancel'){plantScheduleOpen=false;refresh('.plant-care');return true;}
+        else if(action==='plant-event-add'){
+          if(!selectedPlantId)throw new Error('Open a plant first.');
+          plantEventDraft={id:'',plant_id:selectedPlantId,occurred_at:'',event_type:'note',title:'',value_numeric:'',value_unit:'',notes:''};
+          plantEventOpen=true;refresh();return true;
+        }
+        else if(action==='plant-event-cancel'){plantEventOpen=false;refresh();return true;}
+        else if(action==='plant-quick-event'){
+          if(!selectedPlantId)throw new Error('Open a plant first.');
+          const type=String(data.type||'note');
+          plantEventDraft={id:'',plant_id:selectedPlantId,occurred_at:'',event_type:type,title:type.charAt(0).toUpperCase()+type.slice(1),value_numeric:'',value_unit:'',notes:''};
+          plantEventOpen=true;refresh();return true;
+        }
         else if(action==='painting-add-artwork'){paintingArtworkDraft={id:'',title:'',medium:'',started_on:M.dayKey(getNow()),completed_on:'',status:'in_progress',description:'',overall_notes:''};paintingArtworkOpen=true;refresh('.painting-portfolio');return true;}
         else if(action==='painting-edit-artwork'){
           const row=paintingRows(current,'paintingArtworks').find(item=>item.id===data.id);if(!row)throw new Error('Refresh to find that artwork.');
