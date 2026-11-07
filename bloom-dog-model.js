@@ -79,10 +79,7 @@
   const TEMPLATES = [
     { key: 'potty-daily', name: 'Potty break', category: 'movement', frequency: 'daily', times: ['09:00','13:00','18:00','22:00'], notes: 'Daily potty breaks.' },
     { key: 'breakfast-daily', name: 'Breakfast', category: 'feeding', frequency: 'daily', times: ['13:00'], notes: 'Daily breakfast.' },
-    { key: 'dinner-daily', name: 'Dinner', category: 'feeding', frequency: 'daily', times: ['20:00'], notes: 'Daily dinner.' },
-    { key: 'morning-meal', name: 'Morning meal', category: 'feeding', frequency: 'daily', times: ['07:30'], notes: 'Record the food and measured portion you use for your dog.' },
-    { key: 'evening-meal', name: 'Evening meal', category: 'feeding', frequency: 'daily', times: ['18:00'], notes: 'Record the food and measured portion you use for your dog.' },
-    { key: 'movement', name: 'Walk & movement', category: 'movement', frequency: 'daily', times: ['14:00'], notes: 'Use the activity and duration that suit your dog’s care plan.' },
+    { key: 'dinner-daily', name: 'Dinner', category: 'feeding', frequency: 'daily', times: ['20:00'], notes: 'Daily dinner.' },    { key: 'movement', name: 'Walk & movement', category: 'movement', frequency: 'daily', times: ['14:00'], notes: 'Use the activity and duration that suit your dog’s care plan.' },
     { key: 'teeth', name: 'Teeth brushing', category: 'dental', frequency: 'daily', times: ['20:30'], notes: '' },
     { key: 'coat', name: 'Coat brush-through', category: 'grooming', frequency: 'interval', interval_days: 2, rolling: true, times: [], notes: 'Check the coat and note any areas needing attention.' },
     { key: 'nails', name: 'Nail trim', category: 'grooming', frequency: 'interval', interval_days: 14, rolling: true, times: [], notes: '' },
