@@ -89,7 +89,13 @@
     let animationProjectDraft={id:'',title:'',software:'Blender',skills:'',started_on:'',status:'not_started',independence:'guided',game_ready:false,notes:'',self_review:''};
     let animationPracticeDraft={minutes:'30',software:'Blender',exercise:'',notes:''};
     let animationHomeworkDraft={id:'',title:'',due_on:'',status:'open',notes:''};
-    let animationMediaMeta={title:'Animation preview',version_label:'v1',project_id:''};
+    let animationMediaMeta={title:'Animation preview',version_label:'v1',project_id:''}; spanishSeedChecked=''; spanishProfileOpen=false; spanishLessonOpen=false; spanishVocabOpen=false; spanishHomeworkOpen=false; spanishPrepareOpen=false; spanishProfileDraft={tutor_name:'Ale',tutor_profile_url:'https://preply.com/en/tutor/6569875',duolingo_score:'22',duolingo_section:'Section 3',duolingo_unit:'Unit 7',cefr_level:'not_assessed',target_level:'C1',notes:''}; spanishLessonDraft={id:'',lesson_date:'',title:'',topics:'',notes:'',homework:'',attended:true}; spanishVocabDraft={id:'',lesson_id:'',word:'',meaning:'',part_of_speech:'',example_spanish:'',example_english:'',status:'learning'}; spanishHomeworkDraft={id:'',title:'',due_on:'',status:'open',notes:''}; spanishPrepareDraft={id:'',item_type:'question',text_value:'',status:'prepare',lesson_date:''};
+    let spanishSeedChecked='', spanishProfileOpen=false, spanishLessonOpen=false, spanishVocabOpen=false, spanishHomeworkOpen=false, spanishPrepareOpen=false;
+    let spanishProfileDraft={tutor_name:'Ale',tutor_profile_url:'https://preply.com/en/tutor/6569875',duolingo_score:'22',duolingo_section:'Section 3',duolingo_unit:'Unit 7',cefr_level:'not_assessed',target_level:'C1',notes:''};
+    let spanishLessonDraft={id:'',lesson_date:'',title:'',topics:'',notes:'',homework:'',attended:true};
+    let spanishVocabDraft={id:'',lesson_id:'',word:'',meaning:'',part_of_speech:'',example_spanish:'',example_english:'',status:'learning'};
+    let spanishHomeworkDraft={id:'',title:'',due_on:'',status:'open',notes:''};
+    let spanishPrepareDraft={id:'',item_type:'question',text_value:'',status:'prepare',lesson_date:''};
     let pianoPracticeDraft={duration_minutes:'20',source:'independent',course_name:'',lesson_name:'',piece_name:'',accuracy_percent:'',notes:''};
     let pianoRepertoireDraft={title:'',kind:'piece',status:'learning',source:'',notes:''};
     let pianoMediaMeta={title:'Practice sample',piece_name:'',notes:''};
@@ -659,6 +665,30 @@
         const node=root.document.querySelector('[data-animation-media-id="'+row.id+'"]');
         if(!node||node.dataset.loaded==='true')continue;
         Promise.resolve(store.getAnimationMediaUrl(row)).then(url=>{const live=root.document&&root.document.querySelector('[data-animation-media-id="'+row.id+'"]');if(live){if(live.tagName==='A')live.href=url;else live.src=url;live.dataset.loaded='true';}}).catch(()=>{});
+      }
+    }
+    function spanishRows(current,key){
+      const user=current.user&&current.user.id,household=current.household&&current.household.id;
+      return (current[key]||[]).filter(row=>row&&row.user_id===user&&row.household_id===household);
+    }
+    function spanishSkillInfo(key){
+      return {
+        listening:['🎧','Listening'],reading:['📖','Reading'],spoken_interaction:['💬','Spoken interaction'],
+        spoken_production:['🗣️','Spoken production'],writing:['✍️','Writing'],grammar:['🧩','Grammar'],vocabulary:['🌱','Vocabulary']
+      }[key]||['🌎',key];
+    }
+    function spanishMediaRows(current){
+      return spanishRows(current,'spanishMedia').slice().sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+    }
+    function hydrateSpanishMedia(rows){
+      if(!root.document||!store.getSpanishMediaUrl)return;
+      for(const row of rows){
+        const node=root.document.querySelector('[data-spanish-media-id="'+row.id+'"]');
+        if(!node||node.dataset.loaded==='true')continue;
+        Promise.resolve(store.getSpanishMediaUrl(row)).then(url=>{
+          const live=root.document&&root.document.querySelector('[data-spanish-media-id="'+row.id+'"]');
+          if(live){if(live.tagName==='A')live.href=url;else live.src=url;live.dataset.loaded='true';}
+        }).catch(()=>{});
       }
     }
     function renderPianoDashboard(current,today) {
