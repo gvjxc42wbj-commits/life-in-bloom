@@ -534,8 +534,10 @@
       suppressAuth = false;
       authBusy = true;
       try {
-        const claim=assertResult(await client.rpc('bloom_claim_access_code',{p_code:code,p_email:normalizedEmail}));
-        const signupToken=typeof claim==='string'?claim:Array.isArray(claim)&&claim[0]?claim[0]:null;
+        const claimResult=await client.functions.invoke('bloom-claim-access-code',{body:{code,email:normalizedEmail}});
+        const claim=assertResult(claimResult);
+        if(claim&&claim.error)throw new Error(String(claim.error));
+        const signupToken=claim&&typeof claim.token==='string'?claim.token:null;
         if(!signupToken)throw new Error('That access code could not be verified.');
         const redirectTo = options.redirectTo || currentRedirect();
         const signupOptions={data:{signup_token:String(signupToken)}};
