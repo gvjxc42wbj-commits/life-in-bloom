@@ -513,3 +513,106 @@
   }
   .read-aloud-draft-grid .wide{grid-column:auto}
 }
+
+
+/* Reading fluency progress */
+.reading-fluency-progress{
+  background:linear-gradient(135deg,#fff9fc,#f8fff9);
+}
+.fluency-metrics{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:9px;
+  margin:12px 0 14px;
+}
+.fluency-metrics>div{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  grid-template-rows:auto auto;
+  column-gap:8px;
+  padding:11px;
+  border:1px solid #ead6de;
+  border-radius:13px;
+  background:#fff;
+}
+.fluency-metrics span{
+  grid-row:1/3;
+  align-self:center;
+  font-size:22px;
+}
+.fluency-metrics strong{
+  font-size:20px;
+  color:#7f405b;
+}
+.fluency-metrics small{
+  color:#806675;
+  font-size:10px;
+}
+.fluency-chart{
+  padding:12px;
+  border:1px solid #ead7df;
+  border-radius:14px;
+  background:#fff;
+}
+.fluency-chart-head{
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  gap:8px;
+  align-items:center;
+  margin-bottom:10px;
+  color:#806675;
+  font-size:10px;
+}
+.fluency-chart-head strong{
+  color:#6b3f52;
+  font-size:12px;
+}
+.fluency-chart-head span:last-child{text-align:right}
+.fluency-bars{
+  display:flex;
+  align-items:end;
+  gap:7px;
+  height:180px;
+  padding:8px 4px 0;
+  overflow-x:auto;
+}
+.fluency-point{
+  display:grid;
+  grid-template-rows:1fr auto auto;
+  gap:3px;
+  min-width:42px;
+  height:100%;
+  text-align:center;
+}
+.fluency-bar-wrap{
+  display:flex;
+  align-items:end;
+  justify-content:center;
+  min-height:0;
+}
+.fluency-bar{
+  width:22px;
+  max-height:100%;
+  border-radius:8px 8px 3px 3px;
+  background:linear-gradient(180deg,#c66089,#8e4261);
+  box-shadow:0 4px 10px rgba(129,64,91,.12);
+}
+.fluency-bar.is-empty{
+  background:#eadfe4;
+  box-shadow:none;
+}
+.fluency-point strong{
+  color:#734257;
+  font-size:11px;
+}
+.fluency-point small{
+  color:#8a707c;
+  font-size:9px;
+}
+.fluency-summary{
+  margin:10px 2px 0;
+}
+@media(max-width:650px){
+  .fluency-metrics{grid-template-columns:1fr 1fr}
+  .fluency-bars{height:150px}
+}
