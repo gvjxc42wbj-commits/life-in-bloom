@@ -747,3 +747,24 @@
   .animation-resource-list article,.animation-project-card{grid-template-columns:1fr}
   .animation-banner{grid-template-columns:1fr}.animation-banner>span{display:none}
 }
+
+
+/* Animation practice and tutor homework */
+.animation-practice-list,.animation-homework-list{display:grid;gap:8px}
+.animation-practice-list article,.animation-homework-list article{
+  padding:11px;border:1px solid #ead7df;border-radius:13px;background:#fff
+}
+.animation-practice-list strong,.animation-practice-list small,
+.animation-homework-list strong,.animation-homework-list small{display:block}
+.animation-practice-list small,.animation-homework-list small{margin-top:3px;color:#816875}
+.animation-practice-list p,.animation-homework-list p{margin:5px 0 0;color:#715966;font-size:11px;line-height:1.45}
+.animation-homework-list article{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start}
+.animation-homework-files{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.animation-homework-files>span{
+  display:inline-flex;align-items:center;gap:5px;padding:5px 7px;border:1px solid #ead5df;border-radius:9px;
+  background:#fff8fb;color:#6c4355;font-size:10px
+}
+.animation-homework-files a{color:#8b4564;font-weight:800}
+@media(max-width:650px){
+  .animation-homework-list article{grid-template-columns:1fr}
+}
