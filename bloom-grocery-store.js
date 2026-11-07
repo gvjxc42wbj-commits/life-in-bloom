@@ -17,7 +17,8 @@
     readingPageText: 'bloom_reading_page_text', readingAssignments: 'bloom_reading_assignments', readingAudioRecordings: 'bloom_reading_audio_recordings',
     pianoAppProgress: 'bloom_piano_app_progress', pianoPracticeSessions: 'bloom_piano_practice_sessions', pianoAbilities: 'bloom_piano_abilities', pianoRepertoire: 'bloom_piano_repertoire', pianoMedia: 'bloom_piano_media',
     animationTutor: 'bloom_animation_tutor', animationResources: 'bloom_animation_resources', animationSkills: 'bloom_animation_skills', animationProjects: 'bloom_animation_projects', animationMedia: 'bloom_animation_media', animationPractice: 'bloom_animation_practice', animationHomework: 'bloom_animation_homework',
-    spanishProfile: 'bloom_spanish_profile', spanishCefrSkills: 'bloom_spanish_cefr_skills', spanishLessons: 'bloom_spanish_lessons', spanishVocab: 'bloom_spanish_vocab', spanishHomework: 'bloom_spanish_homework', spanishPrepare: 'bloom_spanish_prepare', spanishMedia: 'bloom_spanish_media'
+    spanishProfile: 'bloom_spanish_profile', spanishCefrSkills: 'bloom_spanish_cefr_skills', spanishLessons: 'bloom_spanish_lessons', spanishVocab: 'bloom_spanish_vocab', spanishHomework: 'bloom_spanish_homework', spanishPrepare: 'bloom_spanish_prepare', spanishMedia: 'bloom_spanish_media',
+    dailyJournal: 'bloom_daily_journal'
   };
   const PRIVATE_FIELDS = ['display_name', 'age_years', 'height_cm', 'weight_kg', 'activity_level', 'notes'];
   const DIET_FIELDS = ['display_name', 'color', 'calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'allergies', 'restrictions', 'preferences', 'notes'];
@@ -32,7 +33,7 @@
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework','spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework','spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia','dailyJournal'];
   // Specialized Skills modules should never be able to take down Home, Food,
   // Dog, Money, or household navigation if one optional table is temporarily
   // unavailable. Core household/food tables remain strict.
@@ -225,7 +226,7 @@
         const cached = JSON.parse(cacheStorage.getItem(cachePrefix + user.id) || 'null');
         if (!cached || cached.version !== 1 || cached.user.id !== user.id || !cached.household || !cached.members.some(row=>row.user_id===user.id && row.household_id===cached.household.id)) return false;
         if (verifiedHouseholdId !== undefined && cached.household.id !== verifiedHouseholdId) { clearCache(user.id); return false; }
-        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework','spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia']) if (!Object.hasOwn(cached, key)) cached[key] = [];
+        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework','spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia','dailyJournal']) if (!Object.hasOwn(cached, key)) cached[key] = [];
         if (!SHARED_LISTS.every(key=>Array.isArray(cached[key]))) return false;
         state = { ...emptyState('ready'), user:userSummary(user), household:cached.household,
           ...Object.fromEntries(SHARED_LISTS.map(key=>[key,cached[key]])), offline:true, cachedAt:cached.savedAt,
@@ -1466,6 +1467,24 @@
       const data=assertResult(await client.from(TABLES.spanishMedia).delete().eq('id',saved.id).eq('user_id',current.userId).select('id'));if(!Array.isArray(data)||data.length!==1)throw new Error('The Spanish file could not be removed.');
       await refresh();return true;
     }
+    async function saveDailyJournal(row){
+      requireOnline(); const current=context(true); row=row||{};
+      const entryDate=String(row.entry_date||'');
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(entryDate)) throw new Error('Choose a valid journal date.');
+      const body=String(row.body||'');
+      if(body.length>30000) throw new Error('Journal entry is too long.');
+      const existing=(state.dailyJournal||[]).find(item=>item.user_id===current.userId&&item.household_id===current.householdId&&item.entry_date===entryDate);
+      const payload={id:existing&&existing.id||row.id||newUuid(),household_id:current.householdId,user_id:current.userId,entry_date:entryDate,body,updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.dailyJournal).upsert(payload,{onConflict:'user_id,household_id,entry_date'}).select('*'));
+      checkContext(current);await refresh();return data&&data[0];
+    }
+    async function deleteDailyJournal(row){
+      requireOnline(); const current=context(true);
+      if(!row||!row.id) throw new Error('Choose a saved journal entry.');
+      const data=assertResult(await client.from(TABLES.dailyJournal).delete().eq('id',row.id).eq('user_id',current.userId).eq('household_id',current.householdId).select('id'));
+      if(!Array.isArray(data)||data.length!==1) throw new Error('That journal entry changed or was already removed.');
+      await refresh();return true;
+    }
     function exportHousehold() {
       if(!state.user || !state.household || state.status!=='ready') throw new Error('Open your household before exporting a backup.');
       return { app:'Life in Bloom Household',version:1,household_id:state.household.id,exported_at:new Date().toISOString(),
@@ -1518,6 +1537,7 @@
       ensurePianoDefaults, savePianoAppProgress, savePianoPracticeSession, savePianoAbility, savePianoRepertoire, uploadPianoMedia, getPianoMediaUrl, deletePianoMedia,
       ensureAnimationDefaults, saveAnimationTutor, saveAnimationResource, saveAnimationSkill, saveAnimationProject, saveAnimationPractice, saveAnimationHomework, deleteAnimationHomework, uploadAnimationMedia, getAnimationMediaUrl, deleteAnimationMedia,
       ensureSpanishDefaults, saveSpanishProfile, saveSpanishCefrSkill, saveSpanishLesson, saveSpanishVocab, saveSpanishHomework, saveSpanishPrepare, uploadSpanishMedia, getSpanishMediaUrl, deleteSpanishMedia,
+      saveDailyJournal, deleteDailyJournal,
       saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };
