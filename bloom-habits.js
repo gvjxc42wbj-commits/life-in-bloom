@@ -192,6 +192,70 @@
       const sessions = privateRows(current, 'skillSessions', true).filter(row => row.skill_id === skill.id).slice().sort((a, b) => b.occurred_on.localeCompare(a.occurred_on) || String(b.created_at || '').localeCompare(String(a.created_at || '')));
       return '<section class="panel" id="habit-skill-history"><div class="habit-heading"><div><p class="page-kicker">Your saved practice</p><h2>' + esc(skill.name) + '</h2></div>' + button('close-history', 'Close history') + '</div>' + (sessions.length ? '<ul class="habit-history-list">' + sessions.map(row => '<li' + (row.archived ? ' class="is-archived"' : '') + '><div><strong>' + esc(dateLabel(row.occurred_on)) + ' · ' + esc(count(row.minutes)) + ' min</strong><p>' + esc((M.REVIEW_RESULTS.find(item => item.key === row.result) || {}).label || row.result) + (row.archived ? ' · Archived' : '') + '</p>' + (row.notes ? '<p class="habit-prose">' + esc(row.notes) + '</p>' : '') + '</div>' + (!row.archived ? '<div class="habit-actions">' + button('edit-session', 'Edit entry', ' data-id="' + esc(row.id) + '"', false, Boolean(attempt)) + button('archive', 'Remove mistaken entry', ' data-kind="skill_session" data-id="' + esc(row.id) + '"', false, Boolean(attempt) || current.offline) + '</div>' : '') + '</li>').join('') + '</ul>' : '<p class="habit-empty">No practice entries yet.</p>') + '</section>';
     }
+    function renderEngineeringDashboard(current, skills, sessions, today) {
+      const engineeringSkills=skills.filter(skill=>skill.category==='engineering');
+      const ids=new Set(engineeringSkills.map(skill=>skill.id));
+      const engineeringSessions=sessions.filter(row=>ids.has(row.skill_id));
+      const month=today.slice(0,7);
+      const monthMinutes=engineeringSessions.filter(row=>String(row.occurred_on||'').slice(0,7)===month).reduce((sum,row)=>sum+Number(row.minutes||0),0);
+      const weekAgo=M.addDays(today,-6);
+      const weekMinutes=engineeringSessions.filter(row=>row.occurred_on>=weekAgo&&row.occurred_on<=today).reduce((sum,row)=>sum+Number(row.minutes||0),0);
+      const due=engineeringSkills.filter(skill=>M.skillProgress(skill,engineeringSessions,today).due).length;
+      const tutorUrl='https://preply.com/en/tutor/6360685?utm_source=friend_plg&utm_medium=app_native&utm_campaign=stu_plg_st_all_0_mul_xx_multiplesub_share-tutor-profile-1&utm_content=NDYyMTQ4Ng%3D%3D&adj_t=20yroq7d&adj_campaign=stu_plg_st_all_0_mul_xx_multiplesub_share-tutor-profile-1';
+
+      const vocab=[
+        ['📡','Ultrasonic sensor','Measures distance by sending sound pulses and timing their echo.'],
+        ['🧊','Tinkercad','Web app for simple 3D design and basic circuit simulation.'],
+        ['⚙️','Actuator','Turns an electrical/control signal into physical action or movement.'],
+        ['👁️','Sensor','Detects something in the environment and sends data to a system.'],
+        ['🧠','Microcontroller','Small programmable computer that reads sensors and controls outputs.'],
+        ['🧪','Wokwi','Browser-based simulator for microcontrollers and electronics projects.'],
+        ['💻','VS Code','Code editor used to write, organize, and debug project code.']
+      ];
+      const lab=[
+        ['🧰','ELEGOO Mega 2560 R3 Starter Kit','Arduino-compatible board, sensors, motors, displays, and guided projects.'],
+        ['🔌','ELEGOO Breadboard Electronics Kit','Breadboard, LEDs, resistors, capacitors, switches, wires, and basic components.'],
+        ['🔋','4-AA Battery Holder + Switch','Portable 6V battery holder for small electronics builds.'],
+        ['🔋','AA Batteries','Power source for portable prototypes and experiments.']
+      ];
+      const projects=[
+        ['🔒','ATM Savings Lockbox','In progress','Mechanical enclosure + electronics + programmed locking logic.'],
+        ['🌫️','Programmable Scent Synthesizer','Planning','Pumps/airflow, electronics, controls, and programmed scent channels.'],
+        ['🧱','Breadboard Practice Builds','Practicing','Small circuits to learn components, wiring, sensors, and outputs.'],
+        ['🖨️','3D Printing / CAD Practice','Building skills','Modeling parts, enclosures, tolerances, and iteration.'],
+        ['🐾','Robot Dog','Long-term','Robotics, actuators, sensors, control logic, mechanics, and embedded systems.']
+      ];
+      return '<section class="engineering-dashboard">'
+        + '<section class="panel engineering-hero"><div class="habit-heading"><div><p class="page-kicker">Engineering roadmap</p><h2>My Engineering Journey</h2><p class="habit-help">Build fundamentals, use real tools, finish working projects, and prepare for college-level engineering.</p></div><a class="button" href="'+esc(tutorUrl)+'" target="_blank" rel="noopener noreferrer">Open tutor profile ↗</a></div>'
+        + '<div class="engineering-metrics"><div><span>⚙️</span><strong>'+engineeringSkills.length+'</strong><small>saved engineering topics</small></div><div><span>⏱️</span><strong>'+esc(count(weekMinutes))+' min</strong><small>practice this week</small></div><div><span>📚</span><strong>'+esc(count(monthMinutes))+' min</strong><small>practice this month</small></div><div><span>↻</span><strong>'+due+'</strong><small>ready to revisit</small></div></div></section>'
+
+        + '<section class="panel engineering-roadmap"><div class="habit-heading"><div><p class="page-kicker">Path to my end goal</p><h2>College-Readiness Roadmap</h2><p class="habit-help">A step-by-step path from foundations to real engineering work and future college study.</p></div></div><div class="engineering-roadmap-grid">'
+        + '<article><span class="engineering-stage">1</span><h3>Foundations</h3><ul><li>Math refresh</li><li>Physics & chemistry foundations</li><li>Coding basics</li><li>Breadboard basics</li></ul></article>'
+        + '<article><span class="engineering-stage">2</span><h3>Tools</h3><ul><li>Tinkercad / CAD</li><li>Arduino / microcontrollers</li><li>Wokwi simulation</li><li>VS Code workflow</li><li>3D printing</li></ul></article>'
+        + '<article><span class="engineering-stage">3</span><h3>Applied Projects</h3><ul><li>ATM savings lockbox</li><li>Scent synthesizer</li><li>Sensor + actuator builds</li><li>Working prototypes</li></ul></article>'
+        + '<article><span class="engineering-stage">4</span><h3>College / Career Ready</h3><ul><li>Strong fundamentals</li><li>Project portfolio</li><li>Documented engineering process</li><li>Confidence explaining designs</li></ul></article>'
+        + '</div></section>'
+
+        + '<div class="engineering-two-col">'
+        + '<section class="panel engineering-tutor"><div class="habit-heading"><div><p class="page-kicker">Tutor support</p><h2>Engineering Tutor</h2><p class="habit-help">Use your recurring session to turn questions and project roadblocks into next steps.</p></div></div><a class="engineering-tutor-link" href="'+esc(tutorUrl)+'" target="_blank" rel="noopener noreferrer"><span>📅</span><div><strong>Standing engineering tutor</strong><small>Open Preply tutor profile</small></div><b>↗</b></a>'
+        + '<div class="engineering-check-groups"><div><h3>Bring to Tutor</h3><label><input type="checkbox"> Concepts I am stuck on</label><label><input type="checkbox"> Project progress / problems</label><label><input type="checkbox"> Sketches, code, or circuit questions</label></div><div><h3>Questions to Ask</h3><label><input type="checkbox"> What should I learn next?</label><label><input type="checkbox"> Is my design approach sound?</label><label><input type="checkbox"> What should I practice before next session?</label></div></div></section>'
+
+        + '<section class="panel engineering-vocab"><div class="habit-heading"><div><p class="page-kicker">Tutor vocabulary</p><h2>Concepts to Master</h2><p class="habit-help">Terms your tutor wants you to recognize and explain in your own words.</p></div></div><div class="engineering-vocab-list">'
+        + vocab.map(row=>'<details><summary><span>'+row[0]+'</span><strong>'+esc(row[1])+'</strong></summary><p>'+esc(row[2])+'</p></details>').join('')
+        + '</div></section></div>'
+
+        + '<section class="panel engineering-lab"><div class="habit-heading"><div><p class="page-kicker">My engineering lab</p><h2>Equipment I Already Have</h2><p class="habit-help">Use the gear you already own to turn concepts into repeatable experiments.</p></div></div><div class="engineering-lab-grid">'
+        + lab.map(row=>'<article><span>'+row[0]+'</span><h3>'+esc(row[1])+'</h3><p>'+esc(row[2])+'</p><small>Owned</small></article>').join('')
+        + '</div></section>'
+
+        + '<section class="panel engineering-projects"><div class="habit-heading"><div><p class="page-kicker">Projects I am building toward</p><h2>Engineering Projects</h2><p class="habit-help">Projects become proof that you can apply concepts, troubleshoot, iterate, and finish.</p></div></div><div class="engineering-project-grid">'
+        + projects.map(row=>'<article><span>'+row[0]+'</span><h3>'+esc(row[1])+'</h3><b>'+esc(row[2])+'</b><p>'+esc(row[3])+'</p></article>').join('')
+        + '</div></section>'
+
+        + '<section class="panel engineering-success"><div class="habit-heading"><div><p class="page-kicker">What success looks like</p><h2>College & Engineering Readiness</h2><p class="habit-help">Progress is not one score. It is a collection of capabilities you can demonstrate.</p></div></div><div class="engineering-success-grid"><span>🎓 Understand core concepts</span><span>🔧 Build working projects</span><span>🧾 Explain and document my process</span><span>🧪 Test and troubleshoot</span><span>💻 Use engineering software confidently</span><span>🌱 Feel ready for college-level work</span></div></section>'
+        + '</section>';
+    }
+
     function renderSkills(current) {
       const skills = privateRows(current, 'skills'), sessions = privateRows(current, 'skillSessions'), today = M.dayKey(getNow());
       const due = skills.filter(skill => M.skillProgress(skill, sessions, today).due);
@@ -203,9 +267,10 @@
         const area=M.category(selectedCategory);
         html += '<section class="panel habit-area-header"><div class="habit-heading"><div><p class="page-kicker">Skills in Bloom · '+esc(area.label)+'</p><h2><span aria-hidden="true">'+area.icon+'</span> '+esc(area.label)+'</h2><p class="habit-help">Your saved '+esc(area.label.toLowerCase())+' topics, practice records, and review reminders.</p></div>'+button('category','← All Skills',' data-category="all"')+'</div></section>';
       }
+      if (selectedCategory === 'engineering') html += renderEngineeringDashboard(current, skills, sessions, today);
       if (skillOpen) html += renderSkillForm(current);
       if (sessionOpen) html += renderSessionForm(current);
-      html += '<section class="panel"><div class="habit-heading"><h2>' + (selectedCategory === 'all' ? 'Your practice garden' : esc(M.category(selectedCategory).label)) + '</h2>' + (dirty('skill') && !skillOpen ? button('resume', 'Resume skill draft', ' data-group="skill"') : '') + (dirty('session') && !sessionOpen ? button('resume', 'Resume practice draft', ' data-group="session"') : '') + '</div>' + (visible.length ? '<div class="habit-skill-grid">' + visible.map(skill => renderSkillCard(skill, current)).join('') + '</div>' : '<div class="habit-empty"><span aria-hidden="true">🌱</span><h3>Choose something you want to grow</h3><p>Add a specific skill, then record a short practice or recall check. Categories begin empty until you add your own topics.</p>' + button('new-skill', '+ Add a skill', '', true, Boolean(attempt)) + '</div>') + '</section>';
+      html += '<section class="panel"><div class="habit-heading"><h2>' + (selectedCategory === 'all' ? 'Your practice garden' : selectedCategory === 'engineering' ? 'Engineering Topics & Practice' : esc(M.category(selectedCategory).label)) + '</h2>' + (dirty('skill') && !skillOpen ? button('resume', 'Resume skill draft', ' data-group="skill"') : '') + (dirty('session') && !sessionOpen ? button('resume', 'Resume practice draft', ' data-group="session"') : '') + '</div>' + (visible.length ? '<div class="habit-skill-grid">' + visible.map(skill => renderSkillCard(skill, current)).join('') + '</div>' : '<div class="habit-empty"><span aria-hidden="true">🌱</span><h3>Choose something you want to grow</h3><p>Add a specific skill, then record a short practice or recall check. Categories begin empty until you add your own topics.</p>' + button('new-skill', '+ Add a skill', '', true, Boolean(attempt)) + '</div>') + '</section>';
       html += renderSkillHistory(current);
       html += '<section class="panel habit-explainer"><details><summary>How the review estimate works</summary><p class="habit-help">Successful checks on separate days expand the suggested interval through 1, 3, 7, 14 and 30 days, then longer intervals. Hard or unsuccessful checks bring the next revisit closer. Several checks on the same day count as one review day for scheduling.</p><p class="habit-help">The 1–10 number is a <strong>review readiness estimate</strong> from a simple decay model. It is a planning aid, not a measured recall probability, a validated ability score, or a claim that you lost a percentage of your skill. Your observed level stays separate. Practical skills and factual knowledge may need different kinds of checks.</p><p class="habit-help">Due dates appear here while the app is open. This screen does not send phone notifications in the background.</p></details></section>';
       const archived = privateRows(current, 'skills', true).filter(row => row.archived);
