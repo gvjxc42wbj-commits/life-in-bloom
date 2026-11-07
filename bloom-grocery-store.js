@@ -665,6 +665,16 @@
     function savePrivateProfile(row) {
       return saveRow(TABLES.privateProfile, row, PRIVATE_FIELDS, current => ({ user_id: current.userId }), false);
     }
+    async function deletePrivateProfile(){
+      requireOnline();
+      const current=context(false);
+      try{
+        const rows=assertResult(await client.from(TABLES.privateProfile).delete().eq('user_id',current.userId).select('user_id'));
+        checkContext(current);
+        await refresh();
+        return Array.isArray(rows);
+      }catch(error){if(current.generation===generation)throw fail(error);throw error;}
+    }
     function saveDietProfile(row) {
       return saveRow(TABLES.dietProfiles, row, DIET_FIELDS, current => ({ household_id: current.householdId, user_id: current.userId }), true);
     }
@@ -1650,7 +1660,7 @@
       state = emptyState('signed-out');
     }
     return { init, snapshot, refresh, signIn, signUp, resetPassword, updatePassword, signOut,
-      createHousehold, createInvite, joinHousehold, removeMember, leaveHousehold, ensureDogDefaultRoutines, savePrivateProfile, saveDietProfile,
+      createHousehold, createInvite, joinHousehold, removeMember, leaveHousehold, ensureDogDefaultRoutines, savePrivateProfile, deletePrivateProfile, saveDietProfile,
       saveBudget, saveInventory, deleteInventory, saveShoppingItem, toggleShoppingItem,
       deleteShoppingItem, importLocalShopping, saveProduct, saveRecurringProduct, saveBill, ensureBillMonth, stopBillSeries, saveRecipe,
       saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, importFoodMaster, saveKitchenEquipment, deleteKitchenEquipment, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
