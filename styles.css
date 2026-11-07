@@ -1400,3 +1400,23 @@ body{background:linear-gradient(140deg,#f4effa 0,#fbf9ff 62%,#eee6f7 100%)}
   box-shadow:0 4px 12px rgba(72,50,94,.10);
 }
 .dog-home-upload:hover{background:#eee5f7}
+
+
+.settings-person2-invite{
+  margin:12px 0 16px;
+  padding:16px;
+  border:1px solid #d7c9e7;
+  border-radius:16px;
+  background:linear-gradient(135deg,#f6f1fb,#efe8f8);
+}
+.settings-person2-invite h4{margin:.15rem 0 .45rem;color:#5f4770}
+.settings-person2-invite p{color:#6f617a;line-height:1.55}
+.settings-person2-invite .form-field input[readonly]{
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+  letter-spacing:.03em;
+  background:#fcfaff;
+}
+.settings-person2-invite.is-complete{
+  background:linear-gradient(135deg,#f4f8f3,#edf4ed);
+  border-color:#cfdfcf;
+}
