@@ -524,20 +524,28 @@
         throw error;
       } finally { if (request === authNumber) authBusy = false; }
     }
-    async function signUp(email, password) {
+    async function signUp(email, password, accessCode) {
       ensureClient();
+      const normalizedEmail=String(email || '').trim();
+      const code=String(accessCode || '').trim();
       if (typeof password !== 'string' || password.length < 12) throw new Error('Choose a password with at least 12 characters.');
+      if (code.length < 6) throw new Error('Enter your Life in Bloom access code.');
       const request = ++authNumber;
       suppressAuth = false;
       authBusy = true;
       try {
+        const claim=assertResult(await client.rpc('bloom_claim_access_code',{p_code:code,p_email:normalizedEmail}));
+        const signupToken=typeof claim==='string'?claim:Array.isArray(claim)&&claim[0]?claim[0]:null;
+        if(!signupToken)throw new Error('That access code could not be verified.');
         const redirectTo = options.redirectTo || currentRedirect();
-        const data = assertResult(await client.auth.signUp({ email: String(email || '').trim(), password,
-          options: redirectTo ? { emailRedirectTo: redirectTo } : {} }));
+        const signupOptions={data:{signup_token:String(signupToken)}};
+        if(redirectTo)signupOptions.emailRedirectTo=redirectTo;
+        const data = assertResult(await client.auth.signUp({ email: normalizedEmail, password, options: signupOptions }));
         if (request !== authNumber || suppressAuth || destroyed) throw new Error('This account request was cancelled.');
         if (data && data.session && data.session.user) {
           replaceUser(data.session.user);
           authBusy = false;
+          try{await client.auth.updateUser({data:{signup_token:null}});}catch(_){}
           await refresh();
         }
         return { confirmationRequired: !(data && data.session), user: userSummary(data && data.user) };
