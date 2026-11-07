@@ -107,6 +107,56 @@
     let scienceNoteOpen=false, scienceQuestionOpen=false, scienceView='home';
     let scienceNoteDraft={id:'',date:'',topic:'Scientific Notation',class_name:'',note_type:'lesson',body:'',review_later:false,image_data:'',image_name:''};
     let scienceQuestionDraft={id:'',text:'',topic:'Scientific Notation',resolved:false};
+    let mePeriod='week', meStudyOpen=false;
+    let meStudyDraft={skill_id:'',topic:'',minutes:'30',worked_on:'',feeling:'5',confidence:'5',notes:''};
+    const ME_STATE_KEY='life-in-bloom-me-v2';
+    const ME_TRACKS=[
+      {key:'painting',icon:'🎨',label:'Painting',goal:120,category:'painting',priority:1},
+      {key:'spanish',icon:'🇪🇸',label:'Spanish',goal:90,category:'language',priority:2},
+      {key:'piano',icon:'🎹',label:'Piano',goal:60,category:'piano',priority:3},
+      {key:'science',icon:'🧪',label:'Science',goal:60,category:'science',priority:4},
+      {key:'programming',icon:'💻',label:'Programming',goal:60,keywords:['program','coding','code','javascript','python','c#','c++'],priority:5},
+      {key:'unity',icon:'🎮',label:'Unity / Game Dev',goal:60,keywords:['unity','game dev','game development','lifesim'],priority:6},
+      {key:'blender',icon:'🧊',label:'Blender / 3D',goal:45,keywords:['blender','3d','modeling','modelling'],category:'animation',priority:7},
+      {key:'sewing',icon:'🪡',label:'Sewing',goal:45,category:'sewing',priority:8},
+      {key:'cursive',icon:'✍️',label:'Cursive',goal:30,keywords:['cursive','handwriting'],category:'writing',priority:9},
+      {key:'electronics',icon:'🔌',label:'Electronics',goal:30,keywords:['electronic','arduino','esp32','breadboard','circuit','sensor','microcontroller'],category:'engineering',priority:10}
+    ];
+    function meStorageKey(current){
+      const user=current&&current.user&&current.user.id||'local',household=current&&current.household&&current.household.id||'default';
+      return ME_STATE_KEY+':'+user+':'+household;
+    }
+    function loadMeState(current){
+      const defaults={weeklyGoalMinutes:600,focusWeek:false,goals:Object.fromEntries(ME_TRACKS.map(t=>[t.key,t.goal]))};
+      try{const raw=root.localStorage&&root.localStorage.getItem(meStorageKey(current)),p=raw?JSON.parse(raw):{};return {...defaults,...p,goals:{...defaults.goals,...(p.goals||{})}};}catch(_){return defaults;}
+    }
+    function saveMeState(current,state){if(root.localStorage)root.localStorage.setItem(meStorageKey(current),JSON.stringify(state));}
+    function mondayKey(dateKey){
+      const d=new Date(dateKey+'T12:00:00'),day=(d.getDay()+6)%7;d.setDate(d.getDate()-day);return M.dayKey(d);
+    }
+    function sundayKey(dateKey){return M.addDays(mondayKey(dateKey),6);}
+    function trackForSkill(skill){
+      const name=String(skill&&skill.name||'').toLowerCase();
+      for(const track of ME_TRACKS){if(track.keywords&&track.keywords.some(k=>name.includes(k)))return track.key;}
+      const direct=ME_TRACKS.find(track=>track.category&&track.category===skill.category);
+      return direct?direct.key:null;
+    }
+    function sessionTrackMinutes(skills,sessions,start,end){
+      const skillMap=new Map(skills.map(s=>[s.id,s])),totals=Object.fromEntries(ME_TRACKS.map(t=>[t.key,0]));
+      for(const row of sessions){
+        if(start&&row.occurred_on<start)continue;if(end&&row.occurred_on>end)continue;
+        const skill=skillMap.get(row.skill_id),key=trackForSkill(skill);if(key)totals[key]+=Number(row.minutes||0);
+      }
+      return totals;
+    }
+    function formatMinutes(value){
+      const n=Math.max(0,Math.round(Number(value)||0)),h=Math.floor(n/60),m=n%60;
+      return h?(h+'h'+(m?' '+m+'m':'')):(m+'m');
+    }
+    function studyStreak(sessions,today){
+      const days=new Set(sessions.filter(s=>Number(s.minutes||0)>0).map(s=>s.occurred_on));
+      let count=0,key=today;while(days.has(key)){count++;key=M.addDays(key,-1);}return count;
+    }
     const SCIENCE_STATE_KEY='life-in-bloom-science-v2';
     function scienceStorageKey(current){
       const user=current&&current.user&&current.user.id||'local', household=current&&current.household&&current.household.id||'default';
@@ -1308,6 +1358,37 @@
       return html;
     }
 
+
+    function renderMeDashboard(current,skills,sessions,today){
+      const state=loadMeState(current),weekStart=mondayKey(today),weekEnd=sundayKey(today),week=sessionTrackMinutes(skills,sessions,weekStart,weekEnd);
+      const totalWeek=Object.values(week).reduce((a,b)=>a+b,0),goal=Math.max(60,Number(state.weeklyGoalMinutes||600)),progress=Math.min(100,totalWeek/goal*100);
+      const touched=ME_TRACKS.filter(t=>week[t.key]>0).length,balance=Math.round(touched/ME_TRACKS.length*100);
+      const balanceLabel=state.focusWeek?'Focus Week':balance===100?'Well Rounded':balance>=80?'A Few Gaps':'Narrow Week';
+      const monthStart=today.slice(0,7)+'-01',yearStart=today.slice(0,4)+'-01-01';
+      const periods={week:[weekStart,weekEnd,'This Week'],month:[monthStart,today,'This Month'],year:[yearStart,today,'This Year'],all:[null,today,'All Time']};
+      const p=periods[mePeriod]||periods.week,periodTotals=sessionTrackMinutes(skills,sessions,p[0],p[1]),periodTotal=Object.values(periodTotals).reduce((a,b)=>a+b,0);
+      const maxTrack=Math.max(1,...Object.values(periodTotals));
+      const deficits=ME_TRACKS.map(t=>({track:t,done:week[t.key],goal:Number(state.goals[t.key]||t.goal)})).sort((a,b)=>(a.done/a.goal)-(b.done/b.goal)||a.track.priority-b.track.priority);
+      const next=deficits[0],scienceState=loadScienceState(current);
+      let advisor='';
+      if(next&&next.done<next.goal){
+        const remain=Math.max(5,next.goal-next.done),suggest=Math.min(30,remain);
+        advisor='<strong>'+esc(next.track.label)+' would be a good choice.</strong><br>You have completed '+formatMinutes(next.done)+' of your planned '+formatMinutes(next.goal)+'.<br>'+(next.track.key==='science'?'Next lesson: <strong>'+esc(scienceState.currentTopic||'Scientific Notation')+'</strong><br>':'')+'Suggested session: <strong>'+suggest+' minutes</strong>.';
+      }else advisor='<strong>You have touched every planned skill this week.</strong><br>Painting is one of your priority skills. Continue your current painting work or choose the subject you most want to deepen.';
+      const weekLabel=new Date(weekStart+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})+'–'+new Date(weekEnd+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
+      let html='<section class="me-dashboard"><section class="me-banner"><div><p class="page-kicker">Skills in Bloom · Me</p><h2>My Learning Week</h2><p>Your command center for a balanced 10-hour learning life.</p></div><span>💛</span></section>';
+      html+='<section class="panel me-week"><div class="habit-heading"><div><p class="page-kicker">Week of '+esc(weekLabel)+'</p><h2>'+formatMinutes(totalWeek)+' / '+formatMinutes(goal)+' completed</h2></div>'+button('me-log-study','+ Log Study Session','',true)+'</div><div class="me-progress"><span style="width:'+progress+'%"></span></div><div class="me-progress-label"><strong>'+Math.round(progress)+'%</strong><span>'+formatMinutes(totalWeek)+' / '+formatMinutes(goal)+'</span></div><label class="habit-field"><span>Weekly Study Goal · '+(goal/60).toFixed(goal%60?1:0)+' hours</span><input type="range" min="1" max="20" step=".5" value="'+(goal/60)+'" data-me-weekly-goal></label><label class="me-focus"><input type="checkbox" data-me-focus'+(state.focusWeek?' checked':'')+'> <span><strong>Blue · Focus Week</strong><small>Use this when one major project intentionally gets most of your study time.</small></span></label></section>';
+      if(meStudyOpen){
+        html+='<section class="panel me-study-logger"><div class="habit-heading"><div><p class="page-kicker">Study Logger</p><h2>Log one study session</h2></div>'+button('me-study-cancel','Cancel')+'</div><form class="habit-form" data-me-study-form><div class="habit-form-grid"><label class="habit-field"><span>Skill</span><select required data-me-study-field="skill_id"><option value="">Choose a saved skill</option>'+skills.map(s=>'<option value="'+esc(s.id)+'"'+(meStudyDraft.skill_id===s.id?' selected':'')+'>'+esc(M.category(s.category).icon+' '+s.name)+'</option>').join('')+'</select></label><label class="habit-field"><span>Topic</span><input maxlength="200" data-me-study-field="topic" value="'+esc(meStudyDraft.topic)+'" placeholder="Scientific Notation"></label><label class="habit-field"><span>Duration · minutes</span><input type="number" min="1" max="1440" required data-me-study-field="minutes" value="'+esc(meStudyDraft.minutes)+'"></label><label class="habit-field"><span>What I worked on</span><input maxlength="500" data-me-study-field="worked_on" value="'+esc(meStudyDraft.worked_on)+'"></label></div><div class="me-slider-grid"><label><span>How did it feel? <b>'+esc(meStudyDraft.feeling)+'/10</b></span><input type="range" min="1" max="10" step="1" data-me-study-field="feeling" value="'+esc(meStudyDraft.feeling)+'"></label><label><span>Confidence <b>'+esc(meStudyDraft.confidence)+'/10</b></span><input type="range" min="1" max="10" step="1" data-me-study-field="confidence" value="'+esc(meStudyDraft.confidence)+'"></label></div><label class="habit-field"><span>Notes · optional</span><textarea rows="4" data-me-study-field="notes">'+esc(meStudyDraft.notes)+'</textarea></label><div class="habit-actions"><button type="submit" class="button primary">Save study session</button></div></form></section>';
+      }
+      html+='<section class="panel me-skills"><div class="habit-heading"><div><p class="page-kicker">This Week</p><h2>Study Plan</h2><p class="habit-help">These are flexible targets, not rules. Painting can stay a high priority while the dashboard notices subjects that have gone untouched.</p></div></div><div class="me-skill-grid">'+ME_TRACKS.map(t=>{const done=week[t.key],g=Number(state.goals[t.key]||t.goal),pct=Math.min(100,done/g*100),status=done<=0?'○':done>=g?'●':'◐';return '<article><div class="me-skill-head"><span>'+t.icon+'</span><div><strong>'+esc(t.label)+'</strong><small>'+formatMinutes(done)+' this week · '+formatMinutes(g)+' goal</small></div><b>'+status+'</b></div><div class="me-mini-progress"><span style="width:'+pct+'%"></span></div><label><span>Goal</span><input type="range" min="15" max="240" step="15" value="'+g+'" data-me-track-goal="'+t.key+'"><small>'+formatMinutes(g)+'</small></label></article>';}).join('')+'</div></section>';
+      html+='<section class="panel me-checklist"><div class="habit-heading"><div><p class="page-kicker">Weekly Checklist</p><h2>Did I intentionally study it?</h2><p class="habit-help">A check means you intentionally studied that subject this week. It does not mean mastery.</p></div></div><div class="me-check-grid">'+ME_TRACKS.map(t=>'<div class="'+(week[t.key]>0?'is-done':'')+'"><span>'+(week[t.key]>0?'☑':'☐')+'</span><strong>'+t.icon+' '+esc(t.label)+'</strong><small>'+formatMinutes(week[t.key])+'</small></div>').join('')+'</div></section>';
+      html+='<section class="panel me-balance"><div class="habit-heading"><div><p class="page-kicker">Weekly Balance</p><h2>'+balance+'% · '+esc(balanceLabel)+'</h2></div><span class="habit-badge">'+touched+' / '+ME_TRACKS.length+' touched</span></div><div class="me-balance-track '+(state.focusWeek?'is-focus':'')+'"><span style="width:'+balance+'%"></span></div><div class="me-balance-legend"><span>🟢 Well Rounded</span><span>🟡 A Few Gaps</span><span>🟠 Narrow Week</span><span>🔵 Focus Week</span></div><p class="habit-help">This meter asks whether you touched the subjects you intended to work on. It does not expect equal time in every subject.</p></section>';
+      html+='<section class="panel me-advisor"><div class="habit-heading"><div><p class="page-kicker">Academic Advisor</p><h2>🌱 What Should I Study Next?</h2></div></div><div class="me-advisor-answer">'+advisor+'</div></section>';
+      html+='<section class="panel me-long-term"><div class="habit-heading"><div><p class="page-kicker">Your Long-Term Progress</p><h2>'+esc(p[2])+' · '+formatMinutes(periodTotal)+'</h2><p class="habit-help">These totals come from your saved Skills practice sessions.</p></div><div class="me-period-tabs">'+[['week','This Week'],['month','This Month'],['year','This Year'],['all','All Time']].map(x=>button('me-period',x[1],' data-period="'+x[0]+'"'+(mePeriod===x[0]?' aria-current="true"':''),mePeriod===x[0])).join('')+'</div></div><div class="me-history-bars">'+ME_TRACKS.map(t=>{const mins=periodTotals[t.key],w=Math.round(mins/maxTrack*100);return '<div><span>'+t.icon+' '+esc(t.label)+'</span><div><i style="width:'+w+'%"></i></div><strong>'+formatMinutes(mins)+'</strong></div>';}).join('')+'</div><div class="me-history-foot"><strong>'+studyStreak(sessions,today)+' day study streak</strong><span>'+sessions.length+' total saved practice session'+(sessions.length===1?'':'s')+'</span></div></section></section>';
+      return html;
+    }
+
     function renderSkills(current) {
       const skills = privateRows(current, 'skills'), sessions = privateRows(current, 'skillSessions'), today = M.dayKey(getNow());
       const due = skills.filter(skill => M.skillProgress(skill, sessions, today).due);
@@ -1326,6 +1407,7 @@
       if (selectedCategory === 'writing') return renderDailyJournal(current, today);
       if (selectedCategory === 'painting') return renderPaintingPortfolio(current, today);
       if (selectedCategory === 'cooking') return renderPlantLog(current, today);
+      if (selectedCategory === 'me') return renderMeDashboard(current, skills, sessions, today);
       if (selectedCategory === 'science') return renderScienceDashboard(current, skills, sessions, today);
       if (selectedCategory === 'math') return renderMathDashboard(current, skills, sessions, today);
       if (selectedCategory === 'engineering') html += renderEngineeringDashboard(current, skills, sessions, today);
@@ -1473,6 +1555,14 @@
       });
     }
     function handleSubmit(event) {
+      const meForm=event.target&&event.target.closest&&event.target.closest('[data-me-study-form]');
+      if(meForm){
+        event.preventDefault();const current=snapshot(),skill=privateRows(current,'skills').find(s=>s.id===meStudyDraft.skill_id);
+        if(!skill){notify('Choose one of your saved skills first.',true);return true;}
+        const minutes=Math.max(1,Math.min(1440,Number(meStudyDraft.minutes)||0));if(!minutes){notify('Enter the study duration.',true);return true;}
+        const parts=[];if(meStudyDraft.topic.trim())parts.push('Topic: '+meStudyDraft.topic.trim());if(meStudyDraft.worked_on.trim())parts.push('Worked on: '+meStudyDraft.worked_on.trim());parts.push('Feeling: '+meStudyDraft.feeling+'/10');parts.push('Confidence: '+meStudyDraft.confidence+'/10');if(meStudyDraft.notes.trim())parts.push('Notes: '+meStudyDraft.notes.trim());
+        try{requireReady(current);run('Saving study session…',()=>store.saveSkillSession({skill_id:skill.id,occurred_on:M.dayKey(getNow()),minutes,result:'practice',notes:parts.join('\n')}),()=>{meStudyOpen=false;meStudyDraft={skill_id:'',topic:'',minutes:'30',worked_on:'',feeling:'5',confidence:'5',notes:''};notify('Study session saved. Your Me dashboard has been updated.');},null,'.me-dashboard');}catch(error){notify(error.message,true);}return true;
+      }
       const scienceForm=event.target&&event.target.closest&&event.target.closest('[data-science-note-form],[data-science-question-form]');
       if(scienceForm){
         event.preventDefault();const current=snapshot(),state=loadScienceState(current);
@@ -1618,6 +1708,10 @@
       if (!data) return false;
       const current = snapshot();
       if(Object.hasOwn(data,'plantField')){const key=data.plantField;if(Object.hasOwn(plantDraft,key))plantDraft[key]=key==='archived'?Boolean(element.checked):String(element.value||'');return true;}
+      if(Object.hasOwn(data,'meStudyField')){const key=data.meStudyField;if(Object.hasOwn(meStudyDraft,key)){meStudyDraft[key]=String(element.value||'');if(['feeling','confidence'].includes(key)){const label=element.closest('label')&&element.closest('label').querySelector('b');if(label)label.textContent=element.value+'/10';}}return true;}
+      if(Object.hasOwn(data,'meWeeklyGoal')){const state=loadMeState(current);state.weeklyGoalMinutes=Math.round(Number(element.value||10)*60);saveMeState(current,state);refresh('.me-week');return true;}
+      if(Object.hasOwn(data,'meTrackGoal')){const state=loadMeState(current);state.goals[data.meTrackGoal]=Math.max(15,Number(element.value||30));saveMeState(current,state);refresh('.me-skills');return true;}
+      if(Object.hasOwn(data,'meFocus')){const state=loadMeState(current);state.focusWeek=Boolean(element.checked);saveMeState(current,state);refresh();return true;}
       if(Object.hasOwn(data,'scienceNoteField')){const key=data.scienceNoteField;if(Object.hasOwn(scienceNoteDraft,key))scienceNoteDraft[key]=key==='review_later'?Boolean(element.checked):String(element.value||'');return true;}
       if(Object.hasOwn(data,'scienceQuestionField')){const key=data.scienceQuestionField;if(Object.hasOwn(scienceQuestionDraft,key))scienceQuestionDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'scienceNotationAnswer')){const state=loadScienceState(current);state.notationLesson.quizAnswers=state.notationLesson.quizAnswers||{};state.notationLesson.quizAnswers[data.scienceNotationAnswer]=element.value;saveScienceState(current,state);return true;}
@@ -1866,11 +1960,14 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-habit-action]') : null;
       const data = element && element.dataset, action = data && data.habitAction;
-      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete','animation-tutor-edit','animation-tutor-cancel','animation-resource-add','animation-resource-cancel','animation-project-add','animation-project-edit','animation-project-cancel','animation-media-delete','animation-practice-add','animation-practice-cancel','animation-homework-add','animation-homework-edit','animation-homework-cancel','animation-homework-delete','spanish-profile-edit','spanish-profile-cancel','spanish-lesson-add','spanish-lesson-cancel','spanish-vocab-add','spanish-vocab-cancel','spanish-homework-add','spanish-homework-cancel','spanish-prepare-add','spanish-prepare-cancel','spanish-prepare-toggle','journal-today','journal-open','journal-delete','painting-add-artwork','painting-edit-artwork','painting-artwork-cancel','painting-open','painting-back','painting-add-version','painting-version-cancel','plant-add','plant-edit','plant-cancel','plant-open','plant-back','plant-schedule-add','plant-schedule-cancel','plant-event-add','plant-event-cancel','plant-quick-event','science-continue','science-grade-notation','science-review-notation','science-method-check','science-note-add','science-note-cancel','science-note-delete','science-question-add','science-question-cancel'].includes(action)) return false;
+      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete','animation-tutor-edit','animation-tutor-cancel','animation-resource-add','animation-resource-cancel','animation-project-add','animation-project-edit','animation-project-cancel','animation-media-delete','animation-practice-add','animation-practice-cancel','animation-homework-add','animation-homework-edit','animation-homework-cancel','animation-homework-delete','spanish-profile-edit','spanish-profile-cancel','spanish-lesson-add','spanish-lesson-cancel','spanish-vocab-add','spanish-vocab-cancel','spanish-homework-add','spanish-homework-cancel','spanish-prepare-add','spanish-prepare-cancel','spanish-prepare-toggle','journal-today','journal-open','journal-delete','painting-add-artwork','painting-edit-artwork','painting-artwork-cancel','painting-open','painting-back','painting-add-version','painting-version-cancel','plant-add','plant-edit','plant-cancel','plant-open','plant-back','plant-schedule-add','plant-schedule-cancel','plant-event-add','plant-event-cancel','plant-quick-event','science-continue','science-grade-notation','science-review-notation','science-method-check','science-note-add','science-note-cancel','science-note-delete','science-question-add','science-question-cancel','me-log-study','me-study-cancel','me-period'].includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery' || action === 'money') { navigate(action); return true; }
         if (action === 'category') { if (data.category === 'all' || M.CATEGORIES.some(item => item.key === data.category)) selectedCategory = data.category; }
+        else if(action==='me-log-study'){meStudyDraft={skill_id:'',topic:'',minutes:'30',worked_on:'',feeling:'5',confidence:'5',notes:''};meStudyOpen=true;refresh();return true;}
+        else if(action==='me-study-cancel'){meStudyOpen=false;refresh();return true;}
+        else if(action==='me-period'){if(['week','month','year','all'].includes(data.period))mePeriod=data.period;refresh('.me-long-term');return true;}
         else if(action==='science-continue'){const state=loadScienceState(current);const id=state.currentTopic==='Scientific Method'?'science-method':state.currentTopic==='Chemistry Basics'?'science-chemistry':'science-notation';const node=root.document&&root.document.getElementById(id);if(node&&node.scrollIntoView)node.scrollIntoView({behavior:'smooth',block:'start'});return true;}
         else if(action==='science-grade-notation'){
           const state=loadScienceState(current),qs=scienceNotationQuestions(),answers=state.notationLesson.quizAnswers||{};let correct=0;for(let i=0;i<qs.length;i++)if(answers[i]===qs[i][1])correct++;
