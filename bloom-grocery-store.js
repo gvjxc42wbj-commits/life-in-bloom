@@ -33,6 +33,16 @@
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
   const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework','spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia'];
+  // Specialized Skills modules should never be able to take down Home, Food,
+  // Dog, Money, or household navigation if one optional table is temporarily
+  // unavailable. Core household/food tables remain strict.
+  const OPTIONAL_SKILL_LISTS = new Set([
+    'engineeringHomework','engineeringFiles',
+    'readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings',
+    'pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia',
+    'animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework',
+    'spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia'
+  ]);
   const LIFE_COLLECTIONS = {
     hydrationSettings:'hydration_settings', hydrationEntries:'hydration_entry',
     skills:'skill', skillSessions:'skill_session', smokingSettings:'smoking_settings', smokingDays:'smoking_day',
@@ -359,6 +369,15 @@
       }
       return rows;
     }
+    async function readOptionalSkillList(key, householdId) {
+      try {
+        return [key, await readAll(TABLES[key], { household_id: householdId }, ['id'])];
+      } catch (error) {
+        // Keep the rest of Life in Bloom usable if a specialized Skills table
+        // is unavailable, stale in the API schema cache, or temporarily fails.
+        return [key, []];
+      }
+    }
     async function refresh() {
       ensureClient();
       if (!state.user || suppressAuth) return snapshot();
@@ -401,7 +420,10 @@
           readAll(TABLES.budgets, { household_id: householdId }, ['month']),
           readAll(TABLES.inventory, { household_id: householdId }, ['id']),
           readAll(TABLES.shoppingItems, { household_id: householdId }, ['id']),
-          Promise.all(EXTRA_LISTS.map(async key=>[key,await readAll(TABLES[key],{ household_id:householdId },['id'])])).then(Object.fromEntries)
+          Promise.all(EXTRA_LISTS.map(key=>OPTIONAL_SKILL_LISTS.has(key)
+            ? readOptionalSkillList(key, householdId)
+            : readAll(TABLES[key], { household_id: householdId }, ['id']).then(rows=>[key,rows])
+          )).then(Object.fromEntries)
         ]);
         if (!stillCurrent()) return snapshot();
         if (households.length !== 1 || !members.some(member => member.user_id === current.userId)) {
