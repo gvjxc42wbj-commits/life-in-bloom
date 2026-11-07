@@ -300,57 +300,137 @@
       return (left ? dateNumber(left.date) : Infinity) - (right ? dateNumber(right.date) : Infinity) || String(a.id).localeCompare(String(b.id));
     });
   }
-  function recipeSuggestions(recipes, products, inventory, today) {
+  function stockAmount(batch, product, targetUnit) {
+    const remaining = positive(batch && batch.remaining);
+    if (remaining == null || !product) return null;
+    if (normalizeUnit(batch.unit) === 'package') {
+      const packQuantity = positive(product.package_quantity);
+      const packUnit = normalizeUnit(product.package_unit);
+      if (packQuantity == null || !UNITS.some(unit => unit.value === packUnit)) return null;
+      return convertQuantity(remaining * packQuantity, packUnit, targetUnit);
+    }
+    return convertQuantity(remaining, batch.unit, targetUnit);
+  }
+  function removeStock(batch, product, amount, amountUnit) {
+    if (!batch || !product || positive(amount) == null) return false;
+    if (normalizeUnit(batch.unit) === 'package') {
+      const packQuantity = positive(product.package_quantity);
+      const packUnit = normalizeUnit(product.package_unit);
+      const usedInPackUnit = convertQuantity(amount, amountUnit, packUnit);
+      if (packQuantity == null || usedInPackUnit == null) return false;
+      batch.remaining = Math.max(0, tidy(batch.remaining - usedInPackUnit / packQuantity));
+      return true;
+    }
+    const used = convertQuantity(amount, amountUnit, batch.unit);
+    if (used == null) return false;
+    batch.remaining = Math.max(0, tidy(batch.remaining - used));
+    return true;
+  }
+  function recipeCost(recipe, products, inventory, today, servings) {
     const catalog = indexProducts(products);
+    const yieldCount = positive(recipe && recipe.servings);
+    const wantedServings = servings == null ? yieldCount : positive(servings);
+    const scale = yieldCount && wantedServings ? wantedServings / yieldCount : null;
+    const rows = recipePlanningIngredients(recipe, products).filter(row => row.optional !== true && row.included !== false);
+    const pool = stockPool(inventory || [], today);
+    const items = [];
+    let makeKnown = 0, shopKnown = 0, missingMake = 0, missingShop = 0, unlinked = 0, incompatible = 0, missingPrices = 0;
+    if (!scale) return { items, known_make_cost_cents: 0, known_shopping_subtotal_cents: 0, estimated_shopping_tax_cents: 0, estimated_shopping_total_cents: 0, complete: false, shopping_complete: false, missing_links: rows.length, missing_prices: 0, incompatible_units: 0, to_buy: [] };
+    for (const row of rows) {
+      const required = row.quantity == null ? null : positive(tidy(Number(row.quantity) * scale));
+      const product = row.product_id && catalog.get(row.product_id);
+      const item = { name: row.name || (product && product.name) || 'Ingredient', product_id: row.product_id || null, required_quantity: required, unit: row.unit || '', stock_quantity: 0, shortage_quantity: required, packs: null, make_cost_cents: null, shopping_cost_cents: null, reason: '' };
+      if (!product || !row.product_id) {
+        item.reason = 'Link a product to calculate stock and price.';
+        unlinked++; missingMake++; missingShop++; items.push(item); continue;
+      }
+      if (required == null || !UNITS.some(unit => unit.value === normalizeUnit(row.unit))) {
+        item.reason = 'Review the ingredient amount or unit.';
+        incompatible++; missingMake++; missingShop++; items.push(item); continue;
+      }
+      const packageQuantity = positive(product.package_quantity);
+      const packageUnit = normalizeUnit(product.package_unit);
+      const requiredInPackageUnit = packageQuantity && UNITS.some(unit => unit.value === packageUnit) ? convertQuantity(required, row.unit, packageUnit) : null;
+      if (requiredInPackageUnit == null) {
+        item.reason = 'Recipe unit cannot be converted to this product package.';
+        incompatible++; missingMake++; missingShop++; items.push(item); continue;
+      }
+      const price = cents(product.price_cents);
+      if (price == null) { missingPrices++; missingMake++; }
+      else {
+        item.make_cost_cents = Math.round(price * requiredInPackageUnit / packageQuantity);
+        makeKnown += item.make_cost_cents;
+      }
+      let needed = required, incompatibleStock = false;
+      for (const batch of pool.filter(value => value.product_id === product.id && value.remaining > 0)) {
+        const available = stockAmount(batch, product, row.unit);
+        if (available == null) { incompatibleStock = true; continue; }
+        const used = Math.min(needed, available);
+        if (used > 0) removeStock(batch, product, used, row.unit);
+        needed = Math.max(0, tidy(needed - used));
+        if (needed <= 1e-9) break;
+      }
+      item.stock_quantity = tidy(required - needed);
+      item.shortage_quantity = tidy(needed);
+      if (needed > 1e-9) {
+        const shortageInPackageUnit = convertQuantity(needed, row.unit, packageUnit);
+        if (shortageInPackageUnit == null) {
+          item.reason = 'Review the unit before adding this shortage to Grocery.';
+          missingShop++;
+        } else {
+          item.packs = Math.max(1, Math.ceil(shortageInPackageUnit / packageQuantity - 1e-10));
+          if (price == null) { missingShop++; item.reason = 'Price needed for the shopping estimate.'; }
+          else { item.shopping_cost_cents = item.packs * price; shopKnown += item.shopping_cost_cents; }
+        }
+      } else item.packs = 0;
+      if (incompatibleStock && needed > 1e-9 && !item.reason) item.reason = 'Some stock uses a unit that needs review.';
+      items.push(item);
+    }
+    const toBuy = items.filter(item => item.shortage_quantity == null || item.shortage_quantity > 1e-9 || (item.reason && !item.product_id));
+    const tax = estimatedTax(shopKnown) || 0;
+    return {
+      items, to_buy: toBuy, known_make_cost_cents: makeKnown, known_shopping_subtotal_cents: shopKnown,
+      estimated_shopping_tax_cents: tax, estimated_shopping_total_cents: shopKnown + tax,
+      missing_links: unlinked, missing_prices: missingPrices, incompatible_units: incompatible,
+      missing_make_values: missingMake, missing_shopping_values: missingShop,
+      complete: rows.length > 0 && missingMake === 0,
+      shopping_complete: rows.length > 0 && missingShop === 0,
+      servings: wantedServings, recipe_servings: yieldCount
+    };
+  }
+  function recipeSuggestions(recipes, products, inventory, today) {
     const due = dueItems(inventory, today).filter(item => item.status !== 'overdue' && item.product_id);
     const result = [];
     for (const recipe of uniqueRows(recipes)) {
-      if (recipe.archived || !Array.isArray(recipe.ingredients) || !recipe.ingredients.length) continue;
-      const ingredientIds = new Set(recipe.ingredients.map(ingredient => ingredient.product_id));
+      if (!recipe || recipe.archived) continue;
+      const planning = recipePlanningIngredients(recipe, products);
+      const ingredientIds = new Set(planning.map(ingredient => ingredient.product_id).filter(Boolean));
       const matches = due.filter(item => ingredientIds.has(item.product_id));
       if (!matches.length) continue;
-      const pool = stockPool(inventory, today);
-      const missing = [];
-      const allergens = new Set();
-      let available = 0;
-      for (const ingredient of recipe.ingredients) {
-        const product = catalog.get(ingredient.product_id);
-        if (product && String(product.allergens || '').trim()) allergens.add(String(product.allergens).trim());
-        let needed = positive(ingredient.quantity);
-        let incompatible = false;
-        if (needed == null || !UNITS.some(unit => unit.value === normalizeUnit(ingredient.unit))) {
-          missing.push({ product_id: ingredient.product_id, name: product ? product.name : 'Unknown ingredient', quantity: needed, unit: ingredient.unit, reason: 'Review this ingredient quantity and unit.' });
-          continue;
-        }
-        for (const batch of pool.filter(item => item.product_id === ingredient.product_id && item.remaining > 0)) {
-          const compatible = convertQuantity(batch.remaining, batch.unit, ingredient.unit);
-          if (compatible == null) { incompatible = true; continue; }
-          const used = Math.min(needed, compatible);
-          const removed = convertQuantity(used, ingredient.unit, batch.unit);
-          batch.remaining = Math.max(0, batch.remaining - removed);
-          needed = Math.max(0, tidy(needed - used));
-          if (needed <= 1e-9) break;
-        }
-        if (needed > 1e-9) missing.push({ product_id: ingredient.product_id, name: product ? product.name : 'Unknown ingredient', quantity: tidy(needed), unit: ingredient.unit, reason: incompatible ? 'Some recorded stock uses an incompatible unit.' : 'More is needed for the full recipe.' });
-        else available++;
-      }
-      const writtenIngredientsUnverified = typeof recipe.ingredient_text === 'string' && !!recipe.ingredient_text.trim();
-      result.push({ recipe_id: recipe.id, name: recipe.name, recipe, matching_items: matches, missing_ingredients: missing, ingredient_count: recipe.ingredients.length, available_count: available, written_ingredients_unverified: writtenIngredientsUnverified, complete_stock: missing.length === 0 && !writtenIngredientsUnverified, known_allergens: [...allergens], days_until: Math.min(...matches.map(item => item.days_until)), soonest_date: matches[0].due_on });
+      const cost = recipeCost(recipe, products, inventory, today);
+      const missing = cost.to_buy.map(item => ({ product_id: item.product_id, name: item.name, quantity: item.shortage_quantity, unit: item.unit, packs: item.packs, estimate_cents: item.shopping_cost_cents, reason: item.reason }));
+      result.push({
+        recipe_id: recipe.id, name: recipe.name, recipe, matching_items: matches,
+        missing_ingredients: missing, ingredient_count: planning.filter(row => row.optional !== true).length,
+        available_count: cost.items.filter(item => item.required_quantity != null && item.shortage_quantity <= 1e-9).length,
+        written_ingredients_unverified: cost.missing_links > 0 || cost.incompatible_units > 0,
+        complete_stock: missing.length === 0 && cost.missing_links === 0 && cost.incompatible_units === 0,
+        known_allergens: [], days_until: Math.min(...matches.map(item => item.days_until)), soonest_date: matches[0].due_on, cost
+      });
     }
     return result.sort((a, b) => a.days_until - b.days_until || b.matching_items.length - a.matching_items.length || a.missing_ingredients.length - b.missing_ingredients.length || String(a.name).localeCompare(String(b.name)));
   }
   function recipeReadiness(recipes, products, inventory, today) {
-    const productMap=new Map((products||[]).map(row=>[row.id,row]));
-    return uniqueRows(recipes).filter(recipe=>recipe&&!recipe.archived).map(recipe=>{
-      const lines=recipePlanningIngredients(recipe,products||[]),pool=stockPool(inventory||[],today),missing=[],available=[];
-      for(const line of lines.filter(row=>row.optional!==true)){const name=line.name||(productMap.get(line.product_id)||{}).name||'Ingredient';
-        if(!line.product_id||positive(line.quantity)==null||!UNITS.some(unit=>unit.value===normalizeUnit(line.unit))){missing.push({name,reason:'Needs a linked product or reviewed amount.'});continue;}
-        let needed=Number(line.quantity);for(const batch of pool.filter(row=>row.product_id===line.product_id&&row.remaining>0)){const compatible=convertQuantity(batch.remaining,batch.unit,line.unit);if(compatible==null)continue;const used=Math.min(needed,compatible),removed=convertQuantity(used,line.unit,batch.unit);batch.remaining=Math.max(0,batch.remaining-removed);needed=Math.max(0,needed-used);if(needed<=1e-9)break;}
-        if(needed>1e-9)missing.push({name,quantity:tidy(needed),unit:line.unit});else available.push(name);
-      }
-      const status=missing.length===0&&lines.length?'ready':missing.length<=2?'almost':'need';
-      return{recipe,recipe_id:recipe.id,name:recipe.name,status,missing,available_count:available.length,ingredient_count:lines.length};
-    }).sort((a,b)=>(({ready:0,almost:1,need:2}[a.status])-({ready:0,almost:1,need:2}[b.status])||a.missing.length-b.missing.length||String(a.name).localeCompare(String(b.name))));
+    const rank = { ready: 0, almost: 1, need: 2 };
+    return uniqueRows(recipes).filter(recipe => recipe && !recipe.archived).map(recipe => {
+      const planning = recipePlanningIngredients(recipe, products).filter(row => row.optional !== true);
+      const cost = recipeCost(recipe, products, inventory, today);
+      const missing = cost.to_buy.map(item => ({ name: item.name, quantity: item.shortage_quantity, unit: item.unit, packs: item.packs, estimate_cents: item.shopping_cost_cents, reason: item.reason }));
+      const unresolved = cost.missing_links + cost.incompatible_units;
+      const buyCount = missing.filter(item => item.quantity == null || item.quantity > 1e-9).length;
+      const status = planning.length && buyCount === 0 && unresolved === 0 ? 'ready' : buyCount + unresolved <= 2 ? 'almost' : 'need';
+      return { recipe, recipe_id: recipe.id, name: recipe.name, status, missing, available_count: cost.items.filter(item => item.required_quantity != null && item.shortage_quantity <= 1e-9).length, ingredient_count: planning.length, cost };
+    }).sort((a, b) => (rank[a.status] - rank[b.status]) || a.missing.length - b.missing.length || String(a.name).localeCompare(String(b.name)));
   }
 
   function recurringPlan(recurring, products, inventory, month) {
@@ -477,7 +557,7 @@
     return [...months].sort().reverse().map(month => monthlyMoney(data, month));
   }
 
-  const api = { NUTRIENTS, UNITS, AISLES, GROCERY_TAX_RATE, estimatedTax, convertQuantity, recipePlanningIngredients, cookingPlanPreview, recipeNutrition, productNutrition, nutritionTotals, nutritionProvenance, dueItems, recipeSuggestions, recipeReadiness, recurringPlan, monthlyMoney, monthlyBillHistory, dateNumber, monthDetails, effectiveDate };
+  const api = { NUTRIENTS, UNITS, AISLES, GROCERY_TAX_RATE, estimatedTax, convertQuantity, recipePlanningIngredients, cookingPlanPreview, recipeNutrition, recipeCost, productNutrition, nutritionTotals, nutritionProvenance, dueItems, recipeSuggestions, recipeReadiness, recurringPlan, monthlyMoney, monthlyBillHistory, dateNumber, monthDetails, effectiveDate };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.BloomFoodModel = api;
 })(typeof window !== 'undefined' ? window : globalThis);
