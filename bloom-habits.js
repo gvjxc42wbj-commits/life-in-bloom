@@ -104,6 +104,28 @@
     let plantDraft={id:'',name:'',species:'',variety:'',acquired_on:'',planted_on:'',source:'',location:'',pot_size:'',substrate:'',stage:'growing',notes:'',archived:false};
     let plantScheduleDraft={id:'',plant_id:'',care_type:'water',interval_days:'',days_of_week:[],time_of_day:'',duration_minutes:'',amount_text:'',instructions:'',start_on:'',active:true};
     let plantEventDraft={id:'',plant_id:'',occurred_at:'',event_type:'note',title:'',value_numeric:'',value_unit:'',notes:''};
+    let scienceNoteOpen=false, scienceQuestionOpen=false, scienceView='home';
+    let scienceNoteDraft={id:'',date:'',topic:'Scientific Notation',class_name:'',note_type:'lesson',body:'',review_later:false,image_data:'',image_name:''};
+    let scienceQuestionDraft={id:'',text:'',topic:'Scientific Notation',resolved:false};
+    const SCIENCE_STATE_KEY='life-in-bloom-science-v2';
+    function scienceStorageKey(current){
+      const user=current&&current.user&&current.user.id||'local', household=current&&current.household&&current.household.id||'default';
+      return SCIENCE_STATE_KEY+':'+user+':'+household;
+    }
+    function defaultScienceState(){
+      return {currentTopic:'Scientific Notation',notationLesson:{learn:false,worked:false,practice:false,quizScore:null,quizAnswers:{}},method:{learn:false,practice:false,quizScore:null},chemistry:{},notes:[],questions:[],quizHistory:[]};
+    }
+    function loadScienceState(current){
+      try{
+        const raw=root.localStorage&&root.localStorage.getItem(scienceStorageKey(current));
+        const parsed=raw?JSON.parse(raw):{};
+        return {...defaultScienceState(),...parsed,notationLesson:{...defaultScienceState().notationLesson,...(parsed.notationLesson||{})},method:{...defaultScienceState().method,...(parsed.method||{})},chemistry:parsed.chemistry||{},notes:Array.isArray(parsed.notes)?parsed.notes:[],questions:Array.isArray(parsed.questions)?parsed.questions:[],quizHistory:Array.isArray(parsed.quizHistory)?parsed.quizHistory:[]};
+      }catch(_){return defaultScienceState();}
+    }
+    function saveScienceState(current,state){
+      if(root.localStorage)root.localStorage.setItem(scienceStorageKey(current),JSON.stringify(state));
+    }
+
     let pianoPracticeDraft={duration_minutes:'20',source:'independent',course_name:'',lesson_name:'',piece_name:'',accuracy_percent:'',notes:''};
     let pianoRepertoireDraft={title:'',kind:'piece',status:'learning',source:'',notes:''};
     let pianoMediaMeta={title:'Practice sample',piece_name:'',notes:''};
@@ -1214,6 +1236,78 @@
       else hydrateEngineeringFiles(files);
       return html;
     }
+
+    function scienceNotationQuestions(){
+      return [
+        ['450000','4.5 × 10⁵',['4.5 × 10⁵','45 × 10⁴','0.45 × 10⁶']],
+        ['0.00062','6.2 × 10⁻⁴',['6.2 × 10⁻⁴','6.2 × 10⁴','62 × 10⁻⁵']],
+        ['3.25 × 10⁴','32500',['32500','3250','0.000325']],
+        ['7.1 × 10⁻³','0.0071',['0.0071','0.071','7100']],
+        ['9200000','9.2 × 10⁶',['9.2 × 10⁶','92 × 10⁵','0.92 × 10⁷']],
+        ['0.0000081','8.1 × 10⁻⁶',['8.1 × 10⁻⁶','8.1 × 10⁶','81 × 10⁻⁷']],
+        ['2 × 10³ × 4 × 10²','8 × 10⁵',['8 × 10⁵','8 × 10⁶','6 × 10⁵']],
+        ['8 × 10⁶ ÷ 2 × 10²','4 × 10⁴',['4 × 10⁴','4 × 10⁸','16 × 10⁴']],
+        ['Coefficient in 5.7 × 10⁸','5.7',['5.7','8','10']],
+        ['Exponent in 4.1 × 10⁻⁵','-5',['-5','5','4.1']]
+      ];
+    }
+    function renderScienceDashboard(current,skills,sessions,today){
+      const state=loadScienceState(current), scienceSkills=skills.filter(s=>s.category==='science'), ids=new Set(scienceSkills.map(s=>s.id));
+      const weekAgo=M.addDays(today,-6), scienceSessions=sessions.filter(s=>ids.has(s.skill_id));
+      const weekMinutes=scienceSessions.filter(s=>s.occurred_on>=weekAgo&&s.occurred_on<=today).reduce((sum,s)=>sum+Number(s.minutes||0),0);
+      const notation=state.notationLesson||{}, method=state.method||{}, notes=state.notes||[], questions=state.questions||[];
+      const notationSteps=[notation.learn,notation.worked,notation.practice,notation.quizScore!=null].filter(Boolean).length;
+      const methodSteps=[method.learn,method.practice,method.quizScore!=null].filter(Boolean).length;
+      const chemistryTopics=[
+        ['matter','Matter: solids, liquids, gases','Matter has mass and takes up space. Solids keep shape, liquids flow, and gases expand to fill their container.','Classify ice, water, and steam by state.'],
+        ['elements','Elements, compounds & mixtures','An element contains one kind of atom; compounds chemically combine elements; mixtures combine substances physically.','Classify air, salt water, oxygen, and table salt.'],
+        ['atoms','Atoms','Atoms are the smallest units that retain an element’s chemical identity.','Draw a simple atom and label nucleus/electron region.'],
+        ['particles','Protons, neutrons & electrons','Protons are positive, neutrons neutral, and electrons negative.','For carbon-12, identify the number of each particle in a neutral atom.'],
+        ['atomic','Atomic number & atomic mass','Atomic number equals protons. Mass number counts protons plus neutrons.','Find protons and neutrons for a sample isotope.'],
+        ['periodic','Periodic table basics','The periodic table organizes elements by atomic number and repeating chemical properties.','Find an element’s symbol, atomic number, and group.'],
+        ['groups','Groups & periods','Groups are vertical columns with related properties; periods are horizontal rows.','Identify the group and period of sodium.'],
+        ['metals','Metals, nonmetals & metalloids','These broad categories differ in conductivity, appearance, and chemical behavior.','Classify silicon, copper, and oxygen.'],
+        ['ions','Ions','Ions form when atoms gain or lose electrons and become charged.','Explain why Na⁺ has a positive charge.'],
+        ['molecules','Molecules','Molecules are groups of atoms held together by chemical bonds.','Count atoms in H₂O and CO₂.'],
+        ['formulas','Chemical formulas','Chemical formulas show which elements are present and their ratios.','Interpret CaCl₂ and NH₃.'],
+        ['bonds','Chemical bonds','Ionic, covalent, and metallic bonding describe different ways atoms interact.','Compare electron transfer with electron sharing.'],
+        ['reactions','Chemical reactions','Reactions rearrange atoms into new substances while conserving matter.','Identify reactants and products in a simple equation.'],
+        ['balance','Balancing simple equations','Balanced equations have the same number of each atom on both sides.','Balance H₂ + O₂ → H₂O.'],
+        ['acidbase','Acids & bases','Acids and bases differ in properties and hydrogen-ion behavior.','Classify common examples such as vinegar and baking-soda solution.'],
+        ['ph','pH','The pH scale describes acidity and basicity; 7 is neutral at typical room conditions.','Place pH 2, 7, and 11 on an acid-to-base scale.'],
+        ['moles','Moles & molar mass','A mole is a counting unit for particles; molar mass connects moles to grams.','Find the molar mass of H₂O from atomic masses.'],
+        ['solutions','Solutions & concentration','A solution contains solute dissolved in solvent; concentration describes how much solute is present.','Compare a dilute and concentrated salt solution.'],
+        ['measurement','Laboratory measurement','Good lab work uses appropriate units, tools, precision, and recorded uncertainty.','Choose a tool for measuring liquid volume accurately.'],
+        ['safety','Lab safety','Safe chemistry requires PPE, labels, ventilation, careful heating, and correct waste handling.','Identify the safest response to a spill or unknown chemical.']
+      ];
+      const chemistryCompleted=chemistryTopics.filter(t=>(state.chemistry[t[0]]||{}).mastery).length;
+      const lessonCompleted=(notationSteps===4?1:0)+(methodSteps===3?1:0)+chemistryCompleted;
+      const scores=[notation.quizScore,method.quizScore,...chemistryTopics.map(t=>(state.chemistry[t[0]]||{}).quizScore)].filter(v=>Number.isFinite(Number(v))).map(Number);
+      const avg=scores.length?Math.round(scores.reduce((a,b)=>a+b,0)/scores.length):0;
+      let html='<section class="science-dashboard"><section class="science-banner"><div><p class="page-kicker">Skills in Bloom · Science</p><h2>Science in Bloom</h2><p>Learn the idea. Practice it. Test yourself. Keep the questions that still need an answer.</p></div><span>🧪</span></section>';
+      html+='<section class="science-home panel" id="science-home"><div class="habit-heading"><div><p class="page-kicker">Science Home</p><h2>'+esc(state.currentTopic||'Scientific Notation')+'</h2><p class="habit-help">Your current science focus.</p></div>'+button('science-continue','Continue studying','',true)+'</div><div class="science-summary-grid"><div><strong>'+weekMinutes+'</strong><small>minutes this week</small></div><div><strong>'+lessonCompleted+'</strong><small>lessons completed</small></div><div><strong>'+(scores.length?avg+'%':'—')+'</strong><small>practice-test average</small></div><div><strong>'+notes.length+'</strong><small>notes</small></div><div><strong>'+questions.filter(q=>!q.resolved).length+'</strong><small>things to understand</small></div></div></section>';
+
+      const q=scienceNotationQuestions(), answers=notation.quizAnswers||{};
+      html+='<section class="panel science-course" id="science-notation"><div class="habit-heading"><div><p class="page-kicker">1 · Scientific Notation</p><h2>From the beginning</h2><p class="habit-help">Powers of ten, exponents, moving the decimal, conversions, multiplication/division, then significant figures later.</p></div><span class="habit-badge">'+Math.round(notationSteps/4*100)+'% mastery path</span></div>';
+      html+='<div class="science-step-row"><label><input type="checkbox" data-science-toggle="notation.learn"'+(notation.learn?' checked':'')+'> Learn</label><label><input type="checkbox" data-science-toggle="notation.worked"'+(notation.worked?' checked':'')+'> Worked examples</label><label><input type="checkbox" data-science-toggle="notation.practice"'+(notation.practice?' checked':'')+'> Practice</label><span>Quiz '+(notation.quizScore==null?'not taken':notation.quizScore+'%')+'</span></div>';
+      html+='<div class="science-lesson-grid"><article><h3>What it is</h3><p>Scientific notation writes a number as a coefficient from 1 up to 10 multiplied by a power of ten.</p><p class="science-formula"><b>a × 10ⁿ</b></p></article><article><h3>Positive exponent</h3><p><b>3.25 × 10⁴ = 32,500</b></p><p>Move the decimal 4 places to the right when expanding it.</p></article><article><h3>Negative exponent</h3><p><b>3.25 × 10⁻³ = 0.00325</b></p><p>Move the decimal 3 places to the left when expanding it.</p></article><article><h3>Multiply & divide</h3><p>Multiply/divide coefficients, then add/subtract powers of ten. Normalize the coefficient afterward.</p></article></div>';
+      html+='<details class="science-practice"><summary>Practice before the quiz</summary><ol><li>Write 450,000 in scientific notation.</li><li>Write 6.2 × 10⁻⁴ as a decimal.</li><li>Write 0.000081 in scientific notation.</li><li>Multiply (2 × 10³)(4 × 10²).</li></ol></details>';
+      html+='<details class="science-quiz" open><summary>10-question quiz</summary><div class="science-quiz-list">'+q.map((row,i)=>'<fieldset><legend>'+(i+1)+'. '+esc(row[0])+'</legend>'+row[2].map(opt=>'<label><input type="radio" name="science-notation-q'+i+'" value="'+esc(opt)+'" data-science-notation-answer="'+i+'"'+(answers[i]===opt?' checked':'')+'> '+esc(opt)+'</label>').join('')+'</fieldset>').join('')+'</div><div class="habit-actions">'+button('science-grade-notation','Grade quiz','',true)+button('science-review-notation','Review mistakes')+'</div><p class="science-grade">'+(notation.quizScore==null?'Complete all 10 questions, then grade the quiz.':'Latest score: '+notation.quizScore+'%')+'</p></details></section>';
+
+      html+='<section class="panel science-course" id="science-method"><div class="habit-heading"><div><p class="page-kicker">2 · Scientific Method</p><h2>Question → Evidence → Conclusion</h2></div><span class="habit-badge">'+Math.round(methodSteps/3*100)+'% mastery path</span></div><div class="science-step-row"><label><input type="checkbox" data-science-toggle="method.learn"'+(method.learn?' checked':'')+'> Learn</label><label><input type="checkbox" data-science-toggle="method.practice"'+(method.practice?' checked':'')+'> Practice</label><span>Quiz '+(method.quizScore==null?'not taken':method.quizScore+'%')+'</span></div><div class="science-method-flow"><span>Question</span><b>→</b><span>Research</span><b>→</b><span>Hypothesis</span><b>→</b><span>Experiment</span><b>→</b><span>Data</span><b>→</b><span>Analysis</span><b>→</b><span>Conclusion</span><b>→</b><span>Communicate / Repeat</span></div><div class="science-lesson-grid"><article><h3>Variables</h3><p><b>Independent:</b> what you deliberately change. <b>Dependent:</b> what you measure. <b>Constants:</b> what you keep the same.</p></article><article><h3>Observation vs inference</h3><p>An observation records what is directly detected or measured. An inference is an interpretation based on evidence.</p></article><article><h3>Data types</h3><p>Qualitative data describe qualities. Quantitative data use numbers or measurements.</p></article><article><h3>Fair experiment</h3><p>Change one key factor at a time, keep conditions consistent, collect enough data, and repeat when possible.</p></article></div><details class="science-practice"><summary>Practice scenario</summary><p><strong>Does changing the amount of sunlight affect how quickly a bean plant grows?</strong></p><p>Identify a hypothesis, independent variable, dependent variable, constants/control conditions, and the measurements you would collect.</p><div class="habit-actions">'+button('science-method-check','Show model answer')+'</div><div id="science-method-answer"></div></details></section>';
+
+      html+='<section class="panel science-chemistry" id="science-chemistry"><div class="habit-heading"><div><p class="page-kicker">3 · Chemistry Basics</p><h2>Expandable foundation course</h2><p class="habit-help">Every topic follows Learn → Practice → Quiz → Mastery. Mastery is something you mark after you can answer a fresh question without relying on the lesson.</p></div><span class="habit-badge">'+chemistryCompleted+' / '+chemistryTopics.length+' mastered</span></div><div class="science-chemistry-grid">'+chemistryTopics.map((t,i)=>{const st=state.chemistry[t[0]]||{};return '<details class="science-topic-card"><summary><span>'+(i+1)+'. '+esc(t[1])+'</span><b>'+(st.mastery?'Mastered':st.quizScore!=null?st.quizScore+'%':'Not assessed')+'</b></summary><div><h4>Learn</h4><p>'+esc(t[2])+'</p><h4>Practice</h4><p>'+esc(t[3])+'</p><div class="science-step-row"><label><input type="checkbox" data-science-chem="'+t[0]+'" data-science-chem-field="learn"'+(st.learn?' checked':'')+'> Learned</label><label><input type="checkbox" data-science-chem="'+t[0]+'" data-science-chem-field="practice"'+(st.practice?' checked':'')+'> Practiced</label><label><input type="checkbox" data-science-chem="'+t[0]+'" data-science-chem-field="quiz"'+(st.quizScore===100?' checked':'')+'> Quiz check correct</label><label><input type="checkbox" data-science-chem="'+t[0]+'" data-science-chem-field="mastery"'+(st.mastery?' checked':'')+'> Mastery demonstrated</label></div></div></details>';}).join('')+'</div></section>';
+
+      html+='<section class="panel science-notebook" id="science-notebook"><div class="habit-heading"><div><p class="page-kicker">Science Notebook</p><h2>Notes, formulas & questions</h2><p class="habit-help">Keep lesson notes, chemistry notes, experiments, formulas, tutor notes, and anything you want to review later.</p></div>'+button('science-note-add','+ Add note','',true)+'</div>';
+      if(scienceNoteOpen){const d=scienceNoteDraft;html+='<form class="habit-form science-note-form" data-science-note-form><div class="habit-form-grid"><label class="habit-field"><span>Date</span><input type="date" data-science-note-field="date" value="'+esc(d.date)+'"></label><label class="habit-field"><span>Topic</span><input maxlength="160" data-science-note-field="topic" value="'+esc(d.topic)+'"></label><label class="habit-field"><span>Tutor / class</span><input maxlength="160" data-science-note-field="class_name" value="'+esc(d.class_name)+'"></label><label class="habit-field"><span>Note type</span><select data-science-note-field="note_type">'+[['lesson','Lesson Notes'],['chemistry','Chemistry Notes'],['experiment','Experiment'],['question','Question'],['formula','Formula'],['tutor','Tutor Notes'],['review','Something to Review']].map(o=>'<option value="'+o[0]+'"'+(d.note_type===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></label></div><label class="habit-field"><span>Your note</span><textarea rows="7" maxlength="20000" data-science-note-field="body">'+esc(d.body)+'</textarea></label><label class="science-review-check"><input type="checkbox" data-science-note-field="review_later"'+(d.review_later?' checked':'')+'> ⭐ Review Later</label><label class="button">Attach image<input type="file" accept="image/*" data-science-note-image hidden></label>'+(d.image_data?'<div class="science-note-preview"><img src="'+esc(d.image_data)+'" alt=""></div>':'')+'<div class="habit-actions"><button class="button primary" type="submit">Save note</button>'+button('science-note-cancel','Cancel')+'</div></form>';}
+      html+='<div class="science-notes-list">'+(notes.length?notes.slice().reverse().map(n=>'<article><div><strong>'+esc(n.topic||'Science note')+'</strong><small>'+esc(n.date||'')+' · '+esc(n.note_type||'note')+(n.class_name?' · '+esc(n.class_name):'')+'</small></div>'+(n.review_later?'<span class="habit-badge">⭐ Review Later</span>':'')+'<p>'+esc(n.body||'')+'</p>'+(n.image_data?'<img src="'+esc(n.image_data)+'" alt="Attached science note image">':'')+button('science-note-delete','Delete',' data-id="'+esc(n.id)+'"')+'</article>').join(''):'<p class="habit-help">No science notes yet.</p>')+'</div></section>';
+
+      html+='<section class="panel science-questions"><div class="habit-heading"><div><p class="page-kicker">Things I Don’t Understand Yet</p><h2>Questions to come back to</h2><p class="habit-help">Keep the question instead of losing it. Check it off when you genuinely understand it.</p></div>'+button('science-question-add','+ Add question','',true)+'</div>';
+      if(scienceQuestionOpen){const d=scienceQuestionDraft;html+='<form class="habit-form" data-science-question-form><div class="habit-form-grid"><label class="habit-field"><span>Topic</span><input data-science-question-field="topic" value="'+esc(d.topic)+'"></label><label class="habit-field"><span>What don’t I understand yet?</span><input required maxlength="500" data-science-question-field="text" value="'+esc(d.text)+'"></label></div><div class="habit-actions"><button class="button primary" type="submit">Save question</button>'+button('science-question-cancel','Cancel')+'</div></form>';}
+      html+='<div class="science-question-list">'+(questions.length?questions.map(qn=>'<label class="'+(qn.resolved?'is-resolved':'')+'"><input type="checkbox" data-science-question-toggle="'+esc(qn.id)+'"'+(qn.resolved?' checked':'')+'><span><strong>'+esc(qn.text)+'</strong><small>'+esc(qn.topic||'Science')+'</small></span></label>').join(''):'<p class="habit-help">Nothing here yet. Add a question whenever a lesson leaves something unclear.</p>')+'</div></section></section>';
+      return html;
+    }
+
     function renderSkills(current) {
       const skills = privateRows(current, 'skills'), sessions = privateRows(current, 'skillSessions'), today = M.dayKey(getNow());
       const due = skills.filter(skill => M.skillProgress(skill, sessions, today).due);
@@ -1232,6 +1326,7 @@
       if (selectedCategory === 'writing') return renderDailyJournal(current, today);
       if (selectedCategory === 'painting') return renderPaintingPortfolio(current, today);
       if (selectedCategory === 'cooking') return renderPlantLog(current, today);
+      if (selectedCategory === 'science') return renderScienceDashboard(current, skills, sessions, today);
       if (selectedCategory === 'math') return renderMathDashboard(current, skills, sessions, today);
       if (selectedCategory === 'engineering') html += renderEngineeringDashboard(current, skills, sessions, today);
       if (skillOpen) html += renderSkillForm(current);
@@ -1378,6 +1473,20 @@
       });
     }
     function handleSubmit(event) {
+      const scienceForm=event.target&&event.target.closest&&event.target.closest('[data-science-note-form],[data-science-question-form]');
+      if(scienceForm){
+        event.preventDefault();const current=snapshot(),state=loadScienceState(current);
+        if(Object.hasOwn(scienceForm.dataset,'scienceNoteForm')){
+          if(!scienceNoteDraft.body.trim()&&!scienceNoteDraft.image_data){notify('Write a note or attach an image first.',true);return true;}
+          const row={...scienceNoteDraft,id:scienceNoteDraft.id||uuid(),date:scienceNoteDraft.date||M.dayKey(getNow())};
+          const at=state.notes.findIndex(n=>n.id===row.id);if(at>=0)state.notes[at]=row;else state.notes.push(row);
+          saveScienceState(current,state);scienceNoteOpen=false;notify('Science note saved.');refresh('.science-notebook');return true;
+        }
+        if(Object.hasOwn(scienceForm.dataset,'scienceQuestionForm')){
+          if(!scienceQuestionDraft.text.trim()){notify('Write the question first.',true);return true;}
+          state.questions.push({...scienceQuestionDraft,id:scienceQuestionDraft.id||uuid(),resolved:false});saveScienceState(current,state);scienceQuestionOpen=false;notify('Question saved for later.');refresh('.science-questions');return true;
+        }
+      }
       const form=event.target;
       if(form&&form.dataset&&Object.hasOwn(form.dataset,'plantForm')){
         if(event.preventDefault)event.preventDefault();const current=snapshot();
@@ -1509,6 +1618,12 @@
       if (!data) return false;
       const current = snapshot();
       if(Object.hasOwn(data,'plantField')){const key=data.plantField;if(Object.hasOwn(plantDraft,key))plantDraft[key]=key==='archived'?Boolean(element.checked):String(element.value||'');return true;}
+      if(Object.hasOwn(data,'scienceNoteField')){const key=data.scienceNoteField;if(Object.hasOwn(scienceNoteDraft,key))scienceNoteDraft[key]=key==='review_later'?Boolean(element.checked):String(element.value||'');return true;}
+      if(Object.hasOwn(data,'scienceQuestionField')){const key=data.scienceQuestionField;if(Object.hasOwn(scienceQuestionDraft,key))scienceQuestionDraft[key]=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'scienceNotationAnswer')){const state=loadScienceState(current);state.notationLesson.quizAnswers=state.notationLesson.quizAnswers||{};state.notationLesson.quizAnswers[data.scienceNotationAnswer]=element.value;saveScienceState(current,state);return true;}
+      if(Object.hasOwn(data,'scienceToggle')){const state=loadScienceState(current),parts=String(data.scienceToggle).split('.');if(parts[0]==='notation')state.notationLesson[parts[1]]=Boolean(element.checked);if(parts[0]==='method')state.method[parts[1]]=Boolean(element.checked);saveScienceState(current,state);refresh();return true;}
+      if(Object.hasOwn(data,'scienceChem')){const state=loadScienceState(current),key=data.scienceChem,field=data.scienceChemField;state.chemistry[key]=state.chemistry[key]||{};if(field==='quiz')state.chemistry[key].quizScore=element.checked?100:null;else state.chemistry[key][field]=Boolean(element.checked);saveScienceState(current,state);refresh();return true;}
+      if(Object.hasOwn(data,'scienceQuestionToggle')){const state=loadScienceState(current),row=state.questions.find(q=>q.id===data.scienceQuestionToggle);if(row)row.resolved=Boolean(element.checked);saveScienceState(current,state);refresh();return true;}
       if(Object.hasOwn(data,'plantScheduleDay')){const day=data.plantScheduleDay;if(!['sun','mon','tue','wed','thu','fri','sat'].includes(day))return true;const set=new Set(plantScheduleDraft.days_of_week||[]);if(element.checked)set.add(day);else set.delete(day);plantScheduleDraft.days_of_week=['sun','mon','tue','wed','thu','fri','sat'].filter(value=>set.has(value));return true;}
       if(Object.hasOwn(data,'plantScheduleField')){const key=data.plantScheduleField;if(Object.hasOwn(plantScheduleDraft,key))plantScheduleDraft[key]=key==='active'?Boolean(element.checked):String(element.value||'');return true;}
       if(Object.hasOwn(data,'plantEventField')){const key=data.plantEventField;if(Object.hasOwn(plantEventDraft,key))plantEventDraft[key]=String(element.value||'');return true;}
@@ -1574,6 +1689,12 @@
     }
     function handleChange(event) {
       const element = event.target, data = element && element.dataset;
+      if(data&&Object.hasOwn(data,'scienceNoteImage')){
+        const current=snapshot(),file=element.files&&element.files[0];element.value='';if(!file)return true;
+        if(!/^image\//.test(file.type||'')){notify('Choose an image file for this science note.',true);return true;}
+        if(Number(file.size)>700*1024){notify('For this notebook, choose an image smaller than 700 KB.',true);return true;}
+        const reader=new FileReader();reader.onload=()=>{scienceNoteDraft.image_data=String(reader.result||'');scienceNoteDraft.image_name=String(file.name||'');refresh('.science-note-form');};reader.onerror=()=>notify('That image could not be read.',true);reader.readAsDataURL(file);return true;
+      }
       if(data&&Object.hasOwn(data,'plantEventUpload')){
         const current=snapshot(),eventRow=plantRows(current,'plantEvents').find(item=>item.id===data.id),files=Array.from(element.files||[]);element.value='';if(!eventRow||!files.length)return true;
         try{requireReady(current);run('Uploading plant photos…',async()=>{const out=[];for(const file of files.slice(0,8))out.push(await store.uploadPlantMedia({file,plant_id:eventRow.plant_id,event_id:eventRow.id,title:file.name}));return out;},rows=>notify((rows||[]).length+' plant file'+((rows||[]).length===1?'':'s')+' saved.'),null,'.plant-life');}catch(error){notify(error.message,true);}return true;
@@ -1745,11 +1866,26 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-habit-action]') : null;
       const data = element && element.dataset, action = data && data.habitAction;
-      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete','animation-tutor-edit','animation-tutor-cancel','animation-resource-add','animation-resource-cancel','animation-project-add','animation-project-edit','animation-project-cancel','animation-media-delete','animation-practice-add','animation-practice-cancel','animation-homework-add','animation-homework-edit','animation-homework-cancel','animation-homework-delete','spanish-profile-edit','spanish-profile-cancel','spanish-lesson-add','spanish-lesson-cancel','spanish-vocab-add','spanish-vocab-cancel','spanish-homework-add','spanish-homework-cancel','spanish-prepare-add','spanish-prepare-cancel','spanish-prepare-toggle','journal-today','journal-open','journal-delete','painting-add-artwork','painting-edit-artwork','painting-artwork-cancel','painting-open','painting-back','painting-add-version','painting-version-cancel','plant-add','plant-edit','plant-cancel','plant-open','plant-back','plant-schedule-add','plant-schedule-cancel','plant-event-add','plant-event-cancel','plant-quick-event'].includes(action)) return false;
+      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete','animation-tutor-edit','animation-tutor-cancel','animation-resource-add','animation-resource-cancel','animation-project-add','animation-project-edit','animation-project-cancel','animation-media-delete','animation-practice-add','animation-practice-cancel','animation-homework-add','animation-homework-edit','animation-homework-cancel','animation-homework-delete','spanish-profile-edit','spanish-profile-cancel','spanish-lesson-add','spanish-lesson-cancel','spanish-vocab-add','spanish-vocab-cancel','spanish-homework-add','spanish-homework-cancel','spanish-prepare-add','spanish-prepare-cancel','spanish-prepare-toggle','journal-today','journal-open','journal-delete','painting-add-artwork','painting-edit-artwork','painting-artwork-cancel','painting-open','painting-back','painting-add-version','painting-version-cancel','plant-add','plant-edit','plant-cancel','plant-open','plant-back','plant-schedule-add','plant-schedule-cancel','plant-event-add','plant-event-cancel','plant-quick-event','science-continue','science-grade-notation','science-review-notation','science-method-check','science-note-add','science-note-cancel','science-note-delete','science-question-add','science-question-cancel'].includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery' || action === 'money') { navigate(action); return true; }
         if (action === 'category') { if (data.category === 'all' || M.CATEGORIES.some(item => item.key === data.category)) selectedCategory = data.category; }
+        else if(action==='science-continue'){const state=loadScienceState(current);const id=state.currentTopic==='Scientific Method'?'science-method':state.currentTopic==='Chemistry Basics'?'science-chemistry':'science-notation';const node=root.document&&root.document.getElementById(id);if(node&&node.scrollIntoView)node.scrollIntoView({behavior:'smooth',block:'start'});return true;}
+        else if(action==='science-grade-notation'){
+          const state=loadScienceState(current),qs=scienceNotationQuestions(),answers=state.notationLesson.quizAnswers||{};let correct=0;for(let i=0;i<qs.length;i++)if(answers[i]===qs[i][1])correct++;
+          state.notationLesson.quizScore=Math.round(correct/qs.length*100);state.currentTopic=state.notationLesson.quizScore===100?'Scientific Method':'Scientific Notation';state.quizHistory.push({topic:'Scientific Notation',score:state.notationLesson.quizScore,date:M.dayKey(getNow())});saveScienceState(current,state);notify('Scientific notation quiz: '+state.notationLesson.quizScore+'%.');refresh('#science-notation');return true;
+        }
+        else if(action==='science-review-notation'){
+          const state=loadScienceState(current),qs=scienceNotationQuestions(),answers=state.notationLesson.quizAnswers||{},wrong=[];for(let i=0;i<qs.length;i++)if(answers[i]!==qs[i][1])wrong.push((i+1)+'. Correct answer: '+qs[i][1]);
+          notify(wrong.length?('Review: '+wrong.join(' · ')):'No mistakes to review — all answers are correct.',false);return true;
+        }
+        else if(action==='science-method-check'){const node=root.document&&root.document.getElementById('science-method-answer');if(node)node.innerHTML='<p><strong>Model answer:</strong> Independent variable: amount of sunlight. Dependent variable: plant growth, measured consistently (for example height in cm). Keep plant type, soil, pot, water, temperature, and measurement timing as consistent as possible. Use repeated plants/measurements when practical.</p>';const state=loadScienceState(current);state.method.practice=true;state.method.quizScore=100;state.currentTopic='Chemistry Basics';saveScienceState(current,state);return true;}
+        else if(action==='science-note-add'){scienceNoteDraft={id:'',date:M.dayKey(getNow()),topic:loadScienceState(current).currentTopic||'Scientific Notation',class_name:'',note_type:'lesson',body:'',review_later:false,image_data:'',image_name:''};scienceNoteOpen=true;refresh('.science-notebook');return true;}
+        else if(action==='science-note-cancel'){scienceNoteOpen=false;refresh('.science-notebook');return true;}
+        else if(action==='science-note-delete'){const state=loadScienceState(current);state.notes=state.notes.filter(n=>n.id!==data.id);saveScienceState(current,state);refresh('.science-notebook');return true;}
+        else if(action==='science-question-add'){scienceQuestionDraft={id:'',text:'',topic:loadScienceState(current).currentTopic||'Scientific Notation',resolved:false};scienceQuestionOpen=true;refresh('.science-questions');return true;}
+        else if(action==='science-question-cancel'){scienceQuestionOpen=false;refresh('.science-questions');return true;}
         else if(action==='plant-add'){
           plantDraft={id:'',name:'',species:'',variety:'',acquired_on:M.dayKey(getNow()),planted_on:'',source:'',location:'',pot_size:'',substrate:'',stage:'growing',notes:'',archived:false};
           plantProfileOpen=true;refresh('.plant-collection');return true;
