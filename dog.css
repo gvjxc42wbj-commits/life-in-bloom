@@ -264,3 +264,79 @@
 @media(max-width:760px){
   .dog-note-columns{grid-template-columns:1fr}
 }
+
+
+/* Mockup-style Dog category picker */
+.dog-category-picker{position:relative;z-index:9}
+.dog-category-trigger{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:.55rem;
+  width:100%;
+  min-height:46px;
+  padding:.55rem .7rem;
+  border:1px solid #dfbdcb;
+  border-radius:11px;
+  background:#fff7fa;
+  color:#5d3245;
+  text-align:left;
+  cursor:pointer;
+}
+.dog-category-trigger:hover{background:#fff1f6}
+.dog-category-trigger:focus-visible{
+  outline:3px solid rgba(174,68,111,.18);
+  outline-offset:2px;
+}
+.dog-category-icon{
+  display:grid;
+  place-items:center;
+  width:30px;
+  height:30px;
+  border-radius:9px;
+  background:#f8e5ed;
+  font-size:1.05rem;
+}
+.dog-category-trigger strong{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:.9rem;
+}
+.dog-category-chevron{color:#8a5a6e;font-size:.9rem}
+.dog-category-menu{
+  position:absolute;
+  z-index:35;
+  top:calc(100% + 6px);
+  left:0;
+  right:0;
+  display:grid;
+  padding:.4rem;
+  border:1px solid #e2c8d3;
+  border-radius:14px;
+  background:#fff;
+  box-shadow:0 16px 34px rgba(80,44,59,.16);
+}
+.dog-category-menu button{
+  display:grid;
+  grid-template-columns:32px 1fr auto;
+  align-items:center;
+  gap:.55rem;
+  min-height:42px;
+  padding:.5rem .58rem;
+  border:0;
+  border-radius:10px;
+  background:transparent;
+  color:#553743;
+  text-align:left;
+  cursor:pointer;
+}
+.dog-category-menu button:hover,
+.dog-category-menu button[aria-selected="true"]{background:#fff0f6}
+.dog-category-menu button>span{font-size:1.1rem;text-align:center}
+.dog-category-menu button>strong{font-size:.84rem}
+.dog-category-menu button>b{color:#ad466e;font-size:.9rem}
+@media(max-width:620px){
+  .dog-category-menu{position:static;margin-top:.35rem;box-shadow:none}
+}
