@@ -820,3 +820,116 @@ html { scroll-padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
 @media(max-width:380px){
   .menu-skills-list{grid-template-columns:1fr}
 }
+
+
+/* Skills in Bloom · Science + Me dashboard */
+.skills-tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .65rem;
+  margin: 0 0 1rem;
+}
+.skills-progress-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .75rem;
+  align-items: center;
+  margin: .7rem 0 1rem;
+}
+.skills-progress-track {
+  height: 14px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(91, 72, 104, .12);
+  box-shadow: inset 0 0 0 1px rgba(91, 72, 104, .08);
+}
+.skills-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #c99ed7, #8cbf9f);
+  transition: width .2s ease;
+}
+.skills-dashboard-list {
+  display: grid;
+  gap: .75rem;
+}
+.skills-dashboard-card {
+  display: grid;
+  grid-template-columns: minmax(180px, .8fr) minmax(220px, 1.2fr);
+  gap: 1rem;
+  align-items: center;
+  padding: .9rem 1rem;
+  border: 1px solid rgba(91, 72, 104, .12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .72);
+}
+.skills-check,
+.science-topic,
+.science-quiz label {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+}
+.skills-minutes {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: .65rem;
+  align-items: center;
+}
+.skills-minutes span {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.skills-bloom input[type="range"] {
+  width: 100%;
+  accent-color: #8c6fa1;
+}
+.science-example {
+  margin: 1rem 0;
+  padding: 1rem;
+  border-radius: 14px;
+  background: rgba(140, 191, 159, .12);
+}
+.science-example p {
+  margin: .35rem 0 0;
+  font-size: 1.05rem;
+}
+.science-method-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+  align-items: center;
+  margin: 1rem 0;
+}
+.science-method-flow span {
+  padding: .5rem .75rem;
+  border-radius: 999px;
+  background: rgba(201, 158, 215, .16);
+  font-weight: 700;
+}
+.science-topic-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .6rem;
+  margin-top: 1rem;
+}
+.science-topic {
+  padding: .7rem .8rem;
+  border: 1px solid rgba(91, 72, 104, .1);
+  border-radius: 12px;
+}
+.science-quiz {
+  display: grid;
+  gap: .55rem;
+}
+.science-quiz > p {
+  margin: .8rem 0 .1rem;
+}
+@media (max-width: 720px) {
+  .skills-dashboard-card {
+    grid-template-columns: 1fr;
+  }
+  .science-topic-grid {
+    grid-template-columns: 1fr;
+  }
+}
