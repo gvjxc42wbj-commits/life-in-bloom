@@ -1005,3 +1005,11 @@
   .plant-summary,.plant-grid,.plant-care-grid,.plant-meta,.plant-event-media{grid-template-columns:1fr}
   .plant-card-photo{height:260px}
 }
+
+.plant-weekdays{margin:10px 0 0;padding:12px;border:1px solid #dce6d7;border-radius:13px;background:#fff}
+.plant-weekdays legend{padding:0 6px;font-weight:800;color:#4d634d}
+.plant-weekdays legend small{font-weight:500;color:#7b8677}
+.plant-weekday-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:8px}
+.plant-weekday-grid label{display:grid;place-items:center;gap:5px;padding:8px 4px;border:1px solid #dfe8da;border-radius:10px;background:#fbfdf9;font-size:11px;font-weight:700;color:#5c6f5b}
+.plant-weekday-grid input{accent-color:#6f946e}
+@media (max-width:620px){.plant-weekday-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
