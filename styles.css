@@ -1107,3 +1107,30 @@ html { scroll-padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
   .weather-reference-main{grid-template-columns:1fr;gap:8px}
   .weather-temp-reference{font-size:3.5rem}
 }
+
+
+/* Restored Home header sections above reference cards */
+.reference-home-hero,
+.reference-household-strip,
+.reference-trash-reminder{
+  max-width:1180px;
+  margin-left:auto;
+  margin-right:auto;
+}
+.reference-home-hero{
+  margin-bottom:16px;
+}
+.reference-household-strip{
+  margin-bottom:14px;
+}
+.reference-trash-reminder{
+  margin-bottom:18px;
+}
+@media(max-width:680px){
+  .reference-home-hero,
+  .reference-household-strip,
+  .reference-trash-reminder{margin-left:0;margin-right:0}
+  .reference-household-strip{align-items:flex-start}
+  .reference-trash-reminder{grid-template-columns:auto 1fr}
+  .reference-trash-countdown{grid-column:1/-1}
+}
