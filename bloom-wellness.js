@@ -44,6 +44,78 @@
     },0):0;
     return {product,servings:entries.reduce((sum,row)=>sum+Number(row.servings||0),0),logged:entries.length>0,stock:Math.max(0,Math.floor(stock))};
   }
+
+  const AUBURN_WEATHER_POINT='44.07,-70.24833';
+  function weatherIcon(text,temp){
+    const s=String(text||'').toLowerCase();
+    if(/thunder/.test(s))return '⛈️';
+    if(/snow|sleet|flurr/.test(s))return '❄️';
+    if(/rain|shower|drizzle/.test(s))return '🌧️';
+    if(/fog|mist/.test(s))return '🌫️';
+    if(/cloud|overcast/.test(s))return '☁️';
+    if(Number(temp)<=32)return '🥶';
+    return '☀️';
+  }
+  function clothingAdvice(temp,forecast,precip,wind){
+    const t=Number(temp),p=Number(precip)||0,s=String(forecast||'').toLowerCase(),w=String(wind||'');
+    const wet=/rain|shower|drizzle|thunder/.test(s)||p>=45;
+    const snow=/snow|sleet|flurr/.test(s);
+    let clothes='';
+    if(t<=20)clothes='Heavy coat, warm layers, hat and gloves.';
+    else if(t<=32)clothes='Definitely a coat. Gloves would not be dramatic.';
+    else if(t<=45)clothes='Coat or warm jacket weather.';
+    else if(t<=58)clothes='A jacket or sweater should earn its keep.';
+    else if(t<=70)clothes='Light layers should do it.';
+    else if(t<=82)clothes='Light clothes. Keep a layer nearby if you run cold.';
+    else clothes='Dress light. Maine has briefly remembered summer.';
+    let extra='';
+    if(snow)extra=' Boots are a very sensible life choice.';
+    else if(wet)extra=' Bring an umbrella — optimism is not waterproof.';
+    else if(/wind/.test(s)||/1[8-9]|[2-9]\d/.test(w))extra=' It may be breezy enough to rearrange your hair for free.';
+    else if(t<=32)extra=' Maine has voted for layers.';
+    else if(t>=80)extra=' Hydrate; the sun is being ambitious.';
+    else extra=' Weather is behaving itself for the moment.';
+    return clothes+extra;
+  }
+  async function fetchAuburnWeather(){
+    const point=await fetch('https://api.weather.gov/points/'+AUBURN_WEATHER_POINT,{headers:{Accept:'application/geo+json'}});
+    if(!point.ok)throw new Error('Weather point unavailable');
+    const pointData=await point.json(),url=pointData&&pointData.properties&&pointData.properties.forecastHourly;
+    if(!url)throw new Error('Hourly forecast unavailable');
+    const forecast=await fetch(url,{headers:{Accept:'application/geo+json'}});
+    if(!forecast.ok)throw new Error('Weather forecast unavailable');
+    const data=await forecast.json(),period=data&&data.properties&&data.properties.periods&&data.properties.periods[0];
+    if(!period)throw new Error('Weather forecast unavailable');
+    return {
+      temperature:Number(period.temperature),
+      unit:period.temperatureUnit||'F',
+      shortForecast:String(period.shortForecast||'Forecast unavailable'),
+      precip:period.probabilityOfPrecipitation&&period.probabilityOfPrecipitation.value!=null?Number(period.probabilityOfPrecipitation.value):0,
+      wind:String(period.windSpeed||''),
+      icon:weatherIcon(period.shortForecast,period.temperature)
+    };
+  }
+  function hydrateAuburnWeather(){
+    if(!root.document)return;
+    const card=root.document.querySelector('[data-auburn-weather]');
+    if(!card||card.dataset.loading==='true')return;
+    card.dataset.loading='true';
+    const temp=card.querySelector('[data-weather-temp]'),conditions=card.querySelector('[data-weather-conditions]'),advice=card.querySelector('[data-weather-advice]'),icon=card.querySelector('[data-weather-icon]');
+    Promise.resolve(fetchAuburnWeather()).then(value=>{
+      if(temp)temp.textContent=Math.round(value.temperature)+'°'+value.unit;
+      if(conditions)conditions.textContent=value.shortForecast+(value.precip?' · '+value.precip+'% precip.':'');
+      if(advice)advice.textContent=clothingAdvice(value.temperature,value.shortForecast,value.precip,value.wind);
+      if(icon)icon.textContent=value.icon;
+      card.dataset.loading='false';
+    }).catch(()=>{
+      if(temp)temp.textContent='Weather unavailable';
+      if(conditions)conditions.textContent='Auburn, Maine';
+      if(advice)advice.textContent='Dress in layers. Maine enjoys keeping its options open.';
+      if(icon)icon.textContent='🌦️';
+      card.dataset.loading='false';
+    });
+  }
+
   function createController(options) {
     options=options||{};const store=options.store,notify=options.notify||(()=>{}),refresh=options.refresh||(()=>{}),navigate=options.navigate||(()=>{});
     const confirm=options.confirm||(()=>true),getNow=options.getNow||(()=>new Date()),draftStore=options.draftStore;
@@ -209,7 +281,7 @@
         const boost=boostSummary(current,today,1);
         html+='<div class="bloom-dashboard-grid"><article class="bloom-dashboard-card card-peach boost-quick-card"><div class="boost-card-top"><span class="bloom-card-icon" aria-hidden="true">🥤</span>'+button('boost-plus','+',' data-product="'+esc(boost.product&&boost.product.id||'')+'" aria-label="Add one Boost" title="Add one Boost"',true,!boost.product||boost.stock<1||current.offline)+'</div><p class="page-kicker">Person 1 · Boost</p><strong class="bloom-card-value">'+fmt(boost.servings)+' today</strong><p>'+boost.stock+' Boost'+(boost.stock===1?'':'s')+' left in inventory.</p></article>';
         if(context.personalAvailable)html+='<article class="bloom-dashboard-card card-lilac"><span class="bloom-card-icon" aria-hidden="true">☾</span><p class="page-kicker">Sleep &amp; Mood</p><strong class="bloom-card-value">'+esc(context.sleepText)+'</strong><p>'+Number(context.moodCount||0)+' hourly feelings · tracking day '+esc(context.today)+'</p><button type="button" class="button" data-page-action="open-day" data-date="'+esc(context.today)+'">Open Daily Log</button></article>';
-        html+='<article class="bloom-dashboard-card card-sage"><span class="bloom-card-icon" aria-hidden="true">🌿</span><p class="page-kicker">Smoking Log · your account</p><strong class="bloom-card-value">'+(h.smokingDay?Number(h.smokingDay.joints)+' joints · '+Number(h.smokingDay.cigars)+' cigars':'Not logged today')+'</strong><p>Zero is a valid entry. Record your own patterns.</p>'+button('navigate','Open Smoking Log',' data-page="smoking"')+'</article>';
+        html+='<article class="bloom-dashboard-card card-sage weather-home-card" data-auburn-weather><div class="weather-card-top"><span class="bloom-card-icon" data-weather-icon aria-hidden="true">🌦️</span><span class="weather-location">Auburn, Maine</span></div><p class="page-kicker">Weather · what to wear</p><strong class="bloom-card-value" data-weather-temp>Loading weather…</strong><p class="weather-conditions" data-weather-conditions>Checking the sky.</p><p class="weather-advice" data-weather-advice>Figuring out whether Maine requires a coat today.</p></article>';
         html+='<article class="bloom-dashboard-card card-cream"><span class="bloom-card-icon" aria-hidden="true">🎹</span><p class="page-kicker">Skills in Bloom</p><strong class="bloom-card-value">'+Number(h.dueSkills||0)+' reviews due</strong><p>'+Number(h.practiceMinutes||0)+' practice minutes logged today.</p>'+button('navigate','Choose a skill',' data-page="skills"')+'</article>';
         html+='<article class="bloom-dashboard-card card-pink"><img class="bloom-dog-avatar" src="./icons/dog-companion.jpeg" alt="Your cartoon dachshund"/><p class="page-kicker">Dog care</p><strong class="bloom-card-value">'+Number(dog.dueCount||0)+' care tasks due</strong><p>'+esc(dog.dogName||'Your companion')+' · '+Number(dog.completedCount||0)+' completed today.</p>'+button('navigate','Open Dog',' data-page="dog"')+'</article>';
         html+='<article class="bloom-dashboard-card card-sage"><span class="bloom-card-icon" aria-hidden="true">🥣</span><p class="page-kicker">Food in Bloom</p><strong class="bloom-card-value">'+esc(context.grocerySummary&&context.grocerySummary.title||'Your kitchen')+'</strong><p>Food at home, grocery list, menu, recipes and cooking.</p>'+button('navigate','Open Food',' data-page="food"')+'</article></div>';
@@ -217,6 +289,7 @@
         const spent=entries.reduce((sum,row)=>sum+Number(row.amount_cents||0),0),savings=h.smokingEstimate&&h.smokingEstimate.savingsCents;
         html+='<section class="bloom-money-card"><div><p class="page-kicker">Money in Bloom</p><h2>'+money(spent)+'</h2><p>Recorded spending this month</p></div><div class="bloom-estimate"><strong>'+(savings==null?h.smokingDay?'Set your smoking baseline & prices':'Log your smoking day':money(Math.abs(savings)))+'</strong><span>'+(savings==null?'to compare a saved day with your original plan.':savings>=0?'estimated smoking cost below your baseline today':'estimated smoking cost above your baseline today')+'</span><small>Estimates are separate from actual money entries.</small></div>'+button('navigate','Open money ledger',' data-page="money"')+'</section>';
       } else html+='<section class="panel"><h2>Your connected daily dashboard</h2><p>Open your household to see planned meals, dog care, practice reminders, and your saved money records.</p>'+button('signin','Open sign-in','',true)+'</section>';
+      if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(hydrateAuburnWeather));
       if(context.personalAvailable)html+='<div class="bloom-ideas-strip"><span aria-hidden="true">🌱</span><p><strong>'+Number(context.noteCount||0)+' saved ideas</strong><br>A place for thoughts you want to keep.</p><button type="button" class="button" data-page-action="navigate" data-page-target="ideas">Open notes</button></div>';
       return html+'</div>';
     }
