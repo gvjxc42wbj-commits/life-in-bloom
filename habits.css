@@ -768,3 +768,54 @@
 @media(max-width:650px){
   .animation-homework-list article{grid-template-columns:1fr}
 }
+
+
+/* Spanish in Bloom */
+.spanish-dashboard{display:grid;gap:14px;margin:14px 0 24px}
+.spanish-banner{
+  display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;
+  padding:20px 24px;border:1px solid #e5d1dc;border-radius:22px;
+  background:linear-gradient(110deg,#f9e3ec,#fff8fb 60%,#eef8f5);
+  box-shadow:0 10px 24px rgba(83,52,71,.07)
+}
+.spanish-banner h2{margin:.1rem 0 .25rem;font-family:Georgia,serif;font-size:clamp(2.2rem,6vw,3.8rem);color:#563449}
+.spanish-banner p{margin:0;color:#775c6b}.spanish-banner>span{font-size:56px}
+.spanish-dashboard .panel{margin:0}
+.spanish-top-grid{display:grid;grid-template-columns:1.15fr .9fr .7fr;gap:12px}
+.spanish-tutor{background:linear-gradient(135deg,#fff8fb,#f7f2ff)}
+.spanish-tutor-avatar{display:grid;place-items:center;width:68px;height:68px;border-radius:50%;background:#f0dfea;border:4px solid #fff;font-size:34px}
+.spanish-inline-form{padding:13px;border:1px solid #e7ced9;border-radius:14px;background:#fff9fb}
+.spanish-schedule-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:10px 0}
+.spanish-schedule-grid article{display:grid;gap:3px;padding:12px;border:1px solid #ead7df;border-radius:13px;background:#fff}
+.spanish-schedule-grid strong{font-size:15px;color:#6f3e54}.spanish-schedule-grid span{font-weight:800;color:#8c4562}.spanish-schedule-grid small{color:#806774}
+.spanish-prepare-list,.spanish-lesson-list,.spanish-homework-list{display:grid;gap:8px}
+.spanish-prepare-list article,.spanish-lesson-card,.spanish-homework-list article{padding:11px;border:1px solid #ead7df;border-radius:13px;background:#fff}
+.spanish-prepare-list article{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center}
+.spanish-prepare-list article>span{padding:4px 7px;border-radius:999px;background:#f4e0e9;color:#7e405a;font-size:10px;font-weight:800}
+.spanish-prepare-list article p{margin:0;color:#654b58}.spanish-prepare-list article.is-reviewed{opacity:.65;background:#f7f7f5}
+.spanish-lesson-card{display:grid;grid-template-columns:1fr auto;gap:10px}
+.spanish-lesson-card h3{margin:4px 0}.spanish-lesson-card p{margin:0;color:#715966;font-size:12px}.spanish-lesson-card small{display:block;margin-top:5px;color:#836b77}
+.spanish-file-row{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.spanish-file-row span{padding:5px 7px;border:1px solid #ead5de;border-radius:9px;background:#fff8fb;color:#694355;font-size:10px}
+.spanish-file-row a{color:#8c4563;font-weight:800}
+.spanish-two-col{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}
+.spanish-vocab-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.spanish-vocab-grid article{display:grid;gap:3px;padding:11px;border:1px solid #ead6df;border-radius:13px;background:#fff}
+.spanish-vocab-grid strong{font-family:Georgia,serif;font-size:18px;color:#613a4d}.spanish-vocab-grid span{color:#6f5360}.spanish-vocab-grid p{margin:4px 0;color:#725967;font-size:11px}.spanish-vocab-grid small{color:#8c6f7c}
+.spanish-grammar ul{margin:10px 0;padding-left:20px;color:#684c59;line-height:1.7}
+.spanish-homework-list article{display:grid;grid-template-columns:1fr auto;gap:10px}.spanish-homework-list strong,.spanish-homework-list small{display:block}.spanish-homework-list small{margin-top:3px;color:#806674}.spanish-homework-list p{margin:5px 0 0;color:#715966;font-size:11px}
+.spanish-skill-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.spanish-skill-grid article{display:grid;grid-template-columns:auto 1fr;gap:7px;align-items:center;padding:11px;border:1px solid #ead6df;border-radius:13px;background:#fff}
+.spanish-skill-grid span{font-size:22px}.spanish-skill-grid strong{font-size:12px;color:#654254}.spanish-skill-grid select{grid-column:1/-1;min-height:38px;border:1px solid #dfbdcb;border-radius:10px;background:#fff8fb;padding:6px 8px;color:#5d394a}
+.spanish-week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px}.spanish-week-grid article{padding:10px;border:1px solid #ead8e0;border-radius:12px;background:#fff}.spanish-week-grid b{display:block;margin-bottom:5px;color:#80445f}.spanish-week-grid span{color:#705966;font-size:10px;line-height:1.4}
+.spanish-check{display:flex;gap:8px;align-items:center;color:#674757;font-size:12px;font-weight:700}.spanish-check input{accent-color:#a94b72}
+@media(max-width:950px){
+  .spanish-top-grid,.spanish-two-col{grid-template-columns:1fr}
+  .spanish-vocab-grid,.spanish-skill-grid{grid-template-columns:1fr 1fr}
+  .spanish-week-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:600px){
+  .spanish-banner{grid-template-columns:1fr}.spanish-banner>span{display:none}
+  .spanish-schedule-grid,.spanish-vocab-grid,.spanish-skill-grid,.spanish-week-grid{grid-template-columns:1fr}
+  .spanish-lesson-card,.spanish-homework-list article,.spanish-prepare-list article{grid-template-columns:1fr}
+}
