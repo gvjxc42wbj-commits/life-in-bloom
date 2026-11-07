@@ -10,7 +10,8 @@
     moneyEntries: 'bloom_money_entries', bills: 'bloom_bills', billRules: 'bloom_bill_rules', recipes: 'bloom_recipes',
     mealEntries: 'bloom_meal_entries', foodFiles: 'bloom_food_files',
     cookingPlans: 'bloom_cooking_plans', mealShoppingLinks: 'bloom_meal_shopping_links',
-    lifeRecords: 'bloom_life_records', dogStockEffects: 'bloom_dog_stock_effects', kitchenEquipment: 'bloom_kitchen_equipment'
+    lifeRecords: 'bloom_life_records', dogStockEffects: 'bloom_dog_stock_effects', kitchenEquipment: 'bloom_kitchen_equipment',
+    engineeringHomework: 'bloom_engineering_homework', engineeringFiles: 'bloom_engineering_files'
   };
   const PRIVATE_FIELDS = ['display_name', 'age_years', 'height_cm', 'weight_kg', 'activity_level', 'notes'];
   const DIET_FIELDS = ['display_name', 'color', 'calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'allergies', 'restrictions', 'preferences', 'notes'];
@@ -25,7 +26,7 @@
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles'];
   const LIFE_COLLECTIONS = {
     hydrationSettings:'hydration_settings', hydrationEntries:'hydration_entry',
     skills:'skill', skillSessions:'skill_session', smokingSettings:'smoking_settings', smokingDays:'smoking_day',
@@ -141,6 +142,7 @@
     }
     const uploads = new Map();
     const signedFiles = new Map();
+    const signedEngineeringFiles = new Map();
     let client = options.client || null;
     let state = emptyState('loading');
     let generation = 0;
@@ -255,6 +257,7 @@
       if ((state.user && state.user.id) !== (next && next.id)) {
         if (state.user) clearCache(state.user.id);
         signedFiles.clear();
+        signedEngineeringFiles.clear();
         uploads.clear();
         generation++;
         requestNumber++;
@@ -834,6 +837,88 @@
       checkContext(current); signedFiles.delete(saved.path);
       return deleteRow(TABLES.foodFiles,row);
     }
+    async function saveEngineeringHomework(row) {
+      requireOnline();
+      const current=context(true);
+      row=row || {};
+      const title=String(row.title || '').trim();
+      if (!title || title.length>200) throw new Error('Enter a homework title up to 200 characters.');
+      const notes=String(row.notes || '').trim();
+      if (notes.length>5000) throw new Error('Homework notes are too long.');
+      const due=row.due_on ? String(row.due_on) : null;
+      if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) throw new Error('Choose a valid homework due date.');
+      const id=row.id || newUuid();
+      const payload={id,household_id:current.householdId,user_id:current.userId,title,due_on:due,status:row.status==='done'?'done':'open',notes,updated_at:new Date().toISOString()};
+      try {
+        const result=assertResult(await client.from(TABLES.engineeringHomework).upsert(payload,{onConflict:'id'}).select('*'));
+        checkContext(current);
+        if(!Array.isArray(result)||result.length!==1) throw new Error('The homework could not be saved.');
+        await refresh(); checkContext(current); return result[0];
+      } catch(error){ if(current.generation===generation) throw fail(error); throw error; }
+    }
+    async function deleteEngineeringHomework(row) {
+      requireOnline();
+      const current=context(true);
+      if(!row||!row.id) throw new Error('Choose saved homework to remove.');
+      try {
+        const result=assertResult(await client.from(TABLES.engineeringHomework).delete().eq('id',row.id).eq('user_id',current.userId).eq('household_id',current.householdId).select('id'));
+        checkContext(current);
+        if(!Array.isArray(result)||result.length!==1) throw new Error('That homework changed or was already removed.');
+        await refresh(); checkContext(current); return true;
+      } catch(error){ if(current.generation===generation) throw fail(error); throw error; }
+    }
+    async function uploadEngineeringFile(value) {
+      requireOnline();
+      const current=context(true), file=value&&value.file;
+      if(!file||!file.size||file.size>10*1024*1024||!['image/jpeg','image/png','image/webp','application/pdf'].includes(file.type)) throw new Error('Choose a JPG, PNG, WebP, or PDF file up to 10 MB.');
+      const bytes=new Uint8Array(await file.slice(0,12).arrayBuffer()); checkContext(current);
+      const magic=file.type==='image/jpeg' ? bytes[0]===255&&bytes[1]===216&&bytes[2]===255 :
+        file.type==='image/png' ? bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71 :
+        file.type==='application/pdf' ? String.fromCharCode(...bytes.slice(0,5))==='%PDF-' :
+        String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&String.fromCharCode(...bytes.slice(8,12))==='WEBP';
+      if(!magic) throw new Error('The selected file does not match its image or PDF type.');
+      const id=newUuid(), ext={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','application/pdf':'pdf'}[file.type];
+      const path=current.userId+'/'+id+'.'+ext;
+      try {
+        const uploaded=await client.storage.from('bloom-engineering-files').upload(path,file,{contentType:file.type,upsert:false,cacheControl:'3600'});
+        checkContext(current);
+        if(uploaded.error) throw errorOf(uploaded.error);
+        const meta={id,household_id:current.householdId,user_id:current.userId,homework_id:value&&value.homework_id||null,
+          name:String(file.name||'Engineering file').slice(0,240),path,mime_type:file.type,size_bytes:file.size};
+        const saved=assertResult(await client.from(TABLES.engineeringFiles).insert(meta).select('*'));
+        checkContext(current);
+        if(!Array.isArray(saved)||saved.length!==1) throw new Error('The file metadata could not be saved.');
+        await refresh(); checkContext(current); return saved[0];
+      } catch(error) {
+        try { await client.storage.from('bloom-engineering-files').remove([path]); } catch(_) {}
+        if(current.generation===generation) throw fail(error);
+        throw error;
+      }
+    }
+    async function getEngineeringFileUrl(row) {
+      requireOnline();
+      const current=context(true);
+      const saved=state.engineeringFiles.find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/')) throw new Error('This Engineering file is no longer available.');
+      const prior=signedEngineeringFiles.get(saved.path);
+      if(prior&&prior.expires>Date.now()) return prior.url;
+      const result=assertResult(await client.storage.from('bloom-engineering-files').createSignedUrl(saved.path,120));
+      checkContext(current);
+      if(!result||typeof result.signedUrl!=='string'||!/^https:\/\//.test(result.signedUrl)) throw new Error('The Engineering file link could not be opened.');
+      signedEngineeringFiles.set(saved.path,{url:result.signedUrl,expires:Date.now()+90000});
+      return result.signedUrl;
+    }
+    async function deleteEngineeringFile(row) {
+      requireOnline();
+      const current=context(true);
+      const saved=state.engineeringFiles.find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/')) throw new Error('Refresh the Engineering files before removing one.');
+      assertResult(await client.storage.from('bloom-engineering-files').remove([saved.path]));
+      checkContext(current); signedEngineeringFiles.delete(saved.path);
+      const deleted=assertResult(await client.from(TABLES.engineeringFiles).delete().eq('id',saved.id).eq('user_id',current.userId).select('id'));
+      if(!Array.isArray(deleted)||deleted.length!==1) throw new Error('The Engineering file record could not be removed.');
+      await refresh(); checkContext(current); return true;
+    }
     function exportHousehold() {
       if(!state.user || !state.household || state.status!=='ready') throw new Error('Open your household before exporting a backup.');
       return { app:'Life in Bloom Household',version:1,household_id:state.household.id,exported_at:new Date().toISOString(),
@@ -881,7 +966,8 @@
       deleteShoppingItem, importLocalShopping, saveProduct, saveRecurringProduct, saveBill, ensureBillMonth, stopBillSeries, saveRecipe,
       saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, importFoodMaster, saveKitchenEquipment, deleteKitchenEquipment, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
       ...lifeSavers,saveLifeRecord,archiveLifeRecord,addDogSupplyToShopping,exportPersonalLifeRecords,importPersonalLifeRecords,
-      uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
+      uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveEngineeringHomework, deleteEngineeringHomework, uploadEngineeringFile, getEngineeringFileUrl, deleteEngineeringFile,
+      saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };
   if (typeof module === 'object' && module.exports) module.exports = api;
