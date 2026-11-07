@@ -96,6 +96,7 @@
     let spanishVocabDraft={id:'',lesson_id:'',word:'',meaning:'',part_of_speech:'',example_spanish:'',example_english:'',status:'learning'};
     let spanishHomeworkDraft={id:'',title:'',due_on:'',status:'open',notes:''};
     let spanishPrepareDraft={id:'',item_type:'question',text_value:'',status:'prepare',lesson_date:''};
+    let journalDate=M.dayKey(getNow()), journalBody='', journalLoadedKey='';
     let pianoPracticeDraft={duration_minutes:'20',source:'independent',course_name:'',lesson_name:'',piece_name:'',accuracy_percent:'',notes:''};
     let pianoRepertoireDraft={title:'',kind:'piece',status:'learning',source:'',notes:''};
     let pianoMediaMeta={title:'Practice sample',piece_name:'',notes:''};
@@ -691,6 +692,17 @@
         }).catch(()=>{});
       }
     }
+    function journalRows(current){
+      const user=current.user&&current.user.id,household=current.household&&current.household.id;
+      return (current.dailyJournal||[]).filter(row=>row&&row.user_id===user&&row.household_id===household)
+        .sort((a,b)=>String(b.entry_date||'').localeCompare(String(a.entry_date||'')));
+    }
+    function loadJournalDate(current,date){
+      journalDate=date;
+      const row=journalRows(current).find(item=>item.entry_date===date);
+      journalBody=row?String(row.body||''):'';
+      journalLoadedKey=date+':'+(row&&row.updated_at||'new');
+    }
     function renderPianoDashboard(current,today) {
       const apps=pianoRows(current,'pianoAppProgress').slice().sort((a,b)=>String(a.app_name).localeCompare(String(b.app_name))||String(a.course_name).localeCompare(String(b.course_name)));
       const sessions=pianoRows(current,'pianoPracticeSessions').slice().sort((a,b)=>String(b.occurred_on).localeCompare(String(a.occurred_on))||String(b.created_at||'').localeCompare(String(a.created_at||'')));
@@ -866,6 +878,18 @@
         + '</section>';
     }
 
+    function renderDailyJournal(current,today){
+      const rows=journalRows(current);
+      const row=rows.find(item=>item.entry_date===journalDate)||null;
+      const key=journalDate+':'+(row&&row.updated_at||'new');
+      if(journalLoadedKey!==key && journalBody==='') loadJournalDate(current,journalDate);
+      return '<section class="journal-dashboard">'
+        + '<section class="journal-banner"><div><p class="page-kicker">Skills in Bloom · Journal</p><h2>Daily Journal</h2><p>A quiet place to write about your day.</p></div><span aria-hidden="true">📓</span></section>'
+        + '<section class="panel journal-entry-panel"><div class="journal-date-row"><label>Date <input type="date" data-journal-date value="'+esc(journalDate)+'"></label><button type="button" class="button" data-habit-action="journal-today">Today</button></div><form data-journal-form><label class="habit-field"><span>Journal entry</span><textarea rows="18" maxlength="30000" data-journal-body placeholder="Write whatever you want to remember about today...">'+esc(journalBody)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">'+(row?'Update entry':'Save entry')+'</button>'+(row?button('journal-delete','Delete entry',' data-id="'+esc(row.id)+'"'):'')+'</div></form></section>'
+        + '<section class="panel journal-history"><div class="habit-heading"><div><p class="page-kicker">Recent entries</p><h2>Journal History</h2></div></div><div class="journal-history-list">'+(rows.length?rows.slice(0,30).map(item=>'<button type="button" data-habit-action="journal-open" data-date="'+esc(item.entry_date)+'"><strong>'+esc(dateLabel(item.entry_date))+'</strong><span>'+esc(String(item.body||'').replace(/\s+/g,' ').slice(0,120)||(item.entry_date===journalDate?'Current entry':'No text'))+'</span></button>').join(''):'<p class="habit-help">No journal entries saved yet.</p>')+'</div></section>'
+        + '</section>';
+    }
+
     function renderMathDashboard(current, skills, sessions, today) {
       const mathSkills=skills.filter(skill=>skill.category==='math');
       const ids=new Set(mathSkills.map(skill=>skill.id));
@@ -1028,6 +1052,7 @@
       if (selectedCategory === 'piano') return renderPianoDashboard(current, today);
       if (selectedCategory === 'animation') return renderAnimationDashboard(current, today);
       if (selectedCategory === 'language') return renderSpanishDashboard(current, today);
+      if (selectedCategory === 'writing') return renderDailyJournal(current, today);
       if (selectedCategory === 'math') return renderMathDashboard(current, skills, sessions, today);
       if (selectedCategory === 'engineering') html += renderEngineeringDashboard(current, skills, sessions, today);
       if (skillOpen) html += renderSkillForm(current);
@@ -1175,6 +1200,10 @@
     }
     function handleSubmit(event) {
       const form=event.target;
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'journalForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving journal entry…',()=>store.saveDailyJournal({entry_date:journalDate,body:journalBody}),saved=>{journalLoadedKey=journalDate+':'+(saved&&saved.updated_at||'saved');notify('Journal entry saved.');},null,'.journal-entry-panel');}catch(error){notify(error.message,true);}return true;
+      }
       if(form&&form.dataset&&Object.hasOwn(form.dataset,'spanishProfileForm')){
         if(event.preventDefault)event.preventDefault();const current=snapshot();
         try{requireReady(current);run('Saving Spanish profile…',()=>store.saveSpanishProfile(spanishProfileDraft),()=>{spanishProfileOpen=false;notify('Spanish profile updated.');});}catch(error){notify(error.message,true);}return true;
@@ -1280,6 +1309,8 @@
       const element = event.target, data = element && element.dataset;
       if (!data) return false;
       const current = snapshot();
+      if(Object.hasOwn(data,'journalBody')){journalBody=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'journalDate')){if(/^\d{4}-\d{2}-\d{2}$/.test(element.value))loadJournalDate(current,element.value);refresh();return true;}
       if(Object.hasOwn(data,'spanishProfileField')){const key=data.spanishProfileField;if(Object.hasOwn(spanishProfileDraft,key))spanishProfileDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'spanishLessonField')){const key=data.spanishLessonField;if(Object.hasOwn(spanishLessonDraft,key))spanishLessonDraft[key]=key==='attended'?Boolean(element.checked):String(element.value||'');return true;}
       if(Object.hasOwn(data,'spanishVocabField')){const key=data.spanishVocabField;if(Object.hasOwn(spanishVocabDraft,key))spanishVocabDraft[key]=String(element.value||'');return true;}
@@ -1338,6 +1369,7 @@
     }
     function handleChange(event) {
       const element = event.target, data = element && element.dataset;
+      if(data&&Object.hasOwn(data,'journalDate')){if(/^\d{4}-\d{2}-\d{2}$/.test(element.value))loadJournalDate(current,element.value);refresh();return true;}
       if(data&&Object.hasOwn(data,'spanishCefr')){
         const current=snapshot(),key=data.key,row=spanishRows(current,'spanishCefrSkills').find(item=>item.skill_key===key)||{skill_key:key,evidence:''};
         try{requireReady(current);run('Updating Spanish proficiency…',()=>store.saveSpanishCefrSkill({...row,skill_key:key,state:element.value}),()=>notify(spanishSkillInfo(key)[1]+' updated.'),null,'.spanish-progress');}catch(error){notify(error.message,true);}return true;
@@ -1500,11 +1532,18 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-habit-action]') : null;
       const data = element && element.dataset, action = data && data.habitAction;
-      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete','animation-tutor-edit','animation-tutor-cancel','animation-resource-add','animation-resource-cancel','animation-project-add','animation-project-edit','animation-project-cancel','animation-media-delete','animation-practice-add','animation-practice-cancel','animation-homework-add','animation-homework-edit','animation-homework-cancel','animation-homework-delete','spanish-profile-edit','spanish-profile-cancel','spanish-lesson-add','spanish-lesson-cancel','spanish-vocab-add','spanish-vocab-cancel','spanish-homework-add','spanish-homework-cancel','spanish-prepare-add','spanish-prepare-cancel','spanish-prepare-toggle'].includes(action)) return false;
+      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete','animation-tutor-edit','animation-tutor-cancel','animation-resource-add','animation-resource-cancel','animation-project-add','animation-project-edit','animation-project-cancel','animation-media-delete','animation-practice-add','animation-practice-cancel','animation-homework-add','animation-homework-edit','animation-homework-cancel','animation-homework-delete','spanish-profile-edit','spanish-profile-cancel','spanish-lesson-add','spanish-lesson-cancel','spanish-vocab-add','spanish-vocab-cancel','spanish-homework-add','spanish-homework-cancel','spanish-prepare-add','spanish-prepare-cancel','spanish-prepare-toggle','journal-today','journal-open','journal-delete'].includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery' || action === 'money') { navigate(action); return true; }
         if (action === 'category') { if (data.category === 'all' || M.CATEGORIES.some(item => item.key === data.category)) selectedCategory = data.category; }
+        else if(action==='journal-today'){loadJournalDate(current,M.dayKey(getNow()));refresh();return true;}
+        else if(action==='journal-open'){if(data.date)loadJournalDate(current,data.date);refresh();return true;}
+        else if(action==='journal-delete'){
+          const row=journalRows(current).find(item=>item.id===data.id);if(!row)throw new Error('Refresh to find that journal entry.');
+          if(!confirm('Delete this journal entry?'))return true;
+          run('Deleting journal entry…',()=>store.deleteDailyJournal(row),()=>{journalBody='';journalLoadedKey='';notify('Journal entry deleted.');},null,'.journal-entry-panel');return true;
+        }
         else if(action==='spanish-profile-edit'){
           const row=spanishRows(current,'spanishProfile')[0]||{tutor_name:'Ale',tutor_profile_url:'https://preply.com/en/tutor/6569875',duolingo_score:22,duolingo_section:'Section 3',duolingo_unit:'Unit 7',cefr_level:'not_assessed',target_level:'C1',notes:''};
           spanishProfileDraft={...row,duolingo_score:row.duolingo_score==null?'':row.duolingo_score};spanishProfileOpen=true;refresh();return true;
