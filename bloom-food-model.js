@@ -300,21 +300,54 @@
       return (left ? dateNumber(left.date) : Infinity) - (right ? dateNumber(right.date) : Infinity) || String(a.id).localeCompare(String(b.id));
     });
   }
-  function packageCapacity(product, targetUnit) {
+  function packageCapacityInfo(product, targetUnit) {
     if (!product) return null;
     const packQuantity = positive(product.package_quantity);
     const packUnit = normalizeUnit(product.package_unit);
+    const target = normalizeUnit(targetUnit);
     if (packQuantity != null && UNITS.some(unit => unit.value === packUnit)) {
-      const direct = convertQuantity(packQuantity, packUnit, targetUnit);
-      if (direct != null) return direct;
+      const direct = convertQuantity(packQuantity, packUnit, target);
+      if (direct != null) return { capacity: direct, estimated: false, note: '' };
     }
     const servings = positive(product.servings_per_package);
     const servingQuantity = positive(product.serving_quantity);
     const servingUnit = normalizeUnit(product.serving_unit);
     if (servings != null && servingQuantity != null && UNITS.some(unit => unit.value === servingUnit)) {
-      return convertQuantity(servings * servingQuantity, servingUnit, targetUnit);
+      const labeled = convertQuantity(servings * servingQuantity, servingUnit, target);
+      if (labeled != null) return { capacity: labeled, estimated: false, note: 'Uses the product label serving count.' };
+    }
+
+    const name = String(product.name || '').trim().toLowerCase();
+    if (name === 'garlic' && packQuantity != null && packUnit === 'each') {
+      if (target === 'clove') return { capacity: tidy(packQuantity * 10), estimated: true, note: 'Garlic estimate: about 10 cloves per head.' };
+      if (target === 'tsp') return { capacity: tidy(packQuantity * 10), estimated: true, note: 'Garlic estimate: about 1 teaspoon minced garlic per clove and about 10 cloves per head.' };
+      if (target === 'tbsp') return { capacity: tidy(packQuantity * 10 / 3), estimated: true, note: 'Garlic estimate: about 3 cloves per tablespoon minced and about 10 cloves per head.' };
+    }
+
+    if ((name === 'lemons' || name.includes('lemons -')) && packQuantity != null && packUnit === 'each') {
+      if (target === 'tsp') return { capacity: tidy(packQuantity * 9), estimated: true, note: 'Lemon estimate: about 3 tablespoons (9 teaspoons) juice per lemon.' };
+      if (target === 'tbsp') return { capacity: tidy(packQuantity * 3), estimated: true, note: 'Lemon estimate: about 3 tablespoons juice per lemon.' };
+      if (target === 'cup') return { capacity: tidy(packQuantity * 0.1875), estimated: true, note: 'Lemon estimate: about 3 tablespoons juice per lemon.' };
+    }
+
+    if (packQuantity != null && packUnit === 'oz' && ['tsp','tbsp'].includes(target)) {
+      const leafy = /(oregano|thyme|parsley|rosemary|cilantro)/.test(name);
+      const ground = /(pepper|paprika|cayenne|garlic powder|ground cloves|cinnamon|nutmeg|garam masala|za'atar|chili powder|seasoning|spice blend)/.test(name);
+      const tspPerOunce = leafy ? 24 : ground ? 12 : null;
+      if (tspPerOunce != null) {
+        const tspCapacity = packQuantity * tspPerOunce;
+        return {
+          capacity: tidy(target === 'tbsp' ? tspCapacity / 3 : tspCapacity),
+          estimated: true,
+          note: leafy ? 'Dried-herb estimate: about 24 teaspoons per ounce.' : 'Ground-spice estimate: about 12 teaspoons per ounce.'
+        };
+      }
     }
     return null;
+  }
+  function packageCapacity(product, targetUnit) {
+    const info = packageCapacityInfo(product, targetUnit);
+    return info && info.capacity != null ? info.capacity : null;
   }
   function stockAmount(batch, product, targetUnit) {
     const remaining = positive(batch && batch.remaining);
@@ -346,24 +379,32 @@
     const rows = recipePlanningIngredients(recipe, products).filter(row => row.optional !== true && row.included !== false);
     const pool = stockPool(inventory || [], today);
     const items = [];
-    let makeKnown = 0, shopKnown = 0, missingMake = 0, missingShop = 0, unlinked = 0, incompatible = 0, missingPrices = 0;
-    if (!scale) return { items, known_make_cost_cents: 0, known_shopping_subtotal_cents: 0, estimated_shopping_tax_cents: 0, estimated_shopping_total_cents: 0, complete: false, shopping_complete: false, missing_links: rows.length, missing_prices: 0, incompatible_units: 0, to_buy: [] };
+    let makeKnown = 0, shopKnown = 0, missingMake = 0, missingShop = 0, unlinked = 0, incompatible = 0, missingPrices = 0, estimatedConversions = 0;
+    const conversionNotes = new Set();
+    if (!scale) return { items, known_make_cost_cents: 0, known_shopping_subtotal_cents: 0, estimated_shopping_tax_cents: 0, estimated_shopping_total_cents: 0, complete: false, shopping_complete: false, missing_links: rows.length, missing_prices: 0, incompatible_units: 0, estimated_conversions: 0, conversion_notes: [], to_buy: [] };
     for (const row of rows) {
       const required = row.quantity == null ? null : positive(tidy(Number(row.quantity) * scale));
       const product = row.product_id && catalog.get(row.product_id);
-      const item = { name: row.name || (product && product.name) || 'Ingredient', product_id: row.product_id || null, required_quantity: required, unit: row.unit || '', stock_quantity: 0, shortage_quantity: required, packs: null, make_cost_cents: null, shopping_cost_cents: null, reason: '' };
+      const item = { name: row.name || (product && product.name) || 'Ingredient', product_id: row.product_id || null, required_quantity: required, unit: row.unit || '', stock_quantity: 0, shortage_quantity: required, packs: null, make_cost_cents: null, shopping_cost_cents: null, reason: '', estimated_conversion: false, conversion_note: '' };
       if (!product || !row.product_id) {
         item.reason = 'Link a product to calculate stock and price.';
         unlinked++; missingMake++; missingShop++; items.push(item); continue;
       }
-      if (required == null || !UNITS.some(unit => unit.value === normalizeUnit(row.unit))) {
-        item.reason = 'Review the ingredient amount or unit.';
+      if (required == null) {
+        item.reason = 'Review the ingredient amount.';
         incompatible++; missingMake++; missingShop++; items.push(item); continue;
       }
-      const capacity = packageCapacity(product, row.unit);
+      const capacityInfo = packageCapacityInfo(product, row.unit);
+      const capacity = capacityInfo && capacityInfo.capacity;
       if (capacity == null || capacity <= 0) {
         item.reason = 'Recipe unit cannot be converted from this product package or label serving.';
         incompatible++; missingMake++; missingShop++; items.push(item); continue;
+      }
+      if (capacityInfo.estimated) {
+        item.estimated_conversion = true;
+        item.conversion_note = capacityInfo.note || 'Uses an estimated kitchen conversion.';
+        estimatedConversions++;
+        if (item.conversion_note) conversionNotes.add(item.conversion_note);
       }
       const price = cents(product.price_cents);
       if (price == null) { missingPrices++; missingMake++; }
@@ -402,6 +443,7 @@
       estimated_shopping_tax_cents: tax, estimated_shopping_total_cents: shopKnown + tax,
       missing_links: unlinked, missing_prices: missingPrices, incompatible_units: incompatible,
       missing_make_values: missingMake, missing_shopping_values: missingShop,
+      estimated_conversions: estimatedConversions, conversion_notes: [...conversionNotes],
       complete: rows.length > 0 && missingMake === 0,
       shopping_complete: rows.length > 0 && missingShop === 0,
       servings: wantedServings, recipe_servings: yieldCount
