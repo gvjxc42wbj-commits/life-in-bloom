@@ -547,6 +547,20 @@
     function createInvite() { return rpc('bloom_create_invite', {}, true, false); }
     function joinHousehold(code) { return rpc('bloom_join_household', { p_code: String(code || '').trim() }, false); }
     function removeMember(userId) { return rpc('bloom_remove_member', { p_user_id: userId }, true); }
+    async function leaveHousehold() {
+      requireOnline();
+      const current=context(true);
+      try {
+        const data=assertResult(await client.rpc('bloom_leave_household', {}));
+        checkContext(current);
+        clearCache(current.userId);
+        await refresh();
+        return data;
+      } catch(error) {
+        if(current.generation===generation) throw fail(error);
+        throw error;
+      }
+    }
 
     function samePayload(saved, payload) {
       return Object.entries(payload).every(([key, value]) => {
@@ -861,7 +875,7 @@
       state = emptyState('signed-out');
     }
     return { init, snapshot, refresh, signIn, signUp, resetPassword, updatePassword, signOut,
-      createHousehold, createInvite, joinHousehold, removeMember, savePrivateProfile, saveDietProfile,
+      createHousehold, createInvite, joinHousehold, removeMember, leaveHousehold, savePrivateProfile, saveDietProfile,
       saveBudget, saveInventory, deleteInventory, saveShoppingItem, toggleShoppingItem,
       deleteShoppingItem, importLocalShopping, saveProduct, saveRecurringProduct, saveBill, ensureBillMonth, stopBillSeries, saveRecipe,
       saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, importFoodMaster, saveKitchenEquipment, deleteKitchenEquipment, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
