@@ -18,7 +18,8 @@
     pianoAppProgress: 'bloom_piano_app_progress', pianoPracticeSessions: 'bloom_piano_practice_sessions', pianoAbilities: 'bloom_piano_abilities', pianoRepertoire: 'bloom_piano_repertoire', pianoMedia: 'bloom_piano_media',
     animationTutor: 'bloom_animation_tutor', animationResources: 'bloom_animation_resources', animationSkills: 'bloom_animation_skills', animationProjects: 'bloom_animation_projects', animationMedia: 'bloom_animation_media', animationPractice: 'bloom_animation_practice', animationHomework: 'bloom_animation_homework',
     spanishProfile: 'bloom_spanish_profile', spanishCefrSkills: 'bloom_spanish_cefr_skills', spanishLessons: 'bloom_spanish_lessons', spanishVocab: 'bloom_spanish_vocab', spanishHomework: 'bloom_spanish_homework', spanishPrepare: 'bloom_spanish_prepare', spanishMedia: 'bloom_spanish_media',
-    dailyJournal: 'bloom_daily_journal', paintingArtworks: 'bloom_painting_artworks', paintingVersions: 'bloom_painting_versions', paintingMedia: 'bloom_painting_media'
+    dailyJournal: 'bloom_daily_journal', paintingArtworks: 'bloom_painting_artworks', paintingVersions: 'bloom_painting_versions', paintingMedia: 'bloom_painting_media',
+    plants: 'bloom_plants', plantCareSchedules: 'bloom_plant_care_schedules', plantEvents: 'bloom_plant_events', plantMedia: 'bloom_plant_media'
   };
   const PRIVATE_FIELDS = ['display_name', 'age_years', 'height_cm', 'weight_kg', 'activity_level', 'notes'];
   const DIET_FIELDS = ['display_name', 'color', 'calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'allergies', 'restrictions', 'preferences', 'notes'];
@@ -33,7 +34,7 @@
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework','spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia','dailyJournal','paintingArtworks','paintingVersions','paintingMedia'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework','spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia','dailyJournal','paintingArtworks','paintingVersions','paintingMedia','plants','plantCareSchedules','plantEvents','plantMedia'];
   // Specialized Skills modules should never be able to take down Home, Food,
   // Dog, Money, or household navigation if one optional table is temporarily
   // unavailable. Core household/food tables remain strict.
@@ -43,7 +44,7 @@
     'pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia',
     'animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework',
     'spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia',
-    'dailyJournal','paintingArtworks','paintingVersions','paintingMedia'
+    'dailyJournal','paintingArtworks','paintingVersions','paintingMedia','plants','plantCareSchedules','plantEvents','plantMedia'
   ]);
   const LIFE_COLLECTIONS = {
     hydrationSettings:'hydration_settings', hydrationEntries:'hydration_entry',
@@ -167,6 +168,7 @@
     const signedAnimationMedia = new Map();
     const signedSpanishMedia = new Map();
     const signedPaintingMedia = new Map();
+    const signedPlantMedia = new Map();
     let client = options.client || null;
     let state = emptyState('loading');
     let generation = 0;
@@ -288,6 +290,7 @@
         signedAnimationMedia.clear();
         signedSpanishMedia.clear();
         signedPaintingMedia.clear();
+        signedPlantMedia.clear();
         uploads.clear();
         generation++;
         requestNumber++;
@@ -1538,6 +1541,73 @@
       if(!Array.isArray(data)||data.length!==1)throw new Error('The Painting media record could not be removed.');
       await refresh();return true;
     }
+    async function savePlant(row){
+      requireOnline();const current=context(true);row=row||{};
+      const name=String(row.name||'').trim();if(!name||name.length>240)throw new Error('Enter a plant name.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,name,
+        species:String(row.species||'').slice(0,240),variety:String(row.variety||'').slice(0,240),
+        acquired_on:row.acquired_on||null,planted_on:row.planted_on||null,source:String(row.source||'').slice(0,240),
+        location:String(row.location||'').slice(0,240),pot_size:String(row.pot_size||'').slice(0,120),substrate:String(row.substrate||'').slice(0,500),
+        stage:['seed','seedling','juvenile','growing','mature','flowering','fruiting','dormant','retired'].includes(row.stage)?row.stage:'growing',
+        notes:String(row.notes||'').slice(0,8000),archived:row.archived===true,updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.plants).upsert(payload,{onConflict:'id'}).select('*'));
+      checkContext(current);await refresh();return data&&data[0];
+    }
+    async function savePlantCareSchedule(row){
+      requireOnline();const current=context(true);row=row||{};
+      if(!row.plant_id||!(state.plants||[]).some(p=>p.id===row.plant_id&&p.user_id===current.userId))throw new Error('Choose a saved plant first.');
+      const interval=row.interval_days===''||row.interval_days==null?null:Number(row.interval_days);
+      const duration=row.duration_minutes===''||row.duration_minutes==null?null:Number(row.duration_minutes);
+      if(interval!=null&&(!Number.isInteger(interval)||interval<1||interval>3650))throw new Error('Care interval must be a whole number of days.');
+      if(duration!=null&&(!Number.isInteger(duration)||duration<1||duration>1440))throw new Error('Light duration must be a whole number of minutes.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,plant_id:row.plant_id,
+        care_type:['water','feed','light','mist','rotate','prune','repot','check','other'].includes(row.care_type)?row.care_type:'other',
+        interval_days:interval,days_of_week:Array.isArray(row.days_of_week)?row.days_of_week:[],time_of_day:row.time_of_day||null,duration_minutes:duration,
+        amount_text:String(row.amount_text||'').slice(0,240),instructions:String(row.instructions||'').slice(0,2000),start_on:row.start_on||null,
+        active:row.active!==false,updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.plantCareSchedules).upsert(payload,{onConflict:'id'}).select('*'));
+      checkContext(current);await refresh();return data&&data[0];
+    }
+    async function savePlantEvent(row){
+      requireOnline();const current=context(true);row=row||{};
+      if(!row.plant_id||!(state.plants||[]).some(p=>p.id===row.plant_id&&p.user_id===current.userId))throw new Error('Choose a saved plant first.');
+      const numeric=row.value_numeric===''||row.value_numeric==null?null:Number(row.value_numeric);
+      if(numeric!=null&&!Number.isFinite(numeric))throw new Error('Measurement must be a number.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,plant_id:row.plant_id,
+        occurred_at:row.occurred_at||new Date().toISOString(),event_type:['water','feed','light','mist','rotate','prune','repot','measure','photo','problem','treatment','flower','harvest','note','other'].includes(row.event_type)?row.event_type:'note',
+        title:String(row.title||'').slice(0,240),value_numeric:numeric,value_unit:String(row.value_unit||'').slice(0,80),notes:String(row.notes||'').slice(0,6000)};
+      const data=assertResult(await client.from(TABLES.plantEvents).upsert(payload,{onConflict:'id'}).select('*'));
+      checkContext(current);await refresh();return data&&data[0];
+    }
+    async function uploadPlantMedia(value){
+      requireOnline();const current=context(true),file=value&&value.file;
+      const allowed=['image/jpeg','image/png','image/webp','image/gif','application/pdf'];
+      if(!file||!file.size||file.size>100*1024*1024||!allowed.includes(file.type))throw new Error('Choose an image, GIF, or PDF up to 100 MB.');
+      if(!value.plant_id)throw new Error('Choose a saved plant first.');
+      const id=newUuid(),ext=(file.name.split('.').pop()||'bin').replace(/[^a-zA-Z0-9]/g,'').slice(0,8)||'bin',path=current.userId+'/'+id+'.'+ext;
+      const uploaded=await client.storage.from('bloom-plant-media').upload(path,file,{contentType:file.type,upsert:false,cacheControl:'3600'});
+      if(uploaded.error)throw errorOf(uploaded.error);checkContext(current);
+      try{
+        const meta={id,household_id:current.householdId,user_id:current.userId,plant_id:value.plant_id,event_id:value.event_id||null,
+          title:String(value.title||file.name||'Plant photo').slice(0,240),path,mime_type:file.type,size_bytes:file.size};
+        const saved=assertResult(await client.from(TABLES.plantMedia).insert(meta).select('*'));checkContext(current);await refresh();return saved&&saved[0];
+      }catch(error){try{await client.storage.from('bloom-plant-media').remove([path]);}catch(_){}throw error;}
+    }
+    async function getPlantMediaUrl(row){
+      requireOnline();const current=context(true),saved=(state.plantMedia||[]).find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/'))throw new Error('That plant file is not available.');
+      const prior=signedPlantMedia.get(saved.path);if(prior&&prior.expires>Date.now())return prior.url;
+      const result=assertResult(await client.storage.from('bloom-plant-media').createSignedUrl(saved.path,120));checkContext(current);
+      signedPlantMedia.set(saved.path,{url:result.signedUrl,expires:Date.now()+90000});return result.signedUrl;
+    }
+    async function deletePlantMedia(row){
+      requireOnline();const current=context(true),saved=(state.plantMedia||[]).find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/'))throw new Error('Refresh plant media before removing it.');
+      assertResult(await client.storage.from('bloom-plant-media').remove([saved.path]));checkContext(current);signedPlantMedia.delete(saved.path);
+      const data=assertResult(await client.from(TABLES.plantMedia).delete().eq('id',saved.id).eq('user_id',current.userId).select('id'));
+      if(!Array.isArray(data)||data.length!==1)throw new Error('The plant media record could not be removed.');
+      await refresh();return true;
+    }
     function exportHousehold() {
       if(!state.user || !state.household || state.status!=='ready') throw new Error('Open your household before exporting a backup.');
       return { app:'Life in Bloom Household',version:1,household_id:state.household.id,exported_at:new Date().toISOString(),
@@ -1592,6 +1662,7 @@
       ensureSpanishDefaults, saveSpanishProfile, saveSpanishCefrSkill, saveSpanishLesson, saveSpanishVocab, saveSpanishHomework, saveSpanishPrepare, uploadSpanishMedia, getSpanishMediaUrl, deleteSpanishMedia,
       saveDailyJournal, deleteDailyJournal,
       savePaintingArtwork, savePaintingVersion, uploadPaintingMedia, getPaintingMediaUrl, deletePaintingMedia,
+      savePlant, savePlantCareSchedule, savePlantEvent, uploadPlantMedia, getPlantMediaUrl, deletePlantMedia,
       saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };
