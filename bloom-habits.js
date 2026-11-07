@@ -984,6 +984,18 @@
     }
     function handleSubmit(event) {
       const form=event.target;
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'pianoAppForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();if(!pianoAppDraft)return true;
+        try{requireReady(current);run('Saving Piano app progress…',()=>store.savePianoAppProgress(pianoAppDraft),()=>{pianoAppEditId='';pianoAppDraft=null;notify('Piano app progress saved.');},null,'.piano-apps');}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'pianoPracticeForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving Piano practice…',()=>store.savePianoPracticeSession({...pianoPracticeDraft,occurred_on:M.dayKey(getNow())}),()=>{pianoPracticeOpen=false;pianoPracticeDraft={duration_minutes:'20',source:'independent',course_name:'',lesson_name:'',piece_name:'',accuracy_percent:'',notes:''};notify('Piano practice session saved.');},null,'.piano-today');}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'pianoRepertoireForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving Piano repertoire…',()=>store.savePianoRepertoire(pianoRepertoireDraft),()=>{pianoRepertoireOpen=false;pianoRepertoireDraft={title:'',kind:'piece',status:'learning',source:'',notes:''};notify('Repertoire item saved.');},null,'.piano-repertoire');}catch(error){notify(error.message,true);}return true;
+      }
       if(form&&form.dataset&&Object.hasOwn(form.dataset,'readingAssignmentForm')){
         if(event.preventDefault)event.preventDefault();const current=snapshot(),book=readingBook(current,selectedReadingBookId);if(!book)return true;
         try{requireReady(current);run('Saving tutor assignment…',()=>store.saveReadingAssignment({...readingAssignmentDraft,book_id:book.id}),()=>{readingAssignmentOpen=false;readingAssignmentDraft={id:'',title:'',prompt:'',body:'',tutor_questions:'',due_on:'',status:'draft'};notify('Tutor assignment saved.');},null,'.reading-tutor-workspace');}catch(error){notify(error.message,true);}return true;
@@ -1037,6 +1049,10 @@
       const element = event.target, data = element && element.dataset;
       if (!data) return false;
       const current = snapshot();
+      if(Object.hasOwn(data,'pianoAppField')){const key=data.pianoAppField;if(pianoAppDraft&&Object.hasOwn(pianoAppDraft,key))pianoAppDraft[key]=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'pianoPracticeField')){const key=data.pianoPracticeField;if(Object.hasOwn(pianoPracticeDraft,key))pianoPracticeDraft[key]=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'pianoRepertoireField')){const key=data.pianoRepertoireField;if(Object.hasOwn(pianoRepertoireDraft,key))pianoRepertoireDraft[key]=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'pianoMediaField')){const key=data.pianoMediaField;if(Object.hasOwn(pianoMediaMeta,key))pianoMediaMeta[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'readerSpeechRate')){readerSpeechRate=Math.max(.5,Math.min(2,Number(element.value)||1));return true;}
       if(Object.hasOwn(data,'readAloudField')){if(data.readAloudField==='clarity')readAloudClarity=element.value;else if(data.readAloudField==='confidence')readAloudConfidence=element.value;else if(data.readAloudField==='notes')readAloudNotes=String(element.value||'');return true;}
       if(Object.hasOwn(data,'readingAssignmentField')){const key=data.readingAssignmentField;if(Object.hasOwn(readingAssignmentDraft,key))readingAssignmentDraft[key]=String(element.value||'');return true;}
@@ -1081,6 +1097,14 @@
     }
     function handleChange(event) {
       const element = event.target, data = element && element.dataset;
+      if(data&&Object.hasOwn(data,'pianoAbility')){
+        const current=snapshot(),key=data.key,row=pianoRows(current,'pianoAbilities').find(item=>item.ability_key===key)||{ability_key:key,evidence:''};
+        try{requireReady(current);run('Updating Piano ability…',()=>store.savePianoAbility({...row,ability_key:key,state:element.value}),()=>notify(pianoAbilityInfo(key)[1]+' updated.'),null,'.piano-abilities');}catch(error){notify(error.message,true);}return true;
+      }
+      if(data&&Object.hasOwn(data,'pianoMediaUpload')){
+        const current=snapshot(),file=element.files&&element.files[0];element.value='';if(!file)return true;
+        try{requireReady(current);run('Uploading Piano practice media…',()=>store.uploadPianoMedia({file,recorded_on:M.dayKey(getNow()),title:pianoMediaMeta.title||file.name,piece_name:pianoMediaMeta.piece_name,notes:pianoMediaMeta.notes}),()=>{pianoMediaMeta={title:'Practice sample',piece_name:'',notes:''};notify('Piano practice recording saved privately.');},null,'.piano-media');}catch(error){notify(error.message,true);}return true;
+      }
       if(data&&Object.hasOwn(data,'readingImport')){
         const current=snapshot(),file=element.files&&element.files[0];element.value='';if(!file)return true;
         try{requireReady(current);if(file.size>20*1024*1024)throw new Error('Choose a Reading backup smaller than 20 MB.');
