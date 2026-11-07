@@ -4,6 +4,17 @@
   const M = root.BloomDogModel || (typeof require === 'function' ? require('./bloom-dog-model.js') : null);
   const copy = value => JSON.parse(JSON.stringify(value));
   const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+  const DOG_IMAGE_KEY='life-in-bloom.dog-display-image.v1';
+  function dogImageSrc(){ try{return root.localStorage&&root.localStorage.getItem(DOG_IMAGE_KEY)||'';}catch(_){return '';} }
+  function saveDogImageFile(file,done){
+    if(!file)return;
+    if(!['image/png','image/webp'].includes(file.type))throw new Error('Choose a transparent PNG or WebP image.');
+    if(Number(file.size)>2*1024*1024)throw new Error('Choose an image smaller than 2 MB.');
+    const reader=new FileReader();
+    reader.onload=()=>{try{root.localStorage&&root.localStorage.setItem(DOG_IMAGE_KEY,String(reader.result||''));done&&done();}catch(_){/* storage failure */}};
+    reader.onerror=()=>{};
+    reader.readAsDataURL(file);
+  }
   const REJECTIONS = new Set(['22023', '23502', '23503', '23505', '23514', '40001', '42501']);
   const GROUPS = ['profile', 'weight', 'task', 'note', 'supply', 'purchase'];
   const LISTS = { profile: 'dogProfiles', weight: 'dogWeights', task: 'routineTasks', note: 'dogNotes', supply: 'dogSupplies' };
@@ -222,7 +233,8 @@
     }
     function renderProfile(current) {
       const profile = M.usable(current.dogProfiles)[0] || {}, weight = M.latestWeight(current, selectedDate);
-      return '<section class="panel dog-id-card"><img class="dog-companion" src="./icons/dog-dachshund-longhair-brown.png" onerror="this.onerror=null;this.src=&quot;./icons/dog-companion.jpeg&quot;" alt="Long-haired brown miniature dachshund"><div class="dog-id-content"><p class="page-kicker">A little care, every day</p><h2>' + esc(profile.name || 'Your dog') + '</h2><p class="dog-breed">' + esc(profile.breed || 'Add their breed to the profile') + '</p><div class="dog-id-tags"><span>🎂 ' + esc(profile.birth_on ? M.ageLabel(profile.birth_on, selectedDate) : 'Date of birth not set') + '</span><span>⚖️ ' + (weight ? esc(M.format(Number(weight.weight_kg) / 0.45359237)) + ' lb · ' + esc(M.format(weight.weight_kg)) + ' kg' : 'Weight not recorded') + '</span></div>' + (profile.birth_on ? '<p class="dog-help">Born ' + esc(M.dateLabel(profile.birth_on, true)) + (weight ? ' · Weight logged ' + esc(M.dateLabel(weight.occurred_on, true)) : '') + '</p>' : weight ? '<p class="dog-help">Weight logged ' + esc(M.dateLabel(weight.occurred_on, true)) + '</p>' : '') + '<div class="dog-actions">' + button('edit-profile', profile.id ? 'Edit profile' : 'Set up profile', '', false, Boolean(attempt)) + button('new-weight', '+ Log weight', '', false, Boolean(attempt)) + '</div></div></section>';
+      const customDog=dogImageSrc();
+      return '<section class="panel dog-id-card"><div class="dog-image-slot"><img class="dog-companion" src="'+esc(customDog||'./icons/dog-dachshund-longhair-brown.png')+'" onerror="this.onerror=null;this.src=&quot;./icons/dog-companion.jpeg&quot;" alt="Your dog"><label class="button dog-image-upload">Upload transparent image<input type="file" accept="image/png,image/webp" data-dog-image-upload hidden></label><small>PNG or WebP · transparent background supported</small></div><div class="dog-id-content"><p class="page-kicker">A little care, every day</p><h2>' + esc(profile.name || 'Your dog') + '</h2><p class="dog-breed">' + esc(profile.breed || 'Add their breed to the profile') + '</p><div class="dog-id-tags"><span>🎂 ' + esc(profile.birth_on ? M.ageLabel(profile.birth_on, selectedDate) : 'Date of birth not set') + '</span><span>⚖️ ' + (weight ? esc(M.format(Number(weight.weight_kg) / 0.45359237)) + ' lb · ' + esc(M.format(weight.weight_kg)) + ' kg' : 'Weight not recorded') + '</span></div>' + (profile.birth_on ? '<p class="dog-help">Born ' + esc(M.dateLabel(profile.birth_on, true)) + (weight ? ' · Weight logged ' + esc(M.dateLabel(weight.occurred_on, true)) : '') + '</p>' : weight ? '<p class="dog-help">Weight logged ' + esc(M.dateLabel(weight.occurred_on, true)) + '</p>' : '') + '<div class="dog-actions">' + button('edit-profile', profile.id ? 'Edit profile' : 'Set up profile', '', false, Boolean(attempt)) + button('new-weight', '+ Log weight', '', false, Boolean(attempt)) + '</div></div></section>';
     }
     function renderTaskRows(current, rows) {
       if (!rows.length) return '<div class="dog-empty"><strong>No care tasks due on this day.</strong><p>Add a routine or check the care plan for the next dates.</p></div>';
@@ -561,7 +573,15 @@
       if (group === 'task' && ['frequency', 'category', 'domain'].includes(name) || group === 'supply' && name === 'product_id') refresh('#dog-editor');
       return true;
     }
-    function handleChange(event) { return handleInput({ ...event, type: 'change', target: event.target }); }
+    function handleChange(event) {
+      const target=event.target;
+      if(target&&target.dataset&&Object.hasOwn(target.dataset,'dogImageUpload')){
+        const file=target.files&&target.files[0]; target.value='';
+        try{saveDogImageFile(file,()=>{notify('Dog image updated on this device.');refresh('.dog-id-card');});}catch(error){notify(error.message,true);}
+        return true;
+      }
+      return handleInput({ ...event, type: 'change', target: event.target });
+    }
     function downloadCalendar(occurrence) {
       const content = M.calendarForOccurrence(occurrence, getNow()), name = 'life-in-bloom-care-' + occurrence.on + '.ics';
       if (typeof options.download === 'function') { options.download(name, content, 'text/calendar;charset=utf-8'); return; }
