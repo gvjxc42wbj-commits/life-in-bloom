@@ -937,3 +937,10 @@ html { scroll-padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
 .boost-quick-card .boost-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .boost-quick-card .boost-card-top .button{display:grid;place-items:center;width:40px;height:40px;min-width:40px;padding:0;border-radius:50%;font-size:24px;font-weight:800;line-height:1}
 .boost-quick-card .boost-card-top .button:disabled{opacity:.4;cursor:not-allowed}
+
+.weather-home-card{display:flex;flex-direction:column}
+.weather-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.weather-location{font-size:12px;font-weight:800;letter-spacing:.02em;color:#6d755f}
+.weather-conditions{margin:.35rem 0 0;color:#6f7769}
+.weather-advice{margin:.6rem 0 0;padding:.65rem .75rem;border-radius:12px;background:rgba(255,255,255,.58);color:#5f6859;line-height:1.45;font-weight:650}
+@media(max-width:620px){.weather-location{font-size:11px}.weather-advice{font-size:12px}}
