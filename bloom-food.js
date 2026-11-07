@@ -331,11 +331,30 @@
     function planRequirementRows(plan, current) {
       return M.cookingPlanPreview({ servings: plan.base_servings, planning_ingredients: plan.ingredients || [] }, plan.ingredients || [], plan.servings, current.products || []).rows;
     }
+    function planCostMarkup(plan, current) {
+      if (!M.recipeCost) return '';
+      const savedRecipe=(current.recipes||[]).find(row=>row.id===plan.recipe_id);
+      const currentByName=new Map(((savedRecipe&&savedRecipe.planning_ingredients)||[]).map(row=>[String(row.name||'').trim().toLowerCase(),row]));
+      const planRows=(plan.ingredients||[]).map(row=>{
+        if(row.product_id) return row;
+        const fresh=currentByName.get(String(row.name||'').trim().toLowerCase());
+        return fresh&&fresh.product_id?{...row,product_id:fresh.product_id}:row;
+      });
+      const cost=M.recipeCost({servings:plan.base_servings,planning_ingredients:planRows},current.products||[],current.inventory||[],dayKey(getNow()),plan.servings);
+      const review=[];
+      if(cost.missing_links) review.push(cost.missing_links+' unlinked');
+      if(cost.incompatible_units) review.push(cost.incompatible_units+' unit review');
+      if(cost.missing_prices) review.push(cost.missing_prices+' price');
+      let html='<div class="food-cost-summary"><div><span>'+(cost.complete?'Estimated meal cost':'Known meal cost · incomplete')+'</span><strong>'+money(cost.known_make_cost_cents)+'</strong></div><div><span>'+(cost.shopping_complete?'Shopping needed':'Known shopping needed · incomplete')+'</span><strong>'+money(cost.estimated_shopping_total_cents)+'</strong><small>'+money(cost.known_shopping_subtotal_cents)+' subtotal + '+money(cost.estimated_shopping_tax_cents)+' estimated tax</small></div></div>';
+      if(review.length) html+='<p class="food-help">Still needs '+esc(review.join(' · '))+'.</p>';
+      return html;
+    }
     function renderPlanCard(plan, current, history) {
       const refs = (current.mealShoppingLinks || []).filter(link => (link.plan_refs || []).some(ref => ref.plan_id === plan.id));
       const rows = planRequirementRows(plan, current).filter(row => row.included);
       const issues = Array.isArray(plan.issues) ? plan.issues : [];
       let html = '<article class="food-meal-card"><div class="food-heading"><div><span class="food-date-badge">' + (plan.status === 'cancelled' ? 'Cancelled' : history ? 'Past cooking date · saved plan' : dateLabel(plan.cook_on)) + '</span><h3>' + esc(plan.recipe_name || 'Saved recipe') + '</h3><small>' + esc((plan.meal_type || 'dinner').replace(/^./,c=>c.toUpperCase())) + '</small></div><strong>' + esc(fmt(plan.servings)) + ' servings</strong></div><p class="food-help">' + (history ? dateLabel(plan.cook_on) + ' · ' : '') + 'Recipe makes ' + esc(fmt(plan.base_servings)) + ' servings before scaling.' + (plan.person1_servings != null ? ' Person 1: ' + esc(fmt(plan.person1_servings)) + '.' : '') + (plan.person2_servings != null ? ' Person 2: ' + esc(fmt(plan.person2_servings)) + '.' : '') + '</p>';
+      html += planCostMarkup(plan, current);
       if (plan.notes) html += '<p class="food-prose">' + esc(plan.notes) + '</p>';
       html += '<details><summary>Ingredients for this meal</summary><ul class="food-plan-requirements">' + rows.map(item => '<li><strong>' + esc(item.name) + '</strong><span>' + (item.required_quantity == null ? 'Amount needs review' : esc(fmt(item.required_quantity)) + ' ' + esc(item.unit || '· unit needs review')) + '</span></li>').join('') + '</ul></details>';
       if (!history && plan.status === 'planned') {
@@ -456,13 +475,16 @@
     }
     function datePicker() { return '<label class="food-field food-day-picker" for="food-selected-date"><span>Nutrition date</span><input id="food-selected-date" type="date" data-food-date value="' + esc(selectedDate) + '" min="1900-01-01" max="2200-12-31"></label>'; }
     function expiryGroups(current){const today=dayKey(getNow()),base=M.dateNumber(today),groups={today:0,three:0,seven:0,later:0};for(const item of current.inventory||[]){if(Number(item.quantity)<=0)continue;const due=M.effectiveDate(item);if(!due)continue;const days=M.dateNumber(due.date)-base;if(days<=0)groups.today++;else if(days<=3)groups.three++;else if(days<=7)groups.seven++;else groups.later++;}return groups;}
-    function renderFoodHome(current){const groups=expiryGroups(current),inventory=(current.inventory||[]).filter(row=>Number(row.quantity)>0),list=(current.shoppingItems||[]).filter(row=>!row.checked),plans=(current.cookingPlans||[]).filter(row=>row.status==='planned'&&row.cook_on>=dayKey(getNow())),recipes=(current.recipes||[]).filter(row=>!row.archived);return '<section class="food-hub"><div class="food-hub-intro"><p class="page-kicker">Your kitchen, connected</p><h2>Food in Bloom</h2><p>See what is at home, what to buy, what you plan to eat, and what you can cook.</p></div><div class="food-hub-grid">'+
+    function renderFoodHome(current){
+      const groups=expiryGroups(current),inventory=(current.inventory||[]).filter(row=>Number(row.quantity)>0),list=(current.shoppingItems||[]).filter(row=>!row.checked),plans=(current.cookingPlans||[]).filter(row=>row.status==='planned'&&row.cook_on>=dayKey(getNow())),recipes=(current.recipes||[]).filter(row=>!row.archived);
+      return '<section class="food-hub"><div class="food-hub-intro"><p class="page-kicker">Your kitchen, connected</p><h2>Food in Bloom</h2><p>Start with what you need to buy, then plan meals around what is already at home.</p></div><div class="food-hub-grid">'+
+      '<button type="button" class="food-hub-card is-primary" data-food-action="grocery" data-tab="list"><span aria-hidden="true">🛒</span><strong>Shopping List</strong><small>'+list.length+' item'+(list.length===1?'':'s')+' to buy · your main Food action</small></button>'+
       '<button type="button" class="food-hub-card" data-food-action="grocery" data-tab="inventory"><span aria-hidden="true">🧺</span><strong>Food at Home</strong><small>'+inventory.length+' inventory entries · pantry, refrigerator & freezer</small></button>'+
-      '<button type="button" class="food-hub-card" data-food-action="grocery" data-tab="list"><span aria-hidden="true">🛒</span><strong>Grocery</strong><small>'+list.length+' items still on the shared list</small></button>'+
-      '<button type="button" class="food-hub-card" data-food-action="tab" data-tab="plans"><span aria-hidden="true">🗓️</span><strong>Menu</strong><small>'+plans.length+' upcoming planned meal'+(plans.length===1?'':'s')+'</small></button>'+
+      '<button type="button" class="food-hub-card" data-food-action="tab" data-tab="plans"><span aria-hidden="true">🗓️</span><strong>Menu</strong><small>'+plans.length+' upcoming planned meal'+(plans.length===1?'':'s')+' · meal and shopping costs</small></button>'+
       '<button type="button" class="food-hub-card" data-food-action="tab" data-tab="recipes"><span aria-hidden="true">📖</span><strong>Recipes</strong><small>'+recipes.length+' saved recipe'+(recipes.length===1?'':'s')+'</small></button>'+
-      '<button type="button" class="food-hub-card" data-food-action="tab" data-tab="cooking"><span aria-hidden="true">🍳</span><strong>Cooking</strong><small>What can I cook? · use food before it expires</small></button></div>'+
-      '<button type="button" class="food-expiring-summary" data-food-action="tab" data-tab="soon"><span><strong>Expiring Soon</strong><small>Today '+groups.today+' · next 3 days '+groups.three+' · next 7 days '+groups.seven+'</small></span><span aria-hidden="true">›</span></button></section>';}
+      '<button type="button" class="food-hub-card" data-food-action="tab" data-tab="cooking"><span aria-hidden="true">🍳</span><strong>Cooking</strong><small>What can I cook? · what should I buy?</small></button></div>'+
+      '<button type="button" class="food-expiring-summary" data-food-action="tab" data-tab="soon"><span><strong>Expiring Soon</strong><small>Today '+groups.today+' · next 3 days '+groups.three+' · next 7 days '+groups.seven+'</small></span><span aria-hidden="true">›</span></button></section>';
+    }
     function renderCooking(current) {
       const rows = M.recipeReadiness ? M.recipeReadiness(current.recipes || [], current.products || [], current.inventory || [], dayKey(getNow())) : [];
       const groups = { ready: rows.filter(row => row.status === 'ready'), almost: rows.filter(row => row.status === 'almost'), need: rows.filter(row => row.status === 'need') };
