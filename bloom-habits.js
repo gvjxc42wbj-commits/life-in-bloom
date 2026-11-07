@@ -391,7 +391,7 @@
       html+=(notes.length?'<div class="reading-note-list">'+notes.slice(0,8).map(n=>'<article><small>'+esc(n.note_type)+' '+(n.page_number!=null?'· p. '+n.page_number:'')+'</small><p>'+esc(n.body)+'</p></article>').join('')+'</div>':'<p class="habit-help">No notes saved yet.</p>')+'</section><section class="panel"><p class="page-kicker">Words from your reading</p><h2>Vocabulary</h2><div class="reading-word-chips">'+vocab.slice(0,12).map(v=>'<span>'+esc(v.word)+'</span>').join('')+'</div>'+button('reading-coach','Open Reading Coach',' data-id="'+esc(book.id)+'"',true)+'</section></div>';
       const bookPdf=readingBookPdf(current,book.id);
       html+='<section class="panel reading-reader-launch"><div class="habit-heading"><div><p class="page-kicker">Kindle-style private reader</p><h2>Bloom Reader</h2><p class="habit-help">'+(bookPdf?'Full-book PDF saved privately'+(bookPdf.page_count?' · '+bookPdf.page_count+' PDF pages':'')+'. Open the reader to extract only the pages you choose.':'Upload your full-book PDF once. Bloom Reader will render pages privately and cache text only for selected ranges.')+'</p></div>'+(bookPdf?button('reading-reader','Open Bloom Reader',' data-id="'+esc(book.id)+'"',true):'<label class="button primary">Upload full-book PDF<input type="file" accept="application/pdf" data-reading-book-pdf hidden></label>')+'</div></section>';
-      html+='<section class="panel reading-scans"><div class="habit-heading"><div><p class="page-kicker">Physical-book lesson source</p><h2>Scan Reading Pages</h2><p class="habit-help">Upload short page images from your own copy and keep them private. Exact OCR-generated lessons should be created only from verified supplied text.</p></div><label class="button primary">Upload page photos / PDF<input type="file" data-reading-upload accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label></div><div class="reading-file-grid">'+(files.length?files.map(file=>'<article>'+(/^image\//.test(file.mime_type)?'<img data-reading-file-preview="'+esc(file.id)+'" alt="">':'<div class="reading-pdf">PDF</div>')+'<strong>'+esc(file.name)+'</strong>'+button('reading-file-open', 'reading-reader', 'reader-prev', 'reader-next', 'reader-mode', 'reader-zoom-out', 'reader-zoom-in', 'reader-extract', 'reader-save-text', 'reader-verify-text', 'reader-generate-lesson', 'reader-jump','Open',' data-id="'+esc(file.id)+'"')+'</article>').join(''):'<p class="habit-help">No page scans saved for this book yet.</p>')+'</div><p class="habit-help"><strong>Generate My Lesson:</strong> the storage/review step is ready. OCR + source-grounded automatic lesson generation still needs the text-extraction integration; the app will not invent exact page content in the meantime.</p></section></section>';
+      html+='<section class="panel reading-scans"><div class="habit-heading"><div><p class="page-kicker">Physical-book lesson source</p><h2>Scan Reading Pages</h2><p class="habit-help">Use this shelf for short page photos or small page PDFs. Full-book PDFs belong in Bloom Reader above.</p></div><label class="button primary">Upload page photos / short PDF<input type="file" data-reading-upload accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label></div><div class="reading-file-grid">'+(files.length?files.map(file=>'<article>'+(/^image\//.test(file.mime_type)?'<img data-reading-file-preview="'+esc(file.id)+'" alt="">':'<div class="reading-pdf">PDF</div>')+'<strong>'+esc(file.name)+'</strong><div class="habit-actions">'+button('reading-file-open','Open',' data-id="'+esc(file.id)+'"')+button('reading-file-delete','Remove scan',' data-id="'+esc(file.id)+'"')+'</div></article>').join(''):'<p class="habit-help">No short page scans saved for this book yet.</p>')+'</div><p class="habit-help">For an entire book, use <strong>Bloom Reader</strong>. This keeps full PDFs separate from short lesson-source scans.</p></section></section>';
       if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydrateReadingFiles(files)));
       return html;
     }
@@ -757,7 +757,32 @@
       }
       if(data&&Object.hasOwn(data,'readingUpload')){
         const current=snapshot(),book=readingBook(current,selectedReadingBookId),files=Array.from(element.files||[]);element.value='';if(!files.length||!book)return true;
-        try{requireReady(current);run('Saving reading scans…',async()=>{const out=[];for(const file of files.slice(0,12))out.push(await store.uploadReadingFile({file,book_id:book.id,section:book.current_section||''}));return out;},rows=>notify((rows||[]).length+' reading scan'+((rows||[]).length===1?'':'s')+' saved.'));}catch(error){notify(error.message,true);}return true;
+        try{
+          requireReady(current);
+          const fullBook=readingBookPdf(current,book.id);
+          run('Checking and saving page scans…',async()=>{
+            const out=[];
+            for(const file of files.slice(0,12)){
+              if(file.type==='application/pdf'){
+                if(fullBook&&file.name===fullBook.name&&Number(file.size)===Number(fullBook.size_bytes)){
+                  throw new Error('That PDF is already saved as your full Bloom Reader book. Use Open Bloom Reader instead.');
+                }
+                if(root.BloomReader&&root.URL&&root.URL.createObjectURL){
+                  const tempUrl=root.URL.createObjectURL(file);
+                  try{
+                    const doc=await root.BloomReader.loadDocument(tempUrl);
+                    if(doc.numPages>50) throw new Error('This PDF has '+doc.numPages+' pages, so it looks like a full book. Upload it in the Bloom Reader card instead.');
+                  } finally {
+                    root.URL.revokeObjectURL(tempUrl);
+                  }
+                }
+              }
+              out.push(await store.uploadReadingFile({file,book_id:book.id,section:book.current_section||'',file_role:'scan'}));
+            }
+            return out;
+          },rows=>notify((rows||[]).length+' page scan'+((rows||[]).length===1?'':'s')+' saved.'));
+        }catch(error){notify(error.message,true);}
+        return true;
       }
       if(data&&Object.hasOwn(data,'engineeringUpload')){
         const current=snapshot(), files=Array.from(element.files||[]); element.value='';
@@ -834,7 +859,7 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-habit-action]') : null;
       const data = element && element.dataset, action = data && data.habitAction;
-      if (!['grocery', 'money', 'category', 'new-skill', 'edit-skill', 'log-skill', 'skill-history', 'close-history', 'edit-session', 'resume', 'discard', 'archive', 'retry', 'reload-record', 'grams', 'trigger', 'reset-baseline', 'open-settings', 'close-settings', 'edit-day', 'new-purchase', 'export', 'restore-backup', 'cancel-backup', 'engineering-homework-add', 'engineering-homework-cancel', 'engineering-homework-toggle', 'engineering-homework-delete', 'engineering-file-open', 'engineering-file-delete', 'reading-home', 'reading-open', 'reading-detail', 'reading-coach', 'reading-coach-tab', 'reading-add-book', 'reading-edit-book', 'reading-cancel-book', 'reading-start-session', 'reading-cancel-session', 'reading-add-note', 'reading-cancel-note', 'reading-speak', 'reading-save-word', 'reading-file-open'].includes(action)) return false;
+      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump'].includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery' || action === 'money') { navigate(action); return true; }
@@ -918,6 +943,13 @@
         else if(action==='reading-speak'){if(root.speechSynthesis&&data.word){root.speechSynthesis.cancel();root.speechSynthesis.speak(new SpeechSynthesisUtterance(data.word));}return true;}
         else if(action==='reading-save-word'){const book=readingBook(current,selectedReadingBookId),starter=book&&readingStarterMaterial(book.title),row=starter&&starter.vocab.find(v=>v[0]===data.word);if(!book||!row)throw new Error('That starter word is unavailable.');run('Saving vocabulary…',()=>store.saveReadingVocabulary({book_id:book.id,word:row[0],part_of_speech:row[1],definition:row[2],source_label:'coach_suggested'}),()=>notify('Vocabulary word saved.'));return true;}
         else if(action==='reading-file-open'){const file=readingFiles(current).find(x=>x.id===data.id);if(!file)throw new Error('Refresh to find that scan.');const popup=root.open?root.open('about:blank','_blank'):null;run('Opening reading scan…',()=>store.getReadingFileUrl(file),url=>{if(popup)popup.location.href=url;},()=>{try{if(popup)popup.close();}catch(_){}});return true;}
+        else if(action==='reading-file-delete'){
+          const file=readingFiles(current,selectedReadingBookId).find(item=>item.id===data.id&&item.file_role!=='book_pdf');
+          if(!file)throw new Error('Refresh to find that page scan.');
+          if(!confirm('Remove this page scan? Your full Bloom Reader book PDF will not be affected.'))return true;
+          run('Removing page scan…',()=>store.deleteReadingFile(file),()=>notify('Page scan removed. Your Bloom Reader book PDF is unchanged.'));
+          return true;
+        }
         else if (action === 'new-skill') { const category = selectedCategory === 'all' ? 'piano' : selectedCategory; openGroup('skill', current, null, { category, memory_type: M.category(category).memory_type }); return true; }
         else if (action === 'edit-skill' || action === 'log-skill') {
           const row = privateRows(current, 'skills').find(skill => skill.id === data.id); if (!row) throw new Error('Refresh to find this saved skill.');
