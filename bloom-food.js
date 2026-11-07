@@ -216,6 +216,7 @@
     let liveCookTimerHandle = null;
     let cookbookPdfPage = 1;
     let cookbookServingTarget = null;
+    let cookbookSort = 'original';
     let cookbookImageCache = readCookbookImageCache();
     let cookbookImageHydrating = false;
     const COOKBOOK_PAGES = {1:4,2:6,3:7,4:8,5:9,6:10,7:11,8:12,9:13,10:14,11:15,12:16,13:17,14:18,15:20,16:21,17:22,18:23,19:24,20:25,21:26,22:27,23:29,24:30,25:31,26:33,27:35,28:36,29:37,30:38,31:40,32:41,33:42,34:43,35:44,36:45,37:46,38:47,39:48,40:49,41:50,42:51,43:52,44:54,45:55};
@@ -257,7 +258,7 @@
       const current = store.snapshot() || {};
       const key = (current.user && current.user.id || '') + ':' + (current.household && current.household.id || '');
       if (key !== identity) {
-        identity = key; generation++; busy = null; selectedDate = dayKey(getNow()); tab = 'home'; search = ''; editor = false; logging = false; planning = false; planAttempt = null; planProblem = ''; planIngredientsOpen = false; openedRecipeId = ''; recipeReturn = null; cookbookSelectedRecipeId = ''; cookbookServingTarget = null; liveCookRecipeId = ''; liveCookStep = 0; stopLiveTimer(); selectedFile = null; fileUrls = new Map();
+        identity = key; generation++; busy = null; selectedDate = dayKey(getNow()); tab = 'home'; search = ''; editor = false; logging = false; planning = false; planAttempt = null; planProblem = ''; planIngredientsOpen = false; openedRecipeId = ''; recipeReturn = null; cookbookSelectedRecipeId = ''; cookbookServingTarget = null; cookbookSort = 'original'; liveCookRecipeId = ''; liveCookStep = 0; stopLiveTimer(); selectedFile = null; fileUrls = new Map();
         drafts = { recipe: recipeDraft(), log: logDraft(selectedDate), plan: planDraft(selectedDate) }; baselines = copy(drafts); draftSaved = false; draftWarningShown = false;
         if (draftStore && current.user && current.household) {
           try { const saved = draftStore.read(current.user.id, current.household.id, 'food'); draftSaved = Boolean(saved && restoreDrafts(saved.data)); }
@@ -731,13 +732,21 @@
         + '<header class="food-digital-cookbook-header"><div><p class="page-kicker">Food In Bloom · Digital Cookbook</p><h1>Cookbook</h1><p>A cooking-first library: browse the 45 recipes, check what you already have, scale servings, prep ingredients, and launch guided Cook Live mode.</p></div>'
         + '<div class="food-digital-cookbook-stats"><strong>45</strong><span>recipes</span><strong>56</strong><span>original pages</span></div></header>'
         + '<div class="food-digital-cookbook-tools"><label class="food-field"><span>Find a cookbook recipe</span><input type="search" data-food-search value="' + esc(search) + '" placeholder="Search title, category, or source"></label>'
+        + '<label class="food-field food-cookbook-sort"><span>Sort by shopping needs</span><select data-food-cookbook-sort><option value="original"' + (cookbookSort === 'original' ? ' selected' : '') + '>Original cookbook order</option><option value="least"' + (cookbookSort === 'least' ? ' selected' : '') + '>Least to buy → most</option><option value="most"' + (cookbookSort === 'most' ? ' selected' : '') + '>Most to buy → least</option></select></label>'
         + '<div class="food-cookbook-category-pills"><button type="button" data-food-action="cookbook-category" data-category="">All recipes</button>' + categories.map(category => '<button type="button" data-food-action="cookbook-category" data-category="' + esc(category) + '">' + esc(category) + '</button>').join('') + '</div></div>'
         + '<div class="food-digital-cookbook-layout"><div class="food-digital-cookbook-list"><div class="food-cookbook-native-grid">';
       const matches = cookbook.filter(recipe => {
         const q = String(search || '').trim().toLowerCase();
         if (!q) return true;
         return [recipe.name, recipe.category_label, recipe.source_name, recipe.notes].some(value => String(value || '').toLowerCase().includes(q));
-      });
+      }).map(recipe => {
+        const row = M.recipeReadiness ? (M.recipeReadiness([recipe], current.products || [], current.inventory || [], dayKey(getNow()))[0] || null) : null;
+        return { recipe, missingCount: row && Array.isArray(row.missing) ? row.missing.length : Number.POSITIVE_INFINITY };
+      }).sort((a,b) => {
+        if (cookbookSort === 'least') return a.missingCount - b.missingCount || cookbookNumber(a.recipe) - cookbookNumber(b.recipe);
+        if (cookbookSort === 'most') return b.missingCount - a.missingCount || cookbookNumber(a.recipe) - cookbookNumber(b.recipe);
+        return cookbookNumber(a.recipe) - cookbookNumber(b.recipe);
+      }).map(row => row.recipe);
       html += matches.map(recipe => {
         const n = cookbookNumber(recipe), p = COOKBOOK_PAGES[n] || '';
         const quickReadiness = M.recipeReadiness ? (M.recipeReadiness([recipe], current.products || [], current.inventory || [], dayKey(getNow()))[0] || null) : null;
@@ -1108,6 +1117,10 @@
       if (Object.hasOwn(data, 'foodPdfPage')) {
         const page = Math.max(1, Math.min(56, Math.round(Number(element.value) || 1)));
         cookbookPdfPage = page; element.value = String(page); refresh('#food-cookbook-top'); return true;
+      }
+      if (Object.hasOwn(data, 'foodCookbookSort')) {
+        cookbookSort = ['original','least','most'].includes(String(element.value)) ? String(element.value) : 'original';
+        refresh('#food-cookbook-top'); return true;
       }
             if (Object.hasOwn(data, 'foodSearch')) { search = String(element.value || ''); refresh('#food-recipe-search'); return true; }
       if (Object.hasOwn(data, 'foodReference')) {
