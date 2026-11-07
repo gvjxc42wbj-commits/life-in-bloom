@@ -1028,6 +1028,28 @@
       const result=assertResult(await client.from(TABLES[key]).delete().eq('id',row.id).eq('user_id',current.userId).eq('household_id',current.householdId).select('id'));
       if(!Array.isArray(result)||result.length!==1)throw new Error('That reading record changed or was already removed.');await refresh();return true;
     }
+    function exportReadingRecords() {
+      if(!state.user||!state.household||state.status!=='ready') throw new Error('Sign in before exporting Reading in Bloom.');
+      const keys=['readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts'];
+      return {app:'Life in Bloom Reading',version:1,user_id:state.user.id,household_id:state.household.id,exported_at:new Date().toISOString(),
+        data:Object.fromEntries(keys.map(key=>[key,clone((state[key]||[]).filter(row=>row.user_id===state.user.id&&row.household_id===state.household.id))]))};
+    }
+    async function importReadingRecords(value) {
+      requireOnline(); const current=context(true);
+      if(!value||value.app!=='Life in Bloom Reading'||value.version!==1||value.user_id!==current.userId||value.household_id!==current.householdId||!value.data) throw new Error('Choose a Reading in Bloom backup from this same account and household.');
+      const mapping={readingBooks:TABLES.readingBooks,readingSessions:TABLES.readingSessions,readingNotes:TABLES.readingNotes,readingVocabulary:TABLES.readingVocabulary,readingQuizAttempts:TABLES.readingQuizAttempts};
+      for(const key of Object.keys(mapping)){
+        const rows=value.data[key]; if(!Array.isArray(rows)||rows.length>10000) throw new Error('This Reading backup is incomplete or too large.');
+        if(rows.some(row=>!row||row.user_id!==current.userId||row.household_id!==current.householdId)) throw new Error('The Reading backup contains records from another account or household.');
+      }
+      try{
+        for(const [key,table] of Object.entries(mapping)){
+          const rows=value.data[key]; if(rows.length) assertResult(await client.from(table).upsert(rows,{onConflict:'id'}));
+          checkContext(current);
+        }
+        await refresh();checkContext(current);return true;
+      }catch(error){if(current.generation===generation)throw fail(error);throw error;}
+    }
     function exportHousehold() {
       if(!state.user || !state.household || state.status!=='ready') throw new Error('Open your household before exporting a backup.');
       return { app:'Life in Bloom Household',version:1,household_id:state.household.id,exported_at:new Date().toISOString(),
@@ -1076,7 +1098,7 @@
       saveMealEntry, deleteMealEntry, saveCookingPlan, cancelCookingPlan, reconcileMealShopping, importFoodMaster, saveKitchenEquipment, deleteKitchenEquipment, recordReceipt, voidReceipt, recordMoneyEntry, voidMoneyEntry,
       ...lifeSavers,saveLifeRecord,archiveLifeRecord,addDogSupplyToShopping,exportPersonalLifeRecords,importPersonalLifeRecords,
       uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveEngineeringHomework, deleteEngineeringHomework, uploadEngineeringFile, getEngineeringFileUrl, deleteEngineeringFile,
-      ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingRow,
+      ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingRow, exportReadingRecords, importReadingRecords,
       saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };
