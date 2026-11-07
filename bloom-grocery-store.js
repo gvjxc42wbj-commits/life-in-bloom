@@ -14,7 +14,8 @@
     engineeringHomework: 'bloom_engineering_homework', engineeringFiles: 'bloom_engineering_files',
     readingBooks: 'bloom_reading_books', readingSessions: 'bloom_reading_sessions', readingNotes: 'bloom_reading_notes',
     readingVocabulary: 'bloom_reading_vocabulary', readingQuizAttempts: 'bloom_reading_quiz_attempts', readingFiles: 'bloom_reading_files',
-    readingPageText: 'bloom_reading_page_text', readingAssignments: 'bloom_reading_assignments', readingAudioRecordings: 'bloom_reading_audio_recordings'
+    readingPageText: 'bloom_reading_page_text', readingAssignments: 'bloom_reading_assignments', readingAudioRecordings: 'bloom_reading_audio_recordings',
+    pianoAppProgress: 'bloom_piano_app_progress', pianoPracticeSessions: 'bloom_piano_practice_sessions', pianoAbilities: 'bloom_piano_abilities', pianoRepertoire: 'bloom_piano_repertoire', pianoMedia: 'bloom_piano_media'
   };
   const PRIVATE_FIELDS = ['display_name', 'age_years', 'height_cm', 'weight_kg', 'activity_level', 'notes'];
   const DIET_FIELDS = ['display_name', 'color', 'calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'allergies', 'restrictions', 'preferences', 'notes'];
@@ -29,7 +30,7 @@
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia'];
   const LIFE_COLLECTIONS = {
     hydrationSettings:'hydration_settings', hydrationEntries:'hydration_entry',
     skills:'skill', skillSessions:'skill_session', smokingSettings:'smoking_settings', smokingDays:'smoking_day',
@@ -148,6 +149,7 @@
     const signedEngineeringFiles = new Map();
     const signedReadingFiles = new Map();
     const signedReadingAudio = new Map();
+    const signedPianoMedia = new Map();
     let client = options.client || null;
     let state = emptyState('loading');
     let generation = 0;
@@ -209,7 +211,7 @@
         const cached = JSON.parse(cacheStorage.getItem(cachePrefix + user.id) || 'null');
         if (!cached || cached.version !== 1 || cached.user.id !== user.id || !cached.household || !cached.members.some(row=>row.user_id===user.id && row.household_id===cached.household.id)) return false;
         if (verifiedHouseholdId !== undefined && cached.household.id !== verifiedHouseholdId) { clearCache(user.id); return false; }
-        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings']) if (!Object.hasOwn(cached, key)) cached[key] = [];
+        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia']) if (!Object.hasOwn(cached, key)) cached[key] = [];
         if (!SHARED_LISTS.every(key=>Array.isArray(cached[key]))) return false;
         state = { ...emptyState('ready'), user:userSummary(user), household:cached.household,
           ...Object.fromEntries(SHARED_LISTS.map(key=>[key,cached[key]])), offline:true, cachedAt:cached.savedAt,
@@ -265,6 +267,7 @@
         signedEngineeringFiles.clear();
         signedReadingFiles.clear();
         signedReadingAudio.clear();
+        signedPianoMedia.clear();
         uploads.clear();
         generation++;
         requestNumber++;
@@ -1158,6 +1161,88 @@
         await refresh();checkContext(current);return true;
       }catch(error){if(current.generation===generation)throw fail(error);throw error;}
     }
+    async function ensurePianoDefaults(){
+      requireOnline(); const current=context(true);
+      const abilities=['sheet_music','rhythm','technique','chords','repertoire','expression'].map(key=>({
+        id:newUuid(),household_id:current.householdId,user_id:current.userId,ability_key:key,state:'not_assessed',evidence:''
+      }));
+      const apps=[
+        {id:newUuid(),household_id:current.householdId,user_id:current.userId,app_name:'PianoSessions',course_name:'Classical 1',lesson_name:'',progress_percent:null,accuracy_percent:null,status:'started',notes:''},
+        {id:newUuid(),household_id:current.householdId,user_id:current.userId,app_name:'PianoSessions',course_name:'Pop Chords 1',lesson_name:'',progress_percent:null,accuracy_percent:null,status:'started',notes:''},
+        {id:newUuid(),household_id:current.householdId,user_id:current.userId,app_name:'Playground Sessions',course_name:'Rookie Bootcamp',lesson_name:'',progress_percent:null,accuracy_percent:null,status:'not_started',notes:'Downloaded; account/setup not completed yet.'}
+      ];
+      try{
+        assertResult(await client.from(TABLES.pianoAbilities).upsert(abilities,{onConflict:'user_id,household_id,ability_key',ignoreDuplicates:true}));
+        assertResult(await client.from(TABLES.pianoAppProgress).upsert(apps,{onConflict:'user_id,household_id,app_name,course_name',ignoreDuplicates:true}));
+        checkContext(current);await refresh();return true;
+      }catch(error){if(current.generation===generation)throw fail(error);throw error;}
+    }
+    async function savePianoAppProgress(row){
+      requireOnline();const current=context(true);row=row||{};
+      const app=['PianoSessions','Playground Sessions'].includes(row.app_name)?row.app_name:'PianoSessions';
+      const course=String(row.course_name||'').trim();if(!course||course.length>240)throw new Error('Enter a Piano course name.');
+      const pct=row.progress_percent===''||row.progress_percent==null?null:Number(row.progress_percent);
+      const acc=row.accuracy_percent===''||row.accuracy_percent==null?null:Number(row.accuracy_percent);
+      for(const [value,label] of [[pct,'Progress'],[acc,'Accuracy']])if(value!=null&&(!Number.isFinite(value)||value<0||value>100))throw new Error(label+' must be between 0 and 100.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,app_name:app,course_name:course,
+        lesson_name:String(row.lesson_name||'').slice(0,240),progress_percent:pct,accuracy_percent:acc,status:['not_started','started','active','completed'].includes(row.status)?row.status:'started',
+        notes:String(row.notes||'').slice(0,5000),updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.pianoAppProgress).upsert(payload,{onConflict:'id'}).select('*'));checkContext(current);await refresh();return data&&data[0];
+    }
+    async function savePianoPracticeSession(row){
+      requireOnline();const current=context(true);row=row||{};
+      const duration=Number(row.duration_minutes);if(!Number.isInteger(duration)||duration<1||duration>1440)throw new Error('Practice minutes must be a whole number from 1 to 1,440.');
+      const acc=row.accuracy_percent===''||row.accuracy_percent==null?null:Number(row.accuracy_percent);
+      if(acc!=null&&(!Number.isFinite(acc)||acc<0||acc>100))throw new Error('Accuracy must be between 0 and 100.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,occurred_on:row.occurred_on, duration_minutes:duration,
+        source:['PianoSessions','Playground Sessions','independent','midi'].includes(row.source)?row.source:'independent',
+        course_name:String(row.course_name||'').slice(0,240),lesson_name:String(row.lesson_name||'').slice(0,240),piece_name:String(row.piece_name||'').slice(0,240),
+        accuracy_percent:acc,midi_note_count:row.midi_note_count==null?null:Number(row.midi_note_count),midi_unique_notes:row.midi_unique_notes==null?null:Number(row.midi_unique_notes),
+        midi_low_note:row.midi_low_note==null?null:Number(row.midi_low_note),midi_high_note:row.midi_high_note==null?null:Number(row.midi_high_note),notes:String(row.notes||'').slice(0,5000)};
+      const data=assertResult(await client.from(TABLES.pianoPracticeSessions).upsert(payload,{onConflict:'id'}).select('*'));checkContext(current);await refresh();return data&&data[0];
+    }
+    async function savePianoAbility(row){
+      requireOnline();const current=context(true);row=row||{};
+      const key=String(row.ability_key||'');
+      if(!['sheet_music','rhythm','technique','chords','repertoire','expression'].includes(key))throw new Error('Choose a valid piano ability.');
+      const stateValue=['not_assessed','not_started','developing','practicing','consistent','demonstrated'].includes(row.state)?row.state:'not_assessed';
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,ability_key:key,state:stateValue,evidence:String(row.evidence||'').slice(0,5000),updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.pianoAbilities).upsert(payload,{onConflict:'user_id,household_id,ability_key'}).select('*'));checkContext(current);await refresh();return data&&data[0];
+    }
+    async function savePianoRepertoire(row){
+      requireOnline();const current=context(true);row=row||{};
+      const title=String(row.title||'').trim();if(!title||title.length>240)throw new Error('Enter a repertoire title.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,title,kind:['piece','chord','pattern','exercise'].includes(row.kind)?row.kind:'piece',
+        status:['learning','practicing','independent','mastered'].includes(row.status)?row.status:'learning',source:String(row.source||'').slice(0,240),notes:String(row.notes||'').slice(0,5000),updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.pianoRepertoire).upsert(payload,{onConflict:'id'}).select('*'));checkContext(current);await refresh();return data&&data[0];
+    }
+    async function uploadPianoMedia(value){
+      requireOnline();const current=context(true),file=value&&value.file;
+      const allowed=['audio/webm','audio/mp4','audio/mpeg','audio/ogg','audio/wav','video/webm','video/mp4','video/quicktime'];
+      if(!file||!file.size||file.size>100*1024*1024||!allowed.includes(file.type))throw new Error('Choose an audio or video file up to 100 MB.');
+      const mediaType=file.type.startsWith('video/')?'video':'audio';
+      const id=newUuid(),ext=(file.name.split('.').pop()|| (mediaType==='video'?'mp4':'webm')).replace(/[^a-zA-Z0-9]/g,'').slice(0,8)||'bin',path=current.userId+'/'+id+'.'+ext;
+      const uploaded=await client.storage.from('bloom-piano-media').upload(path,file,{contentType:file.type,upsert:false,cacheControl:'3600'});if(uploaded.error)throw errorOf(uploaded.error);checkContext(current);
+      try{
+        const meta={id,household_id:current.householdId,user_id:current.userId,recorded_on:value.recorded_on,title:String(value.title||file.name||'Piano practice').slice(0,240),
+          piece_name:String(value.piece_name||'').slice(0,240),notes:String(value.notes||'').slice(0,5000),media_type:mediaType,path,mime_type:file.type,size_bytes:file.size};
+        const saved=assertResult(await client.from(TABLES.pianoMedia).insert(meta).select('*'));checkContext(current);await refresh();return saved&&saved[0];
+      }catch(error){try{await client.storage.from('bloom-piano-media').remove([path]);}catch(_){}throw error;}
+    }
+    async function getPianoMediaUrl(row){
+      requireOnline();const current=context(true),saved=state.pianoMedia.find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/'))throw new Error('That Piano media file is not available.');
+      const prior=signedPianoMedia.get(saved.path);if(prior&&prior.expires>Date.now())return prior.url;
+      const result=assertResult(await client.storage.from('bloom-piano-media').createSignedUrl(saved.path,120));checkContext(current);
+      signedPianoMedia.set(saved.path,{url:result.signedUrl,expires:Date.now()+90000});return result.signedUrl;
+    }
+    async function deletePianoMedia(row){
+      requireOnline();const current=context(true),saved=state.pianoMedia.find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/'))throw new Error('Refresh Piano media before removing it.');
+      assertResult(await client.storage.from('bloom-piano-media').remove([saved.path]));checkContext(current);signedPianoMedia.delete(saved.path);
+      const data=assertResult(await client.from(TABLES.pianoMedia).delete().eq('id',saved.id).eq('user_id',current.userId).select('id'));if(!Array.isArray(data)||data.length!==1)throw new Error('The Piano media record could not be removed.');
+      await refresh();return true;
+    }
     function exportHousehold() {
       if(!state.user || !state.household || state.status!=='ready') throw new Error('Open your household before exporting a backup.');
       return { app:'Life in Bloom Household',version:1,household_id:state.household.id,exported_at:new Date().toISOString(),
@@ -1207,6 +1292,7 @@
       ...lifeSavers,saveLifeRecord,archiveLifeRecord,addDogSupplyToShopping,exportPersonalLifeRecords,importPersonalLifeRecords,
       uploadFoodFile, deleteFoodFile, getFoodFileUrl, saveEngineeringHomework, deleteEngineeringHomework, uploadEngineeringFile, getEngineeringFileUrl, deleteEngineeringFile,
       ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingFile, deleteReadingRow, saveReadingPageText, saveReadingPageTexts, deleteReadingPageText, setReadingFilePageCount, saveReadingAssignment, deleteReadingAssignment, uploadReadingAudio, updateReadingAudio, getReadingAudioUrl, deleteReadingAudio, exportReadingRecords, importReadingRecords,
+      ensurePianoDefaults, savePianoAppProgress, savePianoPracticeSession, savePianoAbility, savePianoRepertoire, uploadPianoMedia, getPianoMediaUrl, deletePianoMedia,
       saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };
