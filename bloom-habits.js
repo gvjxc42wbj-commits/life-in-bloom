@@ -1175,6 +1175,26 @@
     }
     function handleSubmit(event) {
       const form=event.target;
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'spanishProfileForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving Spanish profile…',()=>store.saveSpanishProfile(spanishProfileDraft),()=>{spanishProfileOpen=false;notify('Spanish profile updated.');});}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'spanishLessonForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving Spanish lesson…',()=>store.saveSpanishLesson(spanishLessonDraft),()=>{spanishLessonOpen=false;notify('Spanish lesson saved.');},null,'.spanish-lessons');}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'spanishVocabForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving Spanish vocabulary…',()=>store.saveSpanishVocab(spanishVocabDraft),()=>{spanishVocabOpen=false;notify('Spanish word saved.');},null,'.spanish-vocab');}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'spanishHomeworkForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving Spanish homework…',()=>store.saveSpanishHomework(spanishHomeworkDraft),()=>{spanishHomeworkOpen=false;notify('Spanish homework saved.');},null,'.spanish-homework');}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'spanishPrepareForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving item for Ale…',()=>store.saveSpanishPrepare(spanishPrepareDraft),()=>{spanishPrepareOpen=false;notify('Saved for your next lesson with Ale.');},null,'.spanish-prepare');}catch(error){notify(error.message,true);}return true;
+      }
       if(form&&form.dataset&&Object.hasOwn(form.dataset,'animationPracticeForm')){
         if(event.preventDefault)event.preventDefault();const current=snapshot();
         try{requireReady(current);run('Saving Animation practice…',()=>store.saveAnimationPractice({...animationPracticeDraft,occurred_on:M.dayKey(getNow())}),()=>{animationPracticeOpen=false;animationPracticeDraft={minutes:'30',software:'Blender',exercise:'',notes:''};notify('Animation practice saved.');},null,'.animation-practice');}catch(error){notify(error.message,true);}return true;
@@ -1260,6 +1280,11 @@
       const element = event.target, data = element && element.dataset;
       if (!data) return false;
       const current = snapshot();
+      if(Object.hasOwn(data,'spanishProfileField')){const key=data.spanishProfileField;if(Object.hasOwn(spanishProfileDraft,key))spanishProfileDraft[key]=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'spanishLessonField')){const key=data.spanishLessonField;if(Object.hasOwn(spanishLessonDraft,key))spanishLessonDraft[key]=key==='attended'?Boolean(element.checked):String(element.value||'');return true;}
+      if(Object.hasOwn(data,'spanishVocabField')){const key=data.spanishVocabField;if(Object.hasOwn(spanishVocabDraft,key))spanishVocabDraft[key]=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'spanishHomeworkField')){const key=data.spanishHomeworkField;if(Object.hasOwn(spanishHomeworkDraft,key))spanishHomeworkDraft[key]=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'spanishPrepareField')){const key=data.spanishPrepareField;if(Object.hasOwn(spanishPrepareDraft,key))spanishPrepareDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'animationPracticeField')){const key=data.animationPracticeField;if(Object.hasOwn(animationPracticeDraft,key))animationPracticeDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'animationHomeworkField')){const key=data.animationHomeworkField;if(Object.hasOwn(animationHomeworkDraft,key))animationHomeworkDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'animationTutorField')){const key=data.animationTutorField;if(Object.hasOwn(animationTutorDraft,key))animationTutorDraft[key]=String(element.value||'');return true;}
@@ -1313,6 +1338,18 @@
     }
     function handleChange(event) {
       const element = event.target, data = element && element.dataset;
+      if(data&&Object.hasOwn(data,'spanishCefr')){
+        const current=snapshot(),key=data.key,row=spanishRows(current,'spanishCefrSkills').find(item=>item.skill_key===key)||{skill_key:key,evidence:''};
+        try{requireReady(current);run('Updating Spanish proficiency…',()=>store.saveSpanishCefrSkill({...row,skill_key:key,state:element.value}),()=>notify(spanishSkillInfo(key)[1]+' updated.'),null,'.spanish-progress');}catch(error){notify(error.message,true);}return true;
+      }
+      if(data&&Object.hasOwn(data,'spanishLessonUpload')){
+        const current=snapshot(),lesson=spanishRows(current,'spanishLessons').find(item=>item.id===data.id),files=Array.from(element.files||[]);element.value='';if(!lesson||!files.length)return true;
+        try{requireReady(current);run('Uploading Spanish lesson files…',async()=>{const out=[];for(const file of files.slice(0,12))out.push(await store.uploadSpanishMedia({file,lesson_id:lesson.id,title:file.name}));return out;},rows=>notify((rows||[]).length+' Spanish lesson file'+((rows||[]).length===1?'':'s')+' saved.'),null,'.spanish-lessons');}catch(error){notify(error.message,true);}return true;
+      }
+      if(data&&Object.hasOwn(data,'spanishHomeworkUpload')){
+        const current=snapshot(),homework=spanishRows(current,'spanishHomework').find(item=>item.id===data.id),files=Array.from(element.files||[]);element.value='';if(!homework||!files.length)return true;
+        try{requireReady(current);run('Uploading Spanish homework files…',async()=>{const out=[];for(const file of files.slice(0,12))out.push(await store.uploadSpanishMedia({file,homework_id:homework.id,title:file.name}));return out;},rows=>notify((rows||[]).length+' Spanish homework file'+((rows||[]).length===1?'':'s')+' saved.'),null,'.spanish-homework');}catch(error){notify(error.message,true);}return true;
+      }
       if(data&&Object.hasOwn(data,'animationSkill')){
         const current=snapshot(),key=data.key,row=animationRows(current,'animationSkills').find(item=>item.skill_key===key)||{skill_key:key,evidence:''};
         try{requireReady(current);run('Updating Animation skill…',()=>store.saveAnimationSkill({...row,skill_key:key,state:element.value}),()=>notify(animationSkillInfo(key)[1]+' updated.'),null,'.animation-skills');}catch(error){notify(error.message,true);}return true;
@@ -1463,11 +1500,28 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-habit-action]') : null;
       const data = element && element.dataset, action = data && data.habitAction;
-      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete','animation-tutor-edit','animation-tutor-cancel','animation-resource-add','animation-resource-cancel','animation-project-add','animation-project-edit','animation-project-cancel','animation-media-delete','animation-practice-add','animation-practice-cancel','animation-homework-add','animation-homework-edit','animation-homework-cancel','animation-homework-delete'].includes(action)) return false;
+      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete','animation-tutor-edit','animation-tutor-cancel','animation-resource-add','animation-resource-cancel','animation-project-add','animation-project-edit','animation-project-cancel','animation-media-delete','animation-practice-add','animation-practice-cancel','animation-homework-add','animation-homework-edit','animation-homework-cancel','animation-homework-delete','spanish-profile-edit','spanish-profile-cancel','spanish-lesson-add','spanish-lesson-cancel','spanish-vocab-add','spanish-vocab-cancel','spanish-homework-add','spanish-homework-cancel','spanish-prepare-add','spanish-prepare-cancel','spanish-prepare-toggle'].includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery' || action === 'money') { navigate(action); return true; }
         if (action === 'category') { if (data.category === 'all' || M.CATEGORIES.some(item => item.key === data.category)) selectedCategory = data.category; }
+        else if(action==='spanish-profile-edit'){
+          const row=spanishRows(current,'spanishProfile')[0]||{tutor_name:'Ale',tutor_profile_url:'https://preply.com/en/tutor/6569875',duolingo_score:22,duolingo_section:'Section 3',duolingo_unit:'Unit 7',cefr_level:'not_assessed',target_level:'C1',notes:''};
+          spanishProfileDraft={...row,duolingo_score:row.duolingo_score==null?'':row.duolingo_score};spanishProfileOpen=true;refresh();return true;
+        }
+        else if(action==='spanish-profile-cancel'){spanishProfileOpen=false;refresh();return true;}
+        else if(action==='spanish-lesson-add'){spanishLessonDraft={id:'',lesson_date:M.dayKey(getNow()),title:'',topics:'',notes:'',homework:'',attended:true};spanishLessonOpen=true;refresh('.spanish-lessons');return true;}
+        else if(action==='spanish-lesson-cancel'){spanishLessonOpen=false;refresh('.spanish-lessons');return true;}
+        else if(action==='spanish-vocab-add'){spanishVocabDraft={id:'',lesson_id:'',word:'',meaning:'',part_of_speech:'',example_spanish:'',example_english:'',status:'learning'};spanishVocabOpen=true;refresh('.spanish-vocab');return true;}
+        else if(action==='spanish-vocab-cancel'){spanishVocabOpen=false;refresh('.spanish-vocab');return true;}
+        else if(action==='spanish-homework-add'){spanishHomeworkDraft={id:'',title:'',due_on:'',status:'open',notes:''};spanishHomeworkOpen=true;refresh('.spanish-homework');return true;}
+        else if(action==='spanish-homework-cancel'){spanishHomeworkOpen=false;refresh('.spanish-homework');return true;}
+        else if(action==='spanish-prepare-add'){spanishPrepareDraft={id:'',item_type:'question',text_value:'',status:'prepare',lesson_date:''};spanishPrepareOpen=true;refresh('.spanish-prepare');return true;}
+        else if(action==='spanish-prepare-cancel'){spanishPrepareOpen=false;refresh('.spanish-prepare');return true;}
+        else if(action==='spanish-prepare-toggle'){
+          const row=spanishRows(current,'spanishPrepare').find(item=>item.id===data.id);if(!row)throw new Error('Refresh to find that Spanish review item.');
+          run('Updating Ale review item…',()=>store.saveSpanishPrepare({...row,status:row.status==='reviewed'?'prepare':'reviewed'}),()=>notify('Spanish review item updated.'),null,'.spanish-prepare');return true;
+        }
         else if(action==='animation-tutor-edit'){
           const row=animationRows(current,'animationTutor')[0];
           animationTutorDraft=row?{...row}:{name:'',specialty:'',platform:'',profile_url:'',notes:''};
