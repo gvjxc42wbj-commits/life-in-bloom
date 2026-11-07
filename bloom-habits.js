@@ -1259,6 +1259,14 @@
     }
     function handleSubmit(event) {
       const form=event.target;
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'paintingArtworkForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving artwork…',()=>store.savePaintingArtwork(paintingArtworkDraft),saved=>{paintingArtworkOpen=false;selectedPaintingArtworkId=saved.id;paintingView='detail';notify('Artwork saved.');});}catch(error){notify(error.message,true);}return true;
+      }
+      if(form&&form.dataset&&Object.hasOwn(form.dataset,'paintingVersionForm')){
+        if(event.preventDefault)event.preventDefault();const current=snapshot();
+        try{requireReady(current);run('Saving painting progress…',()=>store.savePaintingVersion({...paintingVersionDraft,artwork_id:selectedPaintingArtworkId}),()=>{paintingVersionOpen=false;notify('Painting progress stage saved.');},null,'.painting-timeline');}catch(error){notify(error.message,true);}return true;
+      }
       if(form&&form.dataset&&Object.hasOwn(form.dataset,'journalForm')){
         if(event.preventDefault)event.preventDefault();const current=snapshot();
         try{requireReady(current);run('Saving journal entry…',()=>store.saveDailyJournal({entry_date:journalDate,body:journalBody}),saved=>{journalLoadedKey=journalDate+':'+(saved&&saved.updated_at||'saved');notify('Journal entry saved.');},null,'.journal-entry-panel');}catch(error){notify(error.message,true);}return true;
@@ -1368,6 +1376,8 @@
       const element = event.target, data = element && element.dataset;
       if (!data) return false;
       const current = snapshot();
+      if(Object.hasOwn(data,'paintingArtworkField')){const key=data.paintingArtworkField;if(Object.hasOwn(paintingArtworkDraft,key))paintingArtworkDraft[key]=String(element.value||'');return true;}
+      if(Object.hasOwn(data,'paintingVersionField')){const key=data.paintingVersionField;if(Object.hasOwn(paintingVersionDraft,key))paintingVersionDraft[key]=String(element.value||'');return true;}
       if(Object.hasOwn(data,'journalBody')){journalBody=String(element.value||'');return true;}
       if(Object.hasOwn(data,'journalDate')){if(/^\d{4}-\d{2}-\d{2}$/.test(element.value))loadJournalDate(current,element.value);refresh();return true;}
       if(Object.hasOwn(data,'spanishProfileField')){const key=data.spanishProfileField;if(Object.hasOwn(spanishProfileDraft,key))spanishProfileDraft[key]=String(element.value||'');return true;}
@@ -1428,6 +1438,10 @@
     }
     function handleChange(event) {
       const element = event.target, data = element && element.dataset;
+      if(data&&Object.hasOwn(data,'paintingVersionUpload')){
+        const current=snapshot(),version=paintingRows(current,'paintingVersions').find(item=>item.id===data.id),files=Array.from(element.files||[]);element.value='';if(!version||!files.length)return true;
+        try{requireReady(current);run('Uploading painting progress…',async()=>{const out=[];for(const file of files.slice(0,8))out.push(await store.uploadPaintingMedia({file,artwork_id:version.artwork_id,version_id:version.id,title:file.name}));return out;},rows=>notify((rows||[]).length+' painting file'+((rows||[]).length===1?'':'s')+' saved.'),null,'.painting-timeline');}catch(error){notify(error.message,true);}return true;
+      }
       if(data&&Object.hasOwn(data,'journalDate')){if(/^\d{4}-\d{2}-\d{2}$/.test(element.value))loadJournalDate(current,element.value);refresh();return true;}
       if(data&&Object.hasOwn(data,'spanishCefr')){
         const current=snapshot(),key=data.key,row=spanishRows(current,'spanishCefrSkills').find(item=>item.skill_key===key)||{skill_key:key,evidence:''};
@@ -1591,11 +1605,25 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-habit-action]') : null;
       const data = element && element.dataset, action = data && data.habitAction;
-      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete','animation-tutor-edit','animation-tutor-cancel','animation-resource-add','animation-resource-cancel','animation-project-add','animation-project-edit','animation-project-cancel','animation-media-delete','animation-practice-add','animation-practice-cancel','animation-homework-add','animation-homework-edit','animation-homework-cancel','animation-homework-delete','spanish-profile-edit','spanish-profile-cancel','spanish-lesson-add','spanish-lesson-cancel','spanish-vocab-add','spanish-vocab-cancel','spanish-homework-add','spanish-homework-cancel','spanish-prepare-add','spanish-prepare-cancel','spanish-prepare-toggle','journal-today','journal-open','journal-delete'].includes(action)) return false;
+      if (!['grocery','money','category','new-skill','edit-skill','log-skill','skill-history','close-history','edit-session','resume','discard','archive','retry','reload-record','grams','trigger','reset-baseline','open-settings','close-settings','edit-day','new-purchase','export','restore-backup','cancel-backup','engineering-homework-add','engineering-homework-cancel','engineering-homework-toggle','engineering-homework-delete','engineering-file-open','engineering-file-delete','reading-home','reading-open','reading-detail','reading-coach','reading-coach-tab','reading-add-book','reading-edit-book','reading-cancel-book','reading-start-session','reading-cancel-session','reading-add-note','reading-cancel-note','reading-speak','reading-save-word','reading-file-open','reading-file-delete','reading-export','reading-reader','reader-prev','reader-next','reader-mode','reader-zoom-out','reader-zoom-in','reader-extract','reader-save-text','reader-verify-text','reader-generate-lesson','reader-jump','reader-listen','reader-speech-pause','reader-speech-resume','reader-speech-stop','reader-text-smaller','reader-text-larger','reader-line-toggle','read-aloud-start','read-aloud-stop','read-aloud-save','read-aloud-delete','reading-assignment-add','reading-assignment-edit','reading-assignment-cancel','reading-assignment-delete','piano-log-practice','piano-cancel-practice','piano-edit-app','piano-cancel-app','piano-add-repertoire','piano-cancel-repertoire','piano-midi-connect','piano-midi-start','piano-midi-stop','piano-media-delete','animation-tutor-edit','animation-tutor-cancel','animation-resource-add','animation-resource-cancel','animation-project-add','animation-project-edit','animation-project-cancel','animation-media-delete','animation-practice-add','animation-practice-cancel','animation-homework-add','animation-homework-edit','animation-homework-cancel','animation-homework-delete','spanish-profile-edit','spanish-profile-cancel','spanish-lesson-add','spanish-lesson-cancel','spanish-vocab-add','spanish-vocab-cancel','spanish-homework-add','spanish-homework-cancel','spanish-prepare-add','spanish-prepare-cancel','spanish-prepare-toggle','journal-today','journal-open','journal-delete','painting-add-artwork','painting-edit-artwork','painting-artwork-cancel','painting-open','painting-back','painting-add-version','painting-version-cancel'].includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery' || action === 'money') { navigate(action); return true; }
         if (action === 'category') { if (data.category === 'all' || M.CATEGORIES.some(item => item.key === data.category)) selectedCategory = data.category; }
+        else if(action==='painting-add-artwork'){paintingArtworkDraft={id:'',title:'',medium:'',started_on:M.dayKey(getNow()),completed_on:'',status:'in_progress',description:'',overall_notes:''};paintingArtworkOpen=true;refresh('.painting-portfolio');return true;}
+        else if(action==='painting-edit-artwork'){
+          const row=paintingRows(current,'paintingArtworks').find(item=>item.id===data.id);if(!row)throw new Error('Refresh to find that artwork.');
+          paintingArtworkDraft={...row,started_on:row.started_on||'',completed_on:row.completed_on||''};paintingArtworkOpen=true;refresh();return true;
+        }
+        else if(action==='painting-artwork-cancel'){paintingArtworkOpen=false;refresh();return true;}
+        else if(action==='painting-open'){selectedPaintingArtworkId=data.id||'';paintingView='detail';paintingArtworkOpen=false;paintingVersionOpen=false;refresh();return true;}
+        else if(action==='painting-back'){paintingView='portfolio';selectedPaintingArtworkId='';paintingVersionOpen=false;refresh();return true;}
+        else if(action==='painting-add-version'){
+          if(!selectedPaintingArtworkId)throw new Error('Open an artwork first.');
+          paintingVersionDraft={id:'',artwork_id:selectedPaintingArtworkId,version_date:M.dayKey(getNow()),stage_label:'',comments:'',corrections:'',what_changed:'',what_learned:'',next_steps:''};
+          paintingVersionOpen=true;refresh('.painting-timeline');return true;
+        }
+        else if(action==='painting-version-cancel'){paintingVersionOpen=false;refresh('.painting-timeline');return true;}
         else if(action==='journal-today'){loadJournalDate(current,M.dayKey(getNow()));refresh();return true;}
         else if(action==='journal-open'){if(data.date)loadJournalDate(current,data.date);refresh();return true;}
         else if(action==='journal-delete'){
