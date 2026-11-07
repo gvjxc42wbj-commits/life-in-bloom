@@ -350,6 +350,12 @@
       food.selectTab('plans');
       renderKeepScroll('#food-plans');
       return true;
+    },
+    openHousehold: () => {
+      if (!navigate('grocery') || !grocery) return false;
+      grocery.selectTab('household');
+      renderKeepScroll();
+      return true;
     }
   });
   grocery = G.createController({
