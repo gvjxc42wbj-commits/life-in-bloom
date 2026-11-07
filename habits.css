@@ -954,3 +954,54 @@
 .painting-notes-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.painting-notes-grid>div{padding:10px;border-radius:11px;background:#fff7fa;border:1px solid #f0dfe6}.painting-notes-grid b{display:block;margin-bottom:4px;color:#754158}.painting-notes-grid p{margin:0;color:#6d5360;font-size:11px;line-height:1.5}
 @media(max-width:900px){.painting-portfolio-grid{grid-template-columns:1fr 1fr}.painting-detail-hero{grid-template-columns:1fr}.painting-version-media{grid-template-columns:1fr 1fr}}
 @media(max-width:580px){.painting-banner{grid-template-columns:1fr}.painting-banner>span{display:none}.painting-summary,.painting-portfolio-grid,.painting-meta,.painting-version-media,.painting-notes-grid{grid-template-columns:1fr}.painting-card-image{height:260px}}
+
+
+/* Plants in Bloom */
+.plant-dashboard{display:grid;gap:14px;margin:14px 0 24px}
+.plant-banner{
+  display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;
+  padding:20px 24px;border:1px solid #d9e3d2;border-radius:22px;
+  background:linear-gradient(110deg,#f8e8ee,#f7fbf2 62%,#eef8f0);
+  box-shadow:0 10px 24px rgba(65,93,61,.07)
+}
+.plant-banner h2{margin:.1rem 0 .25rem;font-family:Georgia,serif;font-size:clamp(2.2rem,6vw,3.8rem);color:#455c46}
+.plant-banner p{margin:0;color:#6e7968}.plant-banner>span{font-size:56px}
+.plant-dashboard .panel{margin:0}
+.plant-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:0;padding:0;overflow:hidden}
+.plant-summary>div{display:grid;gap:2px;padding:15px 17px;border-right:1px solid #e1eadc}.plant-summary>div:last-child{border-right:0}
+.plant-summary strong{font-size:22px;color:#537254}.plant-summary small{color:#748070}
+.plant-inline-form{margin:12px 0;padding:13px;border:1px solid #dce6d7;border-radius:14px;background:#fbfdf9}
+.plant-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.plant-card{display:grid;gap:7px;padding:9px;border:1px solid #dfe8da;border-radius:14px;background:#fff}
+.plant-card-open{display:grid;gap:8px;border:0;background:transparent;padding:0;color:#485a48;text-align:left;cursor:pointer}
+.plant-card-photo{display:grid;place-items:center;height:220px;border-radius:11px;overflow:hidden;background:#eef4eb}
+.plant-card-photo img{width:100%;height:100%;object-fit:cover}.plant-card-photo span{font-size:48px}
+.plant-card h3{margin:0;font-family:Georgia,serif;font-size:18px}.plant-card p{margin:2px 0;color:#667164}.plant-card small{display:block;color:#7b8677;margin-top:2px}
+.plant-empty{display:grid;place-items:center;gap:5px;grid-column:1/-1;padding:34px;border:1px dashed #cfdcc8;border-radius:14px;text-align:center;background:#fbfdf9}.plant-empty>span{font-size:44px}.plant-empty h3,.plant-empty p{margin:0}
+.plant-profile-hero{display:grid;grid-template-columns:minmax(260px,.8fr) 1.2fr;gap:18px;align-items:center}
+.plant-profile-photo{min-height:320px;border-radius:16px;overflow:hidden;background:#edf4e9}.plant-profile-photo img{width:100%;height:100%;max-height:500px;object-fit:contain;background:#fff}.plant-empty-photo{display:grid;place-items:center;min-height:320px;font-size:70px}
+.plant-meta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}.plant-meta div{padding:9px;border:1px solid #dfe8da;border-radius:11px;background:#fff}.plant-meta dt{color:#7d8978;font-size:10px}.plant-meta dd{margin:3px 0 0;color:#4d634d;font-weight:800}
+.plant-care-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.plant-care-card{display:grid;grid-template-columns:auto 1fr;gap:9px;padding:11px;border:1px solid #dfe8da;border-radius:13px;background:#fff}
+.plant-care-card>span{font-size:25px}.plant-care-card strong,.plant-care-card small{display:block}.plant-care-card small{margin-top:2px;color:#7b8677}.plant-care-card p{margin:4px 0 0;color:#657064;font-size:11px;line-height:1.45}
+.plant-quick-buttons{display:flex;flex-wrap:wrap;gap:8px}
+.plant-quick-buttons .button{text-transform:capitalize}
+.plant-timeline{display:grid;gap:14px;position:relative}
+.plant-timeline:before{content:"";position:absolute;left:18px;top:0;bottom:0;width:2px;background:#dce6d7}
+.plant-timeline-card{position:relative;display:grid;grid-template-columns:38px 1fr;gap:12px}
+.plant-event-icon{position:relative;z-index:1;display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:#6f946e;color:#fff;font-size:19px}
+.plant-timeline-card>div:last-child{padding:12px;border:1px solid #dfe8da;border-radius:14px;background:#fff}
+.plant-timeline-card p{margin:6px 0 0;color:#657064;font-size:11px;line-height:1.5}
+.plant-event-media{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.plant-event-media img{width:100%;height:200px;object-fit:contain;border-radius:10px;background:#f1f5ef}
+.plant-event-media a{display:grid;place-items:center;height:120px;border-radius:10px;background:#eef3eb;color:#547054;font-weight:800;text-decoration:none}
+@media(max-width:900px){
+  .plant-grid,.plant-care-grid{grid-template-columns:1fr 1fr}
+  .plant-profile-hero{grid-template-columns:1fr}
+  .plant-meta{grid-template-columns:1fr 1fr}
+}
+@media(max-width:580px){
+  .plant-banner{grid-template-columns:1fr}.plant-banner>span{display:none}
+  .plant-summary,.plant-grid,.plant-care-grid,.plant-meta,.plant-event-media{grid-template-columns:1fr}
+  .plant-card-photo{height:260px}
+}
