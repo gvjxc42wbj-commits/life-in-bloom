@@ -100,6 +100,7 @@
     let noteBaseline = blankNote();
     let pendingNoteDelete = '';
     let skillsView = 'me';
+    let cookbookBusy = false;
     const SKILLS_KEY = 'life-in-bloom-skills-v1';
     const DEFAULT_SKILLS = [
       ['painting', '🎨', 'Painting', 120],
@@ -246,7 +247,7 @@
       }
       html += '</section>';
       }
-      html += '<section class="panel"><h2>Your other spaces</h2><p class="caption">Use the menu for every section, or choose a shortcut below.</p><div class="section-links">' + linkButton('wellness', 'Wellness · Nutrition') + linkButton('food', 'Food in Bloom') + linkButton('skills', 'Skills in Bloom') + linkButton('housework', 'Housework') + linkButton('dog', 'Dog') + linkButton('money', 'Money in Bloom') + linkButton('smoking', 'Smoking Log') + '</div></section></section>';
+      html += '<section class="panel"><h2>Your other spaces</h2><p class="caption">Use the menu for every section, or choose a shortcut below.</p><div class="section-links">' + linkButton('wellness', 'Wellness · Nutrition') + linkButton('food', 'Food in Bloom') + linkButton('skills', 'Skills in Bloom') + linkButton('housework', 'Housework') + linkButton('dog', 'Dog') + linkButton('money', 'Money in Bloom') + linkButton('smoking', 'Smoking Log') + linkButton('cookbook', '📖 Cookbook') + '</div></section></section>';
       return html;
     }
 
@@ -336,6 +337,32 @@
       return html;
     }
 
+    function renderCookbook() {
+      const cloud = options.getCloudSnapshot ? options.getCloudSnapshot() : null;
+      const ready = cloud && cloud.user && cloud.household && cloud.status === 'ready';
+      const rows = ready && Array.isArray(cloud.cookbookFiles)
+        ? cloud.cookbookFiles.filter(row => row.household_id === cloud.household.id).slice().sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')))
+        : [];
+      const cookbook = rows[0] || null;
+      let html='<section class="bloom-page cookbook-page"><div class="page-heading"><p class="page-kicker">Food in Bloom</p><h2>📖 Food in Bloom Cookbook</h2><p>Keep your full PDF cookbook here so it is easy to open from Home.</p></div>';
+      if(!cloud || !cloud.user){
+        html+='<section class="panel"><h3>Sign in to keep your cookbook</h3><p class="caption">Your cookbook is stored privately with your household Food files.</p>'+linkButton('settings','Open Settings',true)+'</section>';
+      } else if(!cloud.household){
+        html+='<section class="panel"><h3>Join or create a household first</h3><p class="caption">The cookbook belongs to the household, so Person 1 and Person 2 can open the same PDF.</p>'+linkButton('settings','Open Settings',true)+'</section>';
+      } else if(cloud.offline){
+        html+='<section class="panel"><h3>Reconnect to manage your cookbook</h3><p class="caption">The PDF stays in private cloud storage and needs an internet connection to open.</p></section>';
+      } else {
+        html+='<section class="panel cookbook-upload-card"><div class="panel-title-row"><div><p class="page-kicker">Your cookbook file</p><h3>'+(cookbook?escapeText(cookbook.name):'No cookbook uploaded yet')+'</h3><p class="caption">'+(cookbook?'Saved for your household. Uploading another PDF replaces this one.':'Upload your Food in Bloom Cookbook PDF. PDF files up to 75 MB are supported.')+'</p></div><span class="cookbook-book-icon" aria-hidden="true">📕</span></div><label class="button primary cookbook-upload-button">'+(cookbook?'Replace PDF':'Upload Cookbook PDF')+'<input type="file" accept="application/pdf,.pdf" data-cookbook-upload hidden'+(cookbookBusy?' disabled':'')+'></label>';
+        if(cookbook){
+          html+='<div class="cookbook-actions"><button type="button" class="button" data-page-action="cookbook-open" data-id="'+escapeText(cookbook.id)+'"'+(cookbookBusy?' disabled':'')+'>Open Cookbook</button><button type="button" class="button" data-page-action="cookbook-remove" data-id="'+escapeText(cookbook.id)+'"'+(cookbookBusy?' disabled':'')+'>Remove Cookbook</button></div><dl class="cookbook-meta"><div><dt>File</dt><dd>'+escapeText(cookbook.name)+'</dd></div><div><dt>Size</dt><dd>'+Math.max(0.1,Number(cookbook.size_bytes||0)/1048576).toFixed(1)+' MB</dd></div></dl>';
+        } else {
+          html+='<div class="cookbook-empty"><span aria-hidden="true">📖</span><strong>Your cookbook shelf is ready.</strong><p>Choose your PDF file above and Life in Bloom will keep it here.</p></div>';
+        }
+        html+='</section>';
+      }
+      return html+'</section>';
+    }
+
     function renderSection(page) {
       const section = SECTIONS[page];
       if (!section) return '<section class="panel"><h2>Choose a page</h2>' + linkButton('home', 'Go Home', true) + '</section>';
@@ -346,6 +373,7 @@
       if (page === 'grocery') return renderGrocery();
       if (page === 'ideas') return renderIdeas();
       if (page === 'skills') return renderSkills();
+      if (page === 'cookbook') return renderCookbook();
       return renderSection(page);
     }
 
@@ -408,6 +436,16 @@
     }
     function handleChange(event) {
       const field = event.target;
+      if(field && field.dataset && Object.hasOwn(field.dataset,'cookbookUpload')){
+        const file=field.files&&field.files[0]; field.value='';
+        if(!file)return true;
+        if(!options.uploadCookbookFile){notify('Refresh Life in Bloom to load Cookbook uploads.',true);return true;}
+        cookbookBusy=true; refresh();
+        Promise.resolve(options.uploadCookbookFile(file)).then(()=>{
+          notify('Food in Bloom Cookbook saved.');
+        }).catch(error=>notify(error&&error.message?error.message:'The cookbook could not be uploaded.',true)).finally(()=>{cookbookBusy=false;refresh();});
+        return true;
+      }
       if (field && field.dataset && field.dataset.skillsCheck) {
         const state = skillsState();
         state.completed[field.dataset.skillsCheck] = Boolean(field.checked);
@@ -464,6 +502,20 @@
         const score = Object.keys(correct).reduce((sum, key) => sum + (state.scienceQuiz[key] === correct[key] ? 1 : 0), 0);
         const result = root.document && root.document.getElementById('science-grade-result');
         if (result) result.textContent = 'Score: ' + score + ' / 3. ' + (score === 3 ? 'Excellent — all three are correct.' : 'Review the lesson sections above, then try again.');
+        return true;
+      }
+      if (action === 'cookbook-open') {
+        if(!options.openCookbookFile)return true;
+        cookbookBusy=true;refresh();
+        Promise.resolve(options.openCookbookFile(button.dataset.id)).catch(error=>notify(error&&error.message?error.message:'The cookbook could not be opened.',true)).finally(()=>{cookbookBusy=false;refresh();});
+        return true;
+      }
+      if (action === 'cookbook-remove') {
+        if(!options.deleteCookbookFile)return true;
+        if(!root.confirm||root.confirm('Remove the saved Food in Bloom Cookbook PDF?')){
+          cookbookBusy=true;refresh();
+          Promise.resolve(options.deleteCookbookFile(button.dataset.id)).then(()=>notify('Cookbook removed.')).catch(error=>notify(error&&error.message?error.message:'The cookbook could not be removed.',true)).finally(()=>{cookbookBusy=false;refresh();});
+        }
         return true;
       }
       if (action === 'navigate') { navigate(button.dataset.pageTarget); return true; }
