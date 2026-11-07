@@ -62,9 +62,14 @@
   function format(value) { return value == null || !Number.isFinite(Number(value)) ? 'Not recorded' : new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(Number(value)); }
 
   const CATEGORIES = [
-    ['feeding', 'Feeding', '🥣'], ['movement', 'Walk & movement', '🐾'], ['dental', 'Teeth', '🪥'],
-    ['grooming', 'Grooming', '🧴'], ['medication', 'Medication', '💊'], ['vet', 'Veterinary care', '🩺'],
-    ['training', 'Training', '⭐'], ['other', 'Other care', '🌿']
+    ['feeding', 'Feeding', '🍽️'],
+    ['movement', 'Potty break / Walks', '🐾'],
+    ['dental', 'Teeth / Dental', '🦷'],
+    ['grooming', 'Grooming', '🛁'],
+    ['medication', 'Medication', '💊'],
+    ['vet', 'Vet care', '🩺'],
+    ['training', 'Training', '🎓'],
+    ['other', 'Other care', '🌼']
   ];
   const HOUSEWORK_CATEGORIES = [
     ['cleaning_shared_spaces', 'Cleaning Shared Spaces', '🧹'],
