@@ -334,3 +334,182 @@
   .reader-text-view{padding:22px 18px;font-size:17px}
   .reader-range{grid-template-columns:1fr}
 }
+
+
+/* Reading Practice Studio */
+.reader-listen-panel{
+  background:linear-gradient(135deg,#fff9fc,#f8f3ff);
+}
+.reader-listen-controls{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+}
+.reader-listen-controls label{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  color:#6b4658;
+  font-size:12px;
+  font-weight:700;
+}
+.reader-listen-controls select,
+.read-aloud-draft-grid select{
+  min-height:38px;
+  border:1px solid #dfbdcb;
+  border-radius:9px;
+  background:#fff;
+  padding:6px 8px;
+  color:#573747;
+}
+.reader-read-aloud{
+  background:linear-gradient(135deg,#fffaf4,#fff7fb);
+}
+.read-aloud-source{
+  margin:8px 0 12px;
+  padding:10px 12px;
+  border:1px solid #ead8df;
+  border-radius:12px;
+  background:#fff;
+  color:#674b58;
+  font-size:12px;
+}
+.read-aloud-controls{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-bottom:10px;
+}
+.read-aloud-preview{
+  display:grid;
+  gap:10px;
+  padding:12px;
+  border:1px solid #e8cfd9;
+  border-radius:14px;
+  background:#fff;
+}
+.read-aloud-preview audio,
+.read-aloud-entry audio{
+  width:100%;
+}
+.read-aloud-draft-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+}
+.read-aloud-draft-grid label{
+  display:grid;
+  gap:5px;
+  color:#6a4657;
+  font-size:12px;
+  font-weight:700;
+}
+.read-aloud-draft-grid .wide{grid-column:1/-1}
+.read-aloud-draft-grid textarea{
+  border:1px solid #dfbdcb;
+  border-radius:10px;
+  padding:9px;
+  resize:vertical;
+  font:inherit;
+}
+.read-aloud-history{
+  display:grid;
+  gap:9px;
+  margin-top:14px;
+}
+.read-aloud-entry{
+  display:grid;
+  grid-template-columns:minmax(160px,.8fr) minmax(220px,1.2fr) auto auto;
+  gap:10px;
+  align-items:center;
+  padding:10px;
+  border:1px solid #ead7df;
+  border-radius:13px;
+  background:#fff;
+}
+.read-aloud-entry strong,
+.read-aloud-entry small{display:block}
+.read-aloud-entry small{margin-top:3px;color:#806573}
+.read-aloud-entry p{grid-column:1/-1;margin:0;color:#6d5260;font-size:12px}
+.read-aloud-ratings{display:flex;flex-wrap:wrap;gap:5px}
+.read-aloud-ratings span{
+  padding:4px 7px;
+  border-radius:999px;
+  background:#f7e5ed;
+  color:#7b405a;
+  font-size:10px;
+  font-weight:800;
+}
+.reading-tutor-workspace{
+  background:linear-gradient(135deg,#fff,#fff8fb);
+}
+.tutor-assignment-form{
+  margin:12px 0;
+  padding:13px;
+  border:1px solid #e7ced8;
+  border-radius:14px;
+  background:#fff9fb;
+}
+.tutor-assignment-list{
+  display:grid;
+  gap:10px;
+}
+.tutor-assignment-card{
+  padding:12px;
+  border:1px solid #ead5de;
+  border-radius:14px;
+  background:#fff;
+}
+.tutor-assignment-card .habit-heading{
+  margin-bottom:8px;
+}
+.tutor-assignment-card strong,
+.tutor-assignment-card small{display:block}
+.tutor-assignment-card small{margin-top:3px;color:#866877}
+.tutor-assignment-card p{
+  color:#654a58;
+  font-size:12px;
+  line-height:1.55;
+}
+.tutor-assignment-card details{
+  margin:8px 0;
+  padding:8px 10px;
+  border-radius:10px;
+  background:#fff4f8;
+}
+.tutor-assignment-card summary{
+  color:#734057;
+  font-weight:800;
+  cursor:pointer;
+}
+.tutor-written-work{
+  white-space:normal;
+}
+.tutor-attachment-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  align-items:center;
+  margin-top:10px;
+}
+.tutor-attachment-row>span{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:5px 7px;
+  border:1px solid #ead4dd;
+  border-radius:10px;
+  background:#fff8fb;
+  color:#6c4355;
+  font-size:11px;
+}
+@media(max-width:780px){
+  .read-aloud-entry{
+    grid-template-columns:1fr;
+  }
+  .read-aloud-draft-grid{
+    grid-template-columns:1fr;
+  }
+  .read-aloud-draft-grid .wide{grid-column:auto}
+}
