@@ -98,7 +98,8 @@
     housework: ['Housework', 'Your space for caring for your home.'],
     dog: ['Dog', 'A home for your dog’s care and routines.'],
     smoking: ['Smoking Log', 'Your space for recording your own patterns.'],
-    settings: ['Settings', 'Your account, household, and personal setup.']
+    settings: ['Settings', 'Your account, household, and personal setup.'],
+    cookbook: ['Food in Bloom Cookbook', 'Your household cookbook PDF.']
   };
 
   function escapeText(value) {
@@ -369,7 +370,29 @@
     },
     navigate,
     openDate,
-    commitData
+    commitData,
+    getCloudSnapshot: () => cloud && cloud.snapshot ? cloud.snapshot() : null,
+    uploadCookbookFile: file => {
+      if(!cloud || !cloud.uploadCookbookFile) return Promise.reject(new Error('Cookbook storage is not ready.'));
+      return cloud.uploadCookbookFile(file);
+    },
+    openCookbookFile: id => {
+      if(!cloud || !cloud.getCookbookFileUrl) return Promise.reject(new Error('Cookbook storage is not ready.'));
+      const current=cloud.snapshot(),row=(current.cookbookFiles||[]).find(item=>item.id===id);
+      if(!row) return Promise.reject(new Error('Refresh to find that cookbook.'));
+      const popup=window.open('about:blank','_blank');
+      return Promise.resolve(cloud.getCookbookFileUrl(row)).then(url=>{
+        if(popup) popup.location.href=url;
+        else window.open(url,'_blank','noopener');
+        return true;
+      }).catch(error=>{try{if(popup)popup.close();}catch(_){} throw error;});
+    },
+    deleteCookbookFile: id => {
+      if(!cloud || !cloud.deleteCookbookFile) return Promise.reject(new Error('Cookbook storage is not ready.'));
+      const current=cloud.snapshot(),row=(current.cookbookFiles||[]).find(item=>item.id===id);
+      if(!row) return Promise.reject(new Error('Refresh to find that cookbook.'));
+      return cloud.deleteCookbookFile(row);
+    }
   });
   cloud = GS.createStore({ config: window.BloomCloudConfig, onChange: handleCloudChange });
   const sharedOptions = { store:cloud, notify:showNotice, refresh:selector=>renderKeepScroll(selector), navigate,
