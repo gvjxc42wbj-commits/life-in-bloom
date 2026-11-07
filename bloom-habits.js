@@ -197,7 +197,12 @@
       const due = skills.filter(skill => M.skillProgress(skill, sessions, today).due);
       const visible = skills.filter(skill => selectedCategory === 'all' || skill.category === selectedCategory).sort((a, b) => Number(M.skillProgress(b, sessions, today).due) - Number(M.skillProgress(a, sessions, today).due) || a.name.localeCompare(b.name));
       let html = '<section class="panel habit-intro"><div class="habit-heading"><div><p class="page-kicker">Your curiosity, in bloom</p><h2>Skills in Bloom</h2><p class="habit-help">Keep the things you learn. Make room for the next small practice.</p></div>' + button('new-skill', '+ Add a skill', '', true, Boolean(attempt)) + '</div><div class="habit-summary-strip"><span><strong>' + skills.length + '</strong> saved skills</span><span><strong>' + due.length + '</strong> ready to revisit</span><span><strong>' + esc(count(sessions.filter(row => row.occurred_on === today).reduce((sum, row) => sum + Number(row.minutes || 0), 0))) + '</strong> minutes today</span></div></section>';
-      html += '<nav class="habit-category-grid" aria-label="Skill areas">' + M.CATEGORIES.map(category => '<button type="button" data-habit-action="category" data-category="' + category.key + '" aria-pressed="' + (selectedCategory === category.key) + '"><span aria-hidden="true">' + category.icon + '</span><strong>' + category.label + '</strong><small>' + skills.filter(row => row.category === category.key).length + ' saved</small></button>').join('') + '</nav><div class="habit-actions habit-filter-actions">' + button('category', 'All skills', ' data-category="all"', selectedCategory === 'all') + '</div>';
+      if (selectedCategory === 'all') {
+        html += '<nav class="habit-category-grid" aria-label="Skill areas">' + M.CATEGORIES.map(category => '<button type="button" data-habit-action="category" data-category="' + category.key + '" aria-pressed="false"><span aria-hidden="true">' + category.icon + '</span><strong>' + category.label + '</strong><small>' + skills.filter(row => row.category === category.key).length + ' saved</small></button>').join('') + '</nav>';
+      } else {
+        const area=M.category(selectedCategory);
+        html += '<section class="panel habit-area-header"><div class="habit-heading"><div><p class="page-kicker">Skills in Bloom · '+esc(area.label)+'</p><h2><span aria-hidden="true">'+area.icon+'</span> '+esc(area.label)+'</h2><p class="habit-help">Your saved '+esc(area.label.toLowerCase())+' topics, practice records, and review reminders.</p></div>'+button('category','← All Skills',' data-category="all"')+'</div></section>';
+      }
       if (skillOpen) html += renderSkillForm(current);
       if (sessionOpen) html += renderSessionForm(current);
       html += '<section class="panel"><div class="habit-heading"><h2>' + (selectedCategory === 'all' ? 'Your practice garden' : esc(M.category(selectedCategory).label)) + '</h2>' + (dirty('skill') && !skillOpen ? button('resume', 'Resume skill draft', ' data-group="skill"') : '') + (dirty('session') && !sessionOpen ? button('resume', 'Resume practice draft', ' data-group="session"') : '') + '</div>' + (visible.length ? '<div class="habit-skill-grid">' + visible.map(skill => renderSkillCard(skill, current)).join('') + '</div>' : '<div class="habit-empty"><span aria-hidden="true">🌱</span><h3>Choose something you want to grow</h3><p>Add a specific skill, then record a short practice or recall check. Categories begin empty until you add your own topics.</p>' + button('new-skill', '+ Add a skill', '', true, Boolean(attempt)) + '</div>') + '</section>';
@@ -531,7 +536,17 @@
       const comparison = day ? M.smokingComparison(day, day.reference_snapshot || {}) : null;
       return { dueSkills: skills.filter(skill => M.skillProgress(skill, sessions, today).due).length, skillCount: skills.length, practiceMinutes: sessions.filter(row => row.occurred_on === today).reduce((sum, row) => sum + Number(row.minutes || 0), 0), smokingDay: day ? copy(day) : null, smokingEstimate: comparison ? { dailyCents: comparison.daily.cost_cents, baselineCents: comparison.baseline.cost_cents, savingsCents: comparison.savings_cents } : null };
     }
-    return { render, handleClick, handleSubmit, handleInput, handleChange, hasUnsavedDraft, hasUnpersistedChanges, discardDraft, getHomeSummary, isBusy: () => Boolean(busy), whenIdle: () => pending };
+    function openSkillArea(category) {
+      snapshot();
+      if (category !== 'all' && !M.CATEGORIES.some(item => item.key === category)) return false;
+      selectedCategory = category;
+      selectedSkillId = '';
+      skillOpen = false;
+      sessionOpen = false;
+      persist();
+      return true;
+    }
+    return { render, handleClick, handleSubmit, handleInput, handleChange, hasUnsavedDraft, hasUnpersistedChanges, discardDraft, getHomeSummary, openSkillArea, isBusy: () => Boolean(busy), whenIdle: () => pending };
   }
   const api = { createController };
   if (typeof module === 'object' && module.exports) module.exports = api;
