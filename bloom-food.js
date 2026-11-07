@@ -147,6 +147,11 @@
     let tab = 'home', selectedDate = dayKey(getNow()), search = '', editor = false, openedRecipeId = '', logging = false, planning = false;
     let selectedFile = null, fileUrls = new Map(), draftSaved = false, draftWarningShown = false;
     let recipeReturn = null;
+    let cookbookSelectedRecipeId = '';
+    let liveCookRecipeId = '';
+    let liveCookStep = 0;
+    let liveCookTimerEnd = 0;
+    let liveCookTimerHandle = null;
     const COOKBOOK_PAGES = {1:4,2:6,3:7,4:8,5:9,6:10,7:11,8:12,9:13,10:14,11:15,12:16,13:17,14:18,15:20,16:21,17:22,18:23,19:24,20:25,21:26,22:27,23:29,24:30,25:31,26:33,27:35,28:36,29:37,30:38,31:40,32:41,33:42,34:43,35:44,36:45,37:46,38:47,39:48,40:49,41:50,42:51,43:52,44:54,45:55};
     const COOKBOOK_SECTIONS = [
       ['Main Dishes',1,7],['Family Recipes',8,10],['Breakfast',11,11],['Drinks',12,12],
@@ -186,7 +191,7 @@
       const current = store.snapshot() || {};
       const key = (current.user && current.user.id || '') + ':' + (current.household && current.household.id || '');
       if (key !== identity) {
-        identity = key; generation++; busy = null; selectedDate = dayKey(getNow()); tab = 'home'; search = ''; editor = false; logging = false; planning = false; planAttempt = null; planProblem = ''; planIngredientsOpen = false; openedRecipeId = ''; recipeReturn = null; selectedFile = null; fileUrls = new Map();
+        identity = key; generation++; busy = null; selectedDate = dayKey(getNow()); tab = 'home'; search = ''; editor = false; logging = false; planning = false; planAttempt = null; planProblem = ''; planIngredientsOpen = false; openedRecipeId = ''; recipeReturn = null; cookbookSelectedRecipeId = ''; liveCookRecipeId = ''; liveCookStep = 0; stopLiveTimer(); selectedFile = null; fileUrls = new Map();
         drafts = { recipe: recipeDraft(), log: logDraft(selectedDate), plan: planDraft(selectedDate) }; baselines = copy(drafts); draftSaved = false; draftWarningShown = false;
         if (draftStore && current.user && current.household) {
           try { const saved = draftStore.read(current.user.id, current.household.id, 'food'); draftSaved = Boolean(saved && restoreDrafts(saved.data)); }
@@ -399,7 +404,7 @@
       if (recipe.source_name) html += '<p class="food-help"><strong>Recipe source:</strong> ' + esc(recipe.source_name) + '</p>';
       if (safeUrl(recipe.source_url)) html += '<p><a href="' + esc(safeUrl(recipe.source_url)) + '" target="_blank" rel="noopener noreferrer">Original recipe ↗</a></p>';
       html += nutritionTable(M.recipeNutrition(recipe, current.products || [], 1), 'Nutrition per recipe serving');
-      html += '<div class="food-actions">' + button('plan-recipe', 'Plan this meal', ' data-id="' + esc(recipe.id) + '"', true, Boolean(planAttempt)) + button('log-recipe', 'Log for Person 1', ' data-id="' + esc(recipe.id) + '" data-person="1"') + button('log-recipe', 'Log for Person 2', ' data-id="' + esc(recipe.id) + '" data-person="2"') + button('edit-recipe', 'Edit recipe', ' data-id="' + esc(recipe.id) + '"') + button('archive-recipe', 'Archive recipe', ' data-id="' + esc(recipe.id) + '"', false, current.offline) + '</div>';
+      html += '<div class="food-actions">' + button('cook-recipe', '▶ Cook this recipe live', ' data-id="' + esc(recipe.id) + '"', true) + button('plan-recipe', 'Plan this meal', ' data-id="' + esc(recipe.id) + '"', false, Boolean(planAttempt)) + button('log-recipe', 'Log for Person 1', ' data-id="' + esc(recipe.id) + '" data-person="1"') + button('log-recipe', 'Log for Person 2', ' data-id="' + esc(recipe.id) + '" data-person="2"') + button('edit-recipe', 'Edit recipe', ' data-id="' + esc(recipe.id) + '"') + button('archive-recipe', 'Archive recipe', ' data-id="' + esc(recipe.id) + '"', false, current.offline) + '</div>';
       return html + renderFiles(current, recipe) + '</section>';
     }
     function renderRecipeForm(current) {
@@ -449,20 +454,115 @@
       afterRenderScroll('#food-recipe-detail-' + recipe.id, 'start');
       return true;
     }
-    function renderCookbook(current) {
-      const cookbook = (current.recipes || []).filter(recipe => !recipe.archived && cookbookNumber(recipe));
-      const byNumber = new Map(cookbook.map(recipe => [cookbookNumber(recipe), recipe]));
-      let html = '<section class="panel food-cookbook" id="food-cookbook-top"><div class="food-cookbook-cover"><p class="page-kicker">Food In Bloom · Cookbook</p><h2>Cookbook pages</h2><p>Browse the book in recipe order. Tap any page to open that exact recipe in the Recipes tab.</p><span>45 recipes · pages 4–55</span></div>';
-      for (const [label, first, last] of COOKBOOK_SECTIONS) {
-        const rows = [];
-        for (let number = first; number <= last; number++) {
-          const recipe = byNumber.get(number);
-          if (!recipe) continue;
-          rows.push('<button type="button" class="food-cookbook-page" data-food-action="cookbook-recipe" data-id="' + esc(recipe.id) + '"><span class="food-cookbook-number">Recipe ' + String(number).padStart(2,'0') + '</span><strong>' + esc(recipe.name) + '</strong><small>Cookbook page ' + esc(COOKBOOK_PAGES[number] || '') + (recipe.time_text ? ' · ' + esc(recipe.time_text) : '') + '</small><span class="food-cookbook-open">Open recipe →</span></button>');
+    function recipeSteps(recipe) {
+      const raw = String(recipe && recipe.instructions || '').replace(/\r/g, ' ').trim();
+      if (!raw) return ['Read through the recipe, gather the ingredients, and begin when you are ready.'];
+      const matches = [...raw.matchAll(/(?:^|\s)(\d+)\.\s+([\s\S]*?)(?=(?:\s+\d+\.\s)|$)/g)];
+      const steps = matches.map(match => match[2].trim()).filter(Boolean);
+      if (steps.length) return steps;
+      return raw.split(/\n+/).map(value => value.trim()).filter(Boolean);
+    }
+    function liveStepMinutes(value) {
+      const match = String(value || '').match(/(\d+)\s*(?:-|–|to)?\s*(\d+)?\s*min(?:ute)?s?/i);
+      return match ? Math.max(1, Number(match[1])) : 0;
+    }
+    function stopLiveTimer() {
+      if (liveCookTimerHandle && root.clearInterval) root.clearInterval(liveCookTimerHandle);
+      liveCookTimerHandle = null; liveCookTimerEnd = 0;
+    }
+    function startLiveTimer(minutes) {
+      stopLiveTimer();
+      const amount = Math.max(1, Math.min(240, Number(minutes) || 1));
+      liveCookTimerEnd = Date.now() + amount * 60000;
+      if (root.setInterval) liveCookTimerHandle = root.setInterval(() => {
+        if (!liveCookTimerEnd) return;
+        if (Date.now() >= liveCookTimerEnd) {
+          stopLiveTimer();
+          notify('Cooking timer finished.');
         }
-        if (rows.length) html += '<section class="food-cookbook-section"><h3>' + esc(label) + '</h3><div class="food-cookbook-grid">' + rows.join('') + '</div></section>';
+        refresh('#food-live-timer');
+      }, 1000);
+    }
+    function liveTimerText() {
+      if (!liveCookTimerEnd) return '';
+      const seconds = Math.max(0, Math.ceil((liveCookTimerEnd - Date.now()) / 1000));
+      return String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
+    }
+    function speakLiveStep(recipe) {
+      const steps = recipeSteps(recipe), step = steps[Math.max(0, Math.min(liveCookStep, steps.length - 1))] || '';
+      if (!root.speechSynthesis || typeof root.SpeechSynthesisUtterance !== 'function') {
+        notify('Audio guidance is not available in this browser.', true); return;
       }
-      return html + '</section>';
+      root.speechSynthesis.cancel();
+      const utterance = new root.SpeechSynthesisUtterance('Step ' + (liveCookStep + 1) + '. ' + step);
+      utterance.rate = 0.92; utterance.pitch = 1; utterance.volume = 1;
+      root.speechSynthesis.speak(utterance);
+    }
+    function cookbookRecipeNumber(recipe) { return cookbookNumber(recipe) || ''; }
+    function cookbookVisual(recipe, extraClass) {
+      const number = cookbookRecipeNumber(recipe);
+      return '<div class="food-book-visual ' + (extraClass || '') + '"><span class="food-book-page-no">p. ' + esc(COOKBOOK_PAGES[number] || '') + '</span><span class="food-book-dish" aria-hidden="true">🍽️</span><strong>' + esc(recipe && recipe.name || 'Food In Bloom') + '</strong><small>' + esc(recipe && recipe.category_label || 'Cookbook recipe') + '</small></div>';
+    }
+    function renderLiveCook(current, recipe) {
+      const steps = recipeSteps(recipe), index = Math.max(0, Math.min(liveCookStep, steps.length - 1)), step = steps[index];
+      const minutes = liveStepMinutes(step), timerText = liveTimerText();
+      const dots = steps.map((_, position) => '<span class="' + (position === index ? 'is-current' : position < index ? 'is-done' : '') + '">' + (position + 1) + '</span>').join('');
+      return '<aside class="food-live-panel" id="food-live-cook"><div class="food-live-topbar">' + button('cook-exit', '← Back') + '<span>🔖 &nbsp; ⋯</span></div>'
+        + '<div class="food-live-hero"><span aria-hidden="true">🍳</span></div>'
+        + '<h2>' + esc(recipe.name) + '</h2><p class="food-live-meta">Serves: ' + esc(fmt(recipe.servings)) + (recipe.time_text ? ' &nbsp; | &nbsp; Time: ' + esc(recipe.time_text) : '') + '</p>'
+        + '<div class="food-live-tabs">' + button('cook-open-recipe', 'Recipe', ' data-id="' + esc(recipe.id) + '"') + '<span class="is-active">▶ Cook Live</span><span>Nutrition</span><span>Notes</span></div>'
+        + '<section class="food-live-step-card"><div class="food-live-step-head"><div><span class="food-live-dot"></span><strong>Live Cook: Step-by-Step</strong><small>Hands-free guided cooking with audio and timers.</small></div><span aria-hidden="true">⚙</span></div>'
+        + '<div class="food-live-progress-dots">' + dots + '</div>'
+        + '<div class="food-live-step-body"><div class="food-live-step-visual"><span aria-hidden="true">🔪</span></div><div><small>Step ' + (index + 1) + ' of ' + steps.length + '</small><h3>' + (index === 0 ? 'Get started' : 'Keep cooking') + '</h3><p>' + esc(step) + '</p></div></div>'
+        + '<div class="food-live-controls">' + button('cook-speak', '🔊 Audio') + button('cook-replay', '↻ Replay') + (index > 0 ? button('cook-prev', '← Previous') : '') + (index < steps.length - 1 ? button('cook-next', 'Next Step →', '', true) : '<span class="food-live-finished">✓ Final step</span>') + '</div></section>'
+        + '<div class="food-live-tools"><div><strong>🎙 Hands-Free</strong><small>Audio guidance</small></div><div id="food-live-timer"><strong>⏱ ' + (timerText || (minutes ? minutes + ':00' : 'Timer')) + '</strong><small>' + (timerText ? 'Timer running' : minutes ? 'Suggested from this step' : 'No timed step detected') + '</small></div><div><strong>🔊 Step Voice</strong><small>Warm, steady pace</small></div></div>'
+        + (minutes && !timerText ? '<div class="food-live-timer-actions">' + button('cook-start-timer', 'Start ' + minutes + ' min timer', ' data-minutes="' + minutes + '"', true) + '</div>' : timerText ? '<div class="food-live-timer-actions">' + button('cook-stop-timer', 'Stop timer') + '</div>' : '')
+        + '<div class="food-live-overall"><div><strong>Overall Progress</strong><span>Step ' + (index + 1) + ' of ' + steps.length + ' · ' + Math.round(((index + 1) / steps.length) * 100) + '%</span></div><progress max="' + steps.length + '" value="' + (index + 1) + '"></progress></div>'
+        + '<button type="button" class="food-live-main-button" data-food-action="cook-speak">👩‍🍳 Cook This Recipe (Live) &nbsp; 🔊</button></aside>';
+    }
+    function renderCookbookPreview(current, recipe) {
+      if (!recipe) return '<aside class="food-live-panel"><div class="food-empty"><h3>Choose a recipe</h3><p>Tap a cookbook page to preview it here.</p></div></aside>';
+      return '<aside class="food-live-panel food-recipe-preview"><div class="food-live-topbar"><strong>Recipe Preview</strong><span>🔖 &nbsp; ⋯</span></div>'
+        + cookbookVisual(recipe, 'is-preview') + '<h2>' + esc(recipe.name) + '</h2><p class="food-live-meta">Serves: ' + esc(fmt(recipe.servings)) + (recipe.time_text ? ' &nbsp; | &nbsp; Time: ' + esc(recipe.time_text) : '') + '</p>'
+        + '<p class="food-help">' + esc((recipe.instructions || '').split(/\s+/).slice(0, 42).join(' ')) + ((recipe.instructions || '').split(/\s+/).length > 42 ? '…' : '') + '</p>'
+        + recipeCostMarkup(recipe, current, true)
+        + '<div class="food-preview-actions">' + button('cook-recipe', '▶ Cook Live', ' data-id="' + esc(recipe.id) + '"', true) + button('cookbook-recipe', 'Open full recipe', ' data-id="' + esc(recipe.id) + '"') + '</div></aside>';
+    }
+    function renderCookbook(current) {
+      const cookbook = (current.recipes || []).filter(recipe => !recipe.archived && cookbookNumber(recipe)).sort((a,b) => cookbookNumber(a) - cookbookNumber(b));
+      const byNumber = new Map(cookbook.map(recipe => [cookbookNumber(recipe), recipe]));
+      if (!cookbookSelectedRecipeId && cookbook.length) cookbookSelectedRecipeId = cookbook[0].id;
+      const selected = cookbook.find(recipe => recipe.id === cookbookSelectedRecipeId) || cookbook[0] || null;
+      const liveRecipe = cookbook.find(recipe => recipe.id === liveCookRecipeId) || null;
+      const first = cookbook[0], second = cookbook[1] || cookbook[0];
+      const upcoming = (current.cookingPlans || []).filter(row => row.status === 'planned' && row.cook_on >= dayKey(getNow())).sort((a,b) => String(a.cook_on).localeCompare(String(b.cook_on))).slice(0,5);
+      let html = '<section class="food-cookbook-app" id="food-cookbook-top"><div class="food-cookbook-main"><header class="food-cookbook-heading"><div><h1>Cookbook</h1><p>Browse pages, plan meals, and cook with live guidance</p></div><button type="button" class="food-round-search" data-food-action="tab" data-tab="recipes" aria-label="Search recipes">⌕</button></header>'
+        + '<div class="food-cookbook-dashboard"><div class="food-cookbook-left"><div class="food-book-feature"><div class="food-open-book">' + (first ? cookbookVisual(first,'is-left') : '') + (second ? cookbookVisual(second,'is-right') : '') + '</div><button type="button" class="food-open-cookbook" data-food-action="cookbook-jump-browse">📖 Open cookbook &nbsp; →</button></div>'
+        + '<div class="food-cookbook-quick"><button type="button" data-food-action="cookbook-jump-browse"><span>☷</span><strong>Contents</strong><small>Browse by section or page</small><b>›</b></button>'
+        + '<button type="button" data-food-action="tab" data-tab="plans"><span>🗓</span><strong>Menu</strong><small>Plan meals & build from recipes</small><b>›</b></button>'
+        + '<button type="button" data-food-action="tab" data-tab="recipes"><span>🔖</span><strong>Saved</strong><small>Your saved recipes</small><b>›</b></button>'
+        + '<button type="button" data-food-action="cookbook-select" data-id="' + esc(selected && selected.id || '') + '"><span>◴</span><strong>Recently viewed</strong><small>Pick up where you left off</small><b>›</b></button>'
+        + '<button type="button" data-food-action="tab" data-tab="recipes"><span>⌕</span><strong>Jump to recipe</strong><small>Search this cookbook</small><b>›</b></button></div></div>'
+        + '<section class="food-browse-pages" id="food-cookbook-browse"><h2>Browse pages</h2><div class="food-browse-strip">';
+      for (const recipe of cookbook.slice(0,8)) {
+        const number = cookbookNumber(recipe);
+        html += '<article class="food-page-thumb' + (selected && recipe.id === selected.id ? ' is-selected' : '') + '"><button type="button" data-food-action="cookbook-select" data-id="' + esc(recipe.id) + '">' + cookbookVisual(recipe,'is-thumb') + '</button><strong>' + esc(recipe.name) + '</strong><small>Page ' + esc(COOKBOOK_PAGES[number] || '') + '</small><div><button type="button" data-food-action="cookbook-recipe" data-id="' + esc(recipe.id) + '">Recipe</button><button type="button" data-food-action="cook-recipe" data-id="' + esc(recipe.id) + '">Cook</button></div></article>';
+      }
+      html += '</div></section><section class="food-menu-preview"><div class="food-menu-preview-head"><div><h2>Meal Menu</h2><p>Upcoming meals from your saved plan</p></div>' + button('tab','Build Menu',' data-tab="plans"',true) + '</div><div class="food-menu-days">';
+      if (upcoming.length) {
+        for (const plan of upcoming) html += '<button type="button" data-food-action="edit-plan" data-id="' + esc(plan.id) + '"><strong>' + esc(dateLabel(plan.cook_on).replace(/, \d{4}$/,'')) + '</strong><span aria-hidden="true">🍽️</span><small>' + esc(plan.recipe_name || 'Planned meal') + '</small></button>';
+      } else html += '<div class="food-menu-empty">No planned meals yet. Build your menu from any cookbook recipe.</div>';
+      html += '</div></section></div>' + (liveRecipe ? renderLiveCook(current,liveRecipe) : renderCookbookPreview(current,selected)) + '</div>';
+      html += '<details class="food-full-contents"><summary>All cookbook sections · 45 recipes</summary>';
+      for (const [label, firstNumber, lastNumber] of COOKBOOK_SECTIONS) {
+        const rows=[];
+        for (let number=firstNumber; number<=lastNumber; number++) {
+          const recipe=byNumber.get(number); if(!recipe) continue;
+          rows.push('<button type="button" data-food-action="cookbook-select" data-id="' + esc(recipe.id) + '"><span>Recipe ' + String(number).padStart(2,'0') + '</span><strong>' + esc(recipe.name) + '</strong><small>p. ' + esc(COOKBOOK_PAGES[number] || '') + '</small></button>');
+        }
+        if(rows.length) html += '<section><h3>' + esc(label) + '</h3><div>' + rows.join('') + '</div></section>';
+      }
+      return html + '</details></section>';
     }
 
     function renderRecipes(current) {
@@ -904,13 +1004,40 @@
     function handleClick(event) {
       const element = event.target && typeof event.target.closest === 'function' ? event.target.closest('[data-food-action]') : null;
       const data = element && element.dataset, action = data && data.foodAction;
-      const actions = ['grocery', 'food-home', 'wellness', 'tab', 'cookbook-recipe', 'recipe-back', 'scroll-top', 'new-recipe', 'resume-recipe', 'view-recipe', 'edit-recipe', 'discard-recipe', 'archive-recipe', 'add-ingredient', 'remove-ingredient', 'add-shopping-ingredient', 'remove-shopping-ingredient', 'toggle-plan-ingredients', 'new-plan', 'plan-recipe', 'resume-plan', 'edit-plan', 'cancel-plan', 'close-plan', 'discard-plan', 'retry-plan', 'reload-plan', 'reload-plan-recipe', 'refresh-meal-shopping', 'new-log', 'resume-log', 'log-recipe', 'edit-log', 'eaten-from-plan', 'discard-log', 'choose-person', 'delete-log', 'calendar', 'upload-file', 'view-file', 'remove-file'];
+      const actions = ['grocery', 'food-home', 'wellness', 'tab', 'cookbook-recipe', 'cookbook-select', 'cookbook-jump-browse', 'cook-recipe', 'cook-open-recipe', 'cook-exit', 'cook-next', 'cook-prev', 'cook-speak', 'cook-replay', 'cook-start-timer', 'cook-stop-timer', 'recipe-back', 'scroll-top', 'new-recipe', 'resume-recipe', 'view-recipe', 'edit-recipe', 'discard-recipe', 'archive-recipe', 'add-ingredient', 'remove-ingredient', 'add-shopping-ingredient', 'remove-shopping-ingredient', 'toggle-plan-ingredients', 'new-plan', 'plan-recipe', 'resume-plan', 'edit-plan', 'cancel-plan', 'close-plan', 'discard-plan', 'retry-plan', 'reload-plan', 'reload-plan-recipe', 'refresh-meal-shopping', 'new-log', 'resume-log', 'log-recipe', 'edit-log', 'eaten-from-plan', 'discard-log', 'choose-person', 'delete-log', 'calendar', 'upload-file', 'view-file', 'remove-file'];
       if (!actions.includes(action)) return false;
       if (event.preventDefault) event.preventDefault(); const current = snapshot(); if (busy) return true;
       try {
         if (action === 'grocery') { openGrocery(data.tab || 'list', data.month || undefined); return true; }
         if (action === 'food-home' || action === 'wellness') { navigate(action === 'food-home' ? 'food' : 'wellness'); return true; }
         if (action === 'tab') { if (['home','cookbook','recipes','plans','cooking','soon','log'].includes(data.tab)) tab = data.tab; }
+        else if (action === 'cookbook-select') {
+          if ((current.recipes || []).some(row => row.id === data.id && !row.archived)) cookbookSelectedRecipeId = data.id;
+          liveCookRecipeId = ''; stopLiveTimer(); persist(); refresh('#food-cookbook-top'); return true;
+        }
+        else if (action === 'cookbook-jump-browse') { afterRenderScroll('#food-cookbook-browse','start'); return true; }
+        else if (action === 'cook-recipe') {
+          const recipe = (current.recipes || []).find(row => row.id === data.id && !row.archived);
+          if (!recipe) throw new Error('Refresh to find this saved recipe.');
+          cookbookSelectedRecipeId = recipe.id; liveCookRecipeId = recipe.id; liveCookStep = 0; stopLiveTimer(); tab = 'cookbook';
+          persist(); refresh(); afterRenderScroll('#food-live-cook','start'); return true;
+        }
+        else if (action === 'cook-open-recipe') { return openRecipeAndScroll(data.id || liveCookRecipeId, 'cookbook'); }
+        else if (action === 'cook-exit') { liveCookRecipeId = ''; liveCookStep = 0; stopLiveTimer(); refresh('#food-cookbook-top'); return true; }
+        else if (action === 'cook-next' || action === 'cook-prev') {
+          const recipe = (current.recipes || []).find(row => row.id === liveCookRecipeId && !row.archived);
+          if (!recipe) throw new Error('Open a recipe before using live cooking.');
+          const steps = recipeSteps(recipe);
+          liveCookStep = Math.max(0, Math.min(steps.length - 1, liveCookStep + (action === 'cook-next' ? 1 : -1)));
+          stopLiveTimer(); refresh('#food-live-cook'); return true;
+        }
+        else if (action === 'cook-speak' || action === 'cook-replay') {
+          const recipe = (current.recipes || []).find(row => row.id === liveCookRecipeId && !row.archived);
+          if (!recipe) throw new Error('Open a recipe before using audio guidance.');
+          speakLiveStep(recipe); return true;
+        }
+        else if (action === 'cook-start-timer') { startLiveTimer(Number(data.minutes)); refresh('#food-live-timer'); return true; }
+        else if (action === 'cook-stop-timer') { stopLiveTimer(); refresh('#food-live-timer'); return true; }
         else if (action === 'cookbook-recipe') { return openRecipeAndScroll(data.id, 'cookbook'); }
         else if (action === 'recipe-back') {
           const destination = recipeReturn && recipeReturn.tab || 'recipes';
