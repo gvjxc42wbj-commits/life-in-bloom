@@ -331,8 +331,8 @@
     }
 
     if (packQuantity != null && packUnit === 'oz' && ['tsp','tbsp'].includes(target)) {
-      const leafy = /(oregano|thyme|parsley|rosemary|cilantro)/.test(name);
-      const ground = /(pepper|paprika|cayenne|garlic powder|ground cloves|cinnamon|nutmeg|garam masala|za'atar|chili powder|seasoning|spice blend)/.test(name);
+      const leafy = /(oregano|thyme|parsley|rosemary|cilantro|basil|sage)/.test(name);
+      const ground = /(pepper|paprika|cayenne|garlic powder|ground cloves|cinnamon|nutmeg|cumin|garam masala|za'atar|chili powder|seasoning|spice blend|seasoned salt)/.test(name);
       const tspPerOunce = leafy ? 24 : ground ? 12 : null;
       if (tspPerOunce != null) {
         const tspCapacity = packQuantity * tspPerOunce;
