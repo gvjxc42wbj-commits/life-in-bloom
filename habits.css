@@ -702,3 +702,48 @@
   .piano-banner{grid-template-columns:1fr}.piano-banner>span{display:none}
   .piano-app-card{grid-template-columns:auto 1fr}.piano-app-card>.button{grid-column:1/-1}
 }
+
+
+/* Animation in Bloom */
+.animation-dashboard{display:grid;gap:14px;margin:14px 0 24px}
+.animation-banner{
+  display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;
+  padding:20px 24px;border:1px solid #dfd2eb;border-radius:22px;
+  background:linear-gradient(110deg,#f9e2ec,#f4edff 58%,#eef7ff);
+  box-shadow:0 10px 24px rgba(76,54,105,.07)
+}
+.animation-banner h2{margin:.1rem 0 .25rem;font-family:Georgia,serif;font-size:clamp(2.2rem,6vw,3.8rem);color:#57334e}
+.animation-banner p{margin:0;color:#765b6a}.animation-banner>span{font-size:56px}
+.animation-dashboard .panel{margin:0}
+.animation-top-grid{display:grid;grid-template-columns:1.3fr .7fr;gap:14px}
+.animation-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.animation-metrics span{display:grid;padding:10px;border:1px solid #ead8e2;border-radius:12px;background:#fff}
+.animation-metrics strong{font-size:20px;color:#84455f}.animation-metrics small{color:#806675}
+.animation-tutor{background:linear-gradient(135deg,#fff9fc,#f6f2ff)}
+.animation-tutor-avatar{display:grid;place-items:center;width:68px;height:68px;border-radius:50%;background:#f0dfea;border:4px solid #fff;font-size:34px}
+.animation-inline-form{padding:13px;border:1px solid #e5cfd9;border-radius:14px;background:#fff9fb}
+.animation-software-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.animation-software-grid article{padding:14px;border:1px solid #ead7df;border-radius:14px;background:#fff}
+.animation-software-grid article>span{font-size:30px}.animation-software-grid h3{margin:8px 0 5px}.animation-software-grid p{margin:0 0 8px;color:#715966;font-size:12px;line-height:1.5}.animation-software-grid small{color:#866a78}
+.animation-learning-summary{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}.animation-learning-summary span{padding:6px 9px;border-radius:999px;background:#f4e0e9;color:#7c405a;font-size:11px;font-weight:800}
+.animation-resource-list{display:grid;gap:8px}.animation-resource-list article{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:11px;border:1px solid #ead7df;border-radius:13px;background:#fff}.animation-resource-list strong,.animation-resource-list small{display:block}.animation-resource-list small{margin-top:3px;color:#806775}.animation-resource-list>a{color:#83445f;font-weight:800;text-decoration:none;font-size:11px}
+.animation-resource-status{display:flex;flex-wrap:wrap;gap:7px}.animation-resource-status label{display:flex;align-items:center;gap:4px;color:#684858;font-size:10px;font-weight:700}.animation-resource-status input{accent-color:#a94b72}
+.animation-skill-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.animation-skill-card{display:grid;grid-template-columns:auto 1fr;gap:9px;padding:12px;border:1px solid #ead6df;border-radius:14px;background:#fff}
+.animation-skill-card>span{font-size:24px}.animation-skill-card strong,.animation-skill-card small{display:block}.animation-skill-card small{margin-top:3px;color:#806875;font-size:10px;line-height:1.4}
+.animation-skill-card select{grid-column:1/-1;min-height:38px;border:1px solid #dfbdcb;border-radius:10px;background:#fff8fb;padding:6px 8px;color:#5c3949}
+.animation-check{display:flex;gap:8px;align-items:center;color:#674757;font-size:12px;font-weight:700}.animation-check input{accent-color:#a94b72}
+.animation-project-list{display:grid;gap:10px}.animation-project-card{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:11px;border:1px solid #ead6df;border-radius:14px;background:#fff}.animation-project-card strong,.animation-project-card small{display:block}.animation-project-card small{margin-top:3px;color:#806675}.animation-project-card p{margin:5px 0 0;color:#725966;font-size:11px}
+.animation-starter-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.animation-starter-grid article{display:grid;gap:6px;padding:13px;border:1px solid #e7d5de;border-radius:14px;background:#fff}.animation-starter-grid span{font-size:28px}.animation-starter-grid small{color:#765e6b;line-height:1.4}.animation-starter-grid b{justify-self:start;padding:4px 7px;border-radius:999px;background:#f1dce6;color:#85435f;font-size:10px}
+.animation-media-list{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:12px}.animation-media-card{display:grid;gap:7px;padding:9px;border:1px solid #ead5de;border-radius:13px;background:#fff}.animation-media-card img,.animation-media-card video{width:100%;height:140px;object-fit:cover;border-radius:9px;background:#eee}.animation-media-card>a{display:grid;place-items:center;height:140px;border-radius:9px;background:#f1e8ee;color:#7d435d;font-weight:900;text-decoration:none}.animation-media-card strong,.animation-media-card small{display:block}.animation-media-card small{color:#806775}
+.animation-roadmap-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.animation-roadmap-grid article{padding:13px;border:1px solid #e7d5df;border-radius:14px;background:#fff}.animation-roadmap-grid b{display:inline-block;padding:4px 7px;border-radius:999px;background:#eadff7;color:#694d83}.animation-roadmap-grid h3{margin:8px 0 5px}.animation-roadmap-grid p{margin:0;color:#725a67;font-size:11px;line-height:1.5}
+.animation-review-grid{display:flex;flex-wrap:wrap;gap:8px}.animation-review-grid span{padding:9px 11px;border:1px solid #e6d4de;border-radius:999px;background:#fff;color:#704457;font-size:11px;font-weight:700}
+@media(max-width:950px){
+  .animation-top-grid{grid-template-columns:1fr}
+  .animation-skill-grid,.animation-starter-grid,.animation-media-list{grid-template-columns:1fr 1fr}
+}
+@media(max-width:600px){
+  .animation-software-grid,.animation-skill-grid,.animation-starter-grid,.animation-media-list,.animation-roadmap-grid,.animation-metrics{grid-template-columns:1fr}
+  .animation-resource-list article,.animation-project-card{grid-template-columns:1fr}
+  .animation-banner{grid-template-columns:1fr}.animation-banner>span{display:none}
+}
