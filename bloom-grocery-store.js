@@ -16,7 +16,8 @@
     readingVocabulary: 'bloom_reading_vocabulary', readingQuizAttempts: 'bloom_reading_quiz_attempts', readingFiles: 'bloom_reading_files',
     readingPageText: 'bloom_reading_page_text', readingAssignments: 'bloom_reading_assignments', readingAudioRecordings: 'bloom_reading_audio_recordings',
     pianoAppProgress: 'bloom_piano_app_progress', pianoPracticeSessions: 'bloom_piano_practice_sessions', pianoAbilities: 'bloom_piano_abilities', pianoRepertoire: 'bloom_piano_repertoire', pianoMedia: 'bloom_piano_media',
-    animationTutor: 'bloom_animation_tutor', animationResources: 'bloom_animation_resources', animationSkills: 'bloom_animation_skills', animationProjects: 'bloom_animation_projects', animationMedia: 'bloom_animation_media', animationPractice: 'bloom_animation_practice', animationHomework: 'bloom_animation_homework'
+    animationTutor: 'bloom_animation_tutor', animationResources: 'bloom_animation_resources', animationSkills: 'bloom_animation_skills', animationProjects: 'bloom_animation_projects', animationMedia: 'bloom_animation_media', animationPractice: 'bloom_animation_practice', animationHomework: 'bloom_animation_homework',
+    spanishProfile: 'bloom_spanish_profile', spanishCefrSkills: 'bloom_spanish_cefr_skills', spanishLessons: 'bloom_spanish_lessons', spanishVocab: 'bloom_spanish_vocab', spanishHomework: 'bloom_spanish_homework', spanishPrepare: 'bloom_spanish_prepare', spanishMedia: 'bloom_spanish_media'
   };
   const PRIVATE_FIELDS = ['display_name', 'age_years', 'height_cm', 'weight_kg', 'activity_level', 'notes'];
   const DIET_FIELDS = ['display_name', 'color', 'calories_kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'allergies', 'restrictions', 'preferences', 'notes'];
@@ -31,7 +32,7 @@
     mealEntries: ['occurred_on','person_slot','kind','recipe_id','product_id','servings','label','nutrition_snapshot','notes'],
     foodFiles: ['product_id','recipe_id','name','path','mime_type','size_bytes']
   };
-  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework'];
+  const EXTRA_LISTS = ['products','recurringProducts','receipts','moneyEntries','bills','billRules','recipes','mealEntries','foodFiles','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','kitchenEquipment','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework','spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia'];
   const LIFE_COLLECTIONS = {
     hydrationSettings:'hydration_settings', hydrationEntries:'hydration_entry',
     skills:'skill', skillSessions:'skill_session', smokingSettings:'smoking_settings', smokingDays:'smoking_day',
@@ -152,6 +153,7 @@
     const signedReadingAudio = new Map();
     const signedPianoMedia = new Map();
     const signedAnimationMedia = new Map();
+    const signedSpanishMedia = new Map();
     let client = options.client || null;
     let state = emptyState('loading');
     let generation = 0;
@@ -213,7 +215,7 @@
         const cached = JSON.parse(cacheStorage.getItem(cachePrefix + user.id) || 'null');
         if (!cached || cached.version !== 1 || cached.user.id !== user.id || !cached.household || !cached.members.some(row=>row.user_id===user.id && row.household_id===cached.household.id)) return false;
         if (verifiedHouseholdId !== undefined && cached.household.id !== verifiedHouseholdId) { clearCache(user.id); return false; }
-        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework']) if (!Object.hasOwn(cached, key)) cached[key] = [];
+        for (const key of ['billRules','cookingPlans','mealShoppingLinks','lifeRecords','dogStockEffects','engineeringHomework','engineeringFiles','readingBooks','readingSessions','readingNotes','readingVocabulary','readingQuizAttempts','readingFiles','readingPageText','readingAssignments','readingAudioRecordings','pianoAppProgress','pianoPracticeSessions','pianoAbilities','pianoRepertoire','pianoMedia','animationTutor','animationResources','animationSkills','animationProjects','animationMedia','animationPractice','animationHomework','spanishProfile','spanishCefrSkills','spanishLessons','spanishVocab','spanishHomework','spanishPrepare','spanishMedia']) if (!Object.hasOwn(cached, key)) cached[key] = [];
         if (!SHARED_LISTS.every(key=>Array.isArray(cached[key]))) return false;
         state = { ...emptyState('ready'), user:userSummary(user), household:cached.household,
           ...Object.fromEntries(SHARED_LISTS.map(key=>[key,cached[key]])), offline:true, cachedAt:cached.savedAt,
@@ -271,6 +273,7 @@
         signedReadingAudio.clear();
         signedPianoMedia.clear();
         signedAnimationMedia.clear();
+        signedSpanishMedia.clear();
         uploads.clear();
         generation++;
         requestNumber++;
@@ -1348,6 +1351,99 @@
       if(!Array.isArray(data)||data.length!==1)throw new Error('The Animation media record could not be removed.');
       await refresh(); return true;
     }
+    async function ensureSpanishDefaults(){
+      requireOnline();const current=context(true);
+      const profile={id:newUuid(),household_id:current.householdId,user_id:current.userId,tutor_name:'Ale',tutor_profile_url:'https://preply.com/en/tutor/6569875',
+        duolingo_score:22,duolingo_section:'Section 3',duolingo_unit:'Unit 7',cefr_level:'not_assessed',target_level:'C1',notes:''};
+      const cefr=['listening','reading','spoken_interaction','spoken_production','writing','grammar','vocabulary'].map(key=>({
+        id:newUuid(),household_id:current.householdId,user_id:current.userId,skill_key:key,state:'not_assessed',evidence:''
+      }));
+      try{
+        assertResult(await client.from(TABLES.spanishProfile).upsert(profile,{onConflict:'user_id,household_id',ignoreDuplicates:true}));
+        assertResult(await client.from(TABLES.spanishCefrSkills).upsert(cefr,{onConflict:'user_id,household_id,skill_key',ignoreDuplicates:true}));
+        checkContext(current);await refresh();return true;
+      }catch(error){if(current.generation===generation)throw fail(error);throw error;}
+    }
+    async function saveSpanishProfile(row){
+      requireOnline();const current=context(true);row=row||{};
+      const existing=(state.spanishProfile||[]).find(item=>item.user_id===current.userId&&item.household_id===current.householdId);
+      const score=row.duolingo_score===''||row.duolingo_score==null?null:Number(row.duolingo_score);
+      if(score!=null&&(!Number.isInteger(score)||score<0||score>160))throw new Error('Duolingo score must be a whole number from 0 to 160.');
+      const payload={id:existing&&existing.id||row.id||newUuid(),household_id:current.householdId,user_id:current.userId,
+        tutor_name:String(row.tutor_name||'Ale').slice(0,240),tutor_profile_url:String(row.tutor_profile_url||'https://preply.com/en/tutor/6569875').slice(0,1000),
+        duolingo_score:score,duolingo_section:String(row.duolingo_section||'').slice(0,120),duolingo_unit:String(row.duolingo_unit||'').slice(0,120),
+        cefr_level:['not_assessed','A1','A2','B1','B2','C1'].includes(row.cefr_level)?row.cefr_level:'not_assessed',
+        target_level:['A1','A2','B1','B2','C1'].includes(row.target_level)?row.target_level:'C1',
+        notes:String(row.notes||'').slice(0,6000),updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.spanishProfile).upsert(payload,{onConflict:'user_id,household_id'}).select('*'));
+      checkContext(current);await refresh();return data&&data[0];
+    }
+    async function saveSpanishCefrSkill(row){
+      requireOnline();const current=context(true);row=row||{};
+      const key=String(row.skill_key||'');if(!['listening','reading','spoken_interaction','spoken_production','writing','grammar','vocabulary'].includes(key))throw new Error('Choose a valid Spanish skill.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,skill_key:key,
+        state:['not_assessed','A1','A2','B1','B2','C1'].includes(row.state)?row.state:'not_assessed',evidence:String(row.evidence||'').slice(0,6000),updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.spanishCefrSkills).upsert(payload,{onConflict:'user_id,household_id,skill_key'}).select('*'));
+      checkContext(current);await refresh();return data&&data[0];
+    }
+    async function saveSpanishLesson(row){
+      requireOnline();const current=context(true);row=row||{};
+      const title=String(row.title||'').trim();if(!title||title.length>300)throw new Error('Enter a Spanish lesson title.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,lesson_date:row.lesson_date||null,title,
+        topics:String(row.topics||'').slice(0,2000),notes:String(row.notes||'').slice(0,10000),homework:String(row.homework||'').slice(0,6000),
+        attended:row.attended===true,updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.spanishLessons).upsert(payload,{onConflict:'id'}).select('*'));checkContext(current);await refresh();return data&&data[0];
+    }
+    async function saveSpanishVocab(row){
+      requireOnline();const current=context(true);row=row||{};
+      const word=String(row.word||'').trim();if(!word||word.length>160)throw new Error('Enter a Spanish vocabulary word.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,lesson_id:row.lesson_id||null,word,
+        meaning:String(row.meaning||'').slice(0,1000),part_of_speech:String(row.part_of_speech||'').slice(0,80),
+        example_spanish:String(row.example_spanish||'').slice(0,1200),example_english:String(row.example_english||'').slice(0,1200),
+        status:['learning','reviewing','known'].includes(row.status)?row.status:'learning'};
+      const data=assertResult(await client.from(TABLES.spanishVocab).upsert(payload,{onConflict:'id'}).select('*'));checkContext(current);await refresh();return data&&data[0];
+    }
+    async function saveSpanishHomework(row){
+      requireOnline();const current=context(true);row=row||{};
+      const title=String(row.title||'').trim();if(!title||title.length>300)throw new Error('Enter Spanish homework.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,title,due_on:row.due_on||null,
+        status:['open','ready','reviewed','done'].includes(row.status)?row.status:'open',notes:String(row.notes||'').slice(0,6000),updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.spanishHomework).upsert(payload,{onConflict:'id'}).select('*'));checkContext(current);await refresh();return data&&data[0];
+    }
+    async function saveSpanishPrepare(row){
+      requireOnline();const current=context(true);row=row||{};
+      const value=String(row.text_value||'').trim();if(!value||value.length>3000)throw new Error('Enter something to prepare or review with Ale.');
+      const payload={id:row.id||newUuid(),household_id:current.householdId,user_id:current.userId,item_type:['word','question','duolingo','grammar','speaking','other'].includes(row.item_type)?row.item_type:'other',
+        text_value:value,status:['prepare','reviewed'].includes(row.status)?row.status:'prepare',lesson_date:row.lesson_date||null,updated_at:new Date().toISOString()};
+      const data=assertResult(await client.from(TABLES.spanishPrepare).upsert(payload,{onConflict:'id'}).select('*'));checkContext(current);await refresh();return data&&data[0];
+    }
+    async function uploadSpanishMedia(value){
+      requireOnline();const current=context(true),file=value&&value.file;
+      const allowed=['image/jpeg','image/png','image/webp','application/pdf','audio/webm','audio/mp4','audio/mpeg','audio/ogg','audio/wav'];
+      if(!file||!file.size||file.size>100*1024*1024||!allowed.includes(file.type))throw new Error('Choose an image, PDF, or audio file up to 100 MB.');
+      const id=newUuid(),ext=(file.name.split('.').pop()||'bin').replace(/[^a-zA-Z0-9]/g,'').slice(0,8)||'bin',path=current.userId+'/'+id+'.'+ext;
+      const uploaded=await client.storage.from('bloom-spanish-media').upload(path,file,{contentType:file.type,upsert:false,cacheControl:'3600'});if(uploaded.error)throw errorOf(uploaded.error);checkContext(current);
+      try{
+        const mediaType=file.type.startsWith('audio/')?'audio':file.type==='application/pdf'?'pdf':'image';
+        const meta={id,household_id:current.householdId,user_id:current.userId,lesson_id:value.lesson_id||null,homework_id:value.homework_id||null,title:String(value.title||file.name||'Spanish file').slice(0,240),
+          media_type:mediaType,path,mime_type:file.type,size_bytes:file.size};
+        const saved=assertResult(await client.from(TABLES.spanishMedia).insert(meta).select('*'));checkContext(current);await refresh();return saved&&saved[0];
+      }catch(error){try{await client.storage.from('bloom-spanish-media').remove([path]);}catch(_){}throw error;}
+    }
+    async function getSpanishMediaUrl(row){
+      requireOnline();const current=context(true),saved=state.spanishMedia.find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/'))throw new Error('That Spanish file is not available.');
+      const prior=signedSpanishMedia.get(saved.path);if(prior&&prior.expires>Date.now())return prior.url;
+      const result=assertResult(await client.storage.from('bloom-spanish-media').createSignedUrl(saved.path,120));checkContext(current);
+      signedSpanishMedia.set(saved.path,{url:result.signedUrl,expires:Date.now()+90000});return result.signedUrl;
+    }
+    async function deleteSpanishMedia(row){
+      requireOnline();const current=context(true),saved=state.spanishMedia.find(item=>item.id===row.id&&item.user_id===current.userId&&item.household_id===current.householdId);
+      if(!saved||!saved.path.startsWith(current.userId+'/'))throw new Error('Refresh Spanish media before removing it.');
+      assertResult(await client.storage.from('bloom-spanish-media').remove([saved.path]));checkContext(current);signedSpanishMedia.delete(saved.path);
+      const data=assertResult(await client.from(TABLES.spanishMedia).delete().eq('id',saved.id).eq('user_id',current.userId).select('id'));if(!Array.isArray(data)||data.length!==1)throw new Error('The Spanish file could not be removed.');
+      await refresh();return true;
+    }
     function exportHousehold() {
       if(!state.user || !state.household || state.status!=='ready') throw new Error('Open your household before exporting a backup.');
       return { app:'Life in Bloom Household',version:1,household_id:state.household.id,exported_at:new Date().toISOString(),
@@ -1399,6 +1495,7 @@
       ensureReadingStarterBooks, saveReadingBook, saveReadingSession, saveReadingNote, saveReadingVocabulary, saveReadingQuizAttempt, uploadReadingFile, getReadingFileUrl, deleteReadingFile, deleteReadingRow, saveReadingPageText, saveReadingPageTexts, deleteReadingPageText, setReadingFilePageCount, saveReadingAssignment, deleteReadingAssignment, uploadReadingAudio, updateReadingAudio, getReadingAudioUrl, deleteReadingAudio, exportReadingRecords, importReadingRecords,
       ensurePianoDefaults, savePianoAppProgress, savePianoPracticeSession, savePianoAbility, savePianoRepertoire, uploadPianoMedia, getPianoMediaUrl, deletePianoMedia,
       ensureAnimationDefaults, saveAnimationTutor, saveAnimationResource, saveAnimationSkill, saveAnimationProject, saveAnimationPractice, saveAnimationHomework, deleteAnimationHomework, uploadAnimationMedia, getAnimationMediaUrl, deleteAnimationMedia,
+      ensureSpanishDefaults, saveSpanishProfile, saveSpanishCefrSkill, saveSpanishLesson, saveSpanishVocab, saveSpanishHomework, saveSpanishPrepare, uploadSpanishMedia, getSpanishMediaUrl, deleteSpanishMedia,
       saveShoppingItems, exportHousehold, importHouseholdBackup, destroy };
   }
   const api = { createStore };
