@@ -37,3 +37,55 @@
   .bloom-meal-reminder{grid-template-columns:auto 1fr}
   .bloom-meal-reminder>.button{grid-column:1/-1;width:100%}
 }
+
+
+/* Live trash-day reminder */
+.bloom-trash-reminder{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  gap:.8rem;
+  align-items:center;
+  margin:.75rem 0;
+  padding:.9rem 1rem;
+  border:1px solid #e2d6b8;
+  border-radius:18px;
+  background:linear-gradient(135deg,#fffdf5,#f6f8ed);
+}
+.bloom-trash-icon{
+  display:grid;
+  place-items:center;
+  width:44px;
+  height:44px;
+  border-radius:12px;
+  background:#f3efd9;
+  font-size:1.35rem;
+}
+.bloom-trash-reminder strong{color:#5f4a34}
+.bloom-trash-reminder p{margin:.14rem 0;color:#776854;font-size:.78rem;line-height:1.45}
+.bloom-trash-countdown{
+  display:grid;
+  gap:.1rem;
+  min-width:150px;
+  padding:.65rem .8rem;
+  border:1px solid #e9dec7;
+  border-radius:14px;
+  background:#fff;
+  text-align:right;
+}
+.bloom-trash-countdown>span,.bloom-trash-countdown>small{color:#85755f;font-size:.67rem}
+.bloom-trash-countdown>strong{
+  font-size:1.05rem;
+  font-variant-numeric:tabular-nums;
+  color:#695139;
+}
+.bloom-trash-reminder.is-urgent{
+  border-color:#dc9d9d;
+  background:linear-gradient(135deg,#fff4f4,#fff8ef);
+}
+.bloom-trash-reminder.is-urgent .bloom-trash-icon{background:#f9dada}
+.bloom-trash-reminder.is-urgent [data-trash-title],
+.bloom-trash-reminder.is-urgent .bloom-trash-countdown>strong{color:#a13d3d}
+@media(max-width:620px){
+  .bloom-trash-reminder{grid-template-columns:auto 1fr}
+  .bloom-trash-countdown{grid-column:1/-1;min-width:0;text-align:left}
+}
