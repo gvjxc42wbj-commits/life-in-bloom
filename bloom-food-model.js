@@ -300,25 +300,37 @@
       return (left ? dateNumber(left.date) : Infinity) - (right ? dateNumber(right.date) : Infinity) || String(a.id).localeCompare(String(b.id));
     });
   }
+  function packageCapacity(product, targetUnit) {
+    if (!product) return null;
+    const packQuantity = positive(product.package_quantity);
+    const packUnit = normalizeUnit(product.package_unit);
+    if (packQuantity != null && UNITS.some(unit => unit.value === packUnit)) {
+      const direct = convertQuantity(packQuantity, packUnit, targetUnit);
+      if (direct != null) return direct;
+    }
+    const servings = positive(product.servings_per_package);
+    const servingQuantity = positive(product.serving_quantity);
+    const servingUnit = normalizeUnit(product.serving_unit);
+    if (servings != null && servingQuantity != null && UNITS.some(unit => unit.value === servingUnit)) {
+      return convertQuantity(servings * servingQuantity, servingUnit, targetUnit);
+    }
+    return null;
+  }
   function stockAmount(batch, product, targetUnit) {
     const remaining = positive(batch && batch.remaining);
     if (remaining == null || !product) return null;
     if (normalizeUnit(batch.unit) === 'package') {
-      const packQuantity = positive(product.package_quantity);
-      const packUnit = normalizeUnit(product.package_unit);
-      if (packQuantity == null || !UNITS.some(unit => unit.value === packUnit)) return null;
-      return convertQuantity(remaining * packQuantity, packUnit, targetUnit);
+      const capacity = packageCapacity(product, targetUnit);
+      return capacity == null ? null : tidy(remaining * capacity);
     }
     return convertQuantity(remaining, batch.unit, targetUnit);
   }
   function removeStock(batch, product, amount, amountUnit) {
     if (!batch || !product || positive(amount) == null) return false;
     if (normalizeUnit(batch.unit) === 'package') {
-      const packQuantity = positive(product.package_quantity);
-      const packUnit = normalizeUnit(product.package_unit);
-      const usedInPackUnit = convertQuantity(amount, amountUnit, packUnit);
-      if (packQuantity == null || usedInPackUnit == null) return false;
-      batch.remaining = Math.max(0, tidy(batch.remaining - usedInPackUnit / packQuantity));
+      const capacity = packageCapacity(product, amountUnit);
+      if (capacity == null || capacity <= 0) return false;
+      batch.remaining = Math.max(0, tidy(batch.remaining - amount / capacity));
       return true;
     }
     const used = convertQuantity(amount, amountUnit, batch.unit);
@@ -348,17 +360,15 @@
         item.reason = 'Review the ingredient amount or unit.';
         incompatible++; missingMake++; missingShop++; items.push(item); continue;
       }
-      const packageQuantity = positive(product.package_quantity);
-      const packageUnit = normalizeUnit(product.package_unit);
-      const requiredInPackageUnit = packageQuantity && UNITS.some(unit => unit.value === packageUnit) ? convertQuantity(required, row.unit, packageUnit) : null;
-      if (requiredInPackageUnit == null) {
-        item.reason = 'Recipe unit cannot be converted to this product package.';
+      const capacity = packageCapacity(product, row.unit);
+      if (capacity == null || capacity <= 0) {
+        item.reason = 'Recipe unit cannot be converted from this product package or label serving.';
         incompatible++; missingMake++; missingShop++; items.push(item); continue;
       }
       const price = cents(product.price_cents);
       if (price == null) { missingPrices++; missingMake++; }
       else {
-        item.make_cost_cents = Math.round(price * requiredInPackageUnit / packageQuantity);
+        item.make_cost_cents = Math.round(price * required / capacity);
         makeKnown += item.make_cost_cents;
       }
       let needed = required, incompatibleStock = false;
@@ -373,12 +383,11 @@
       item.stock_quantity = tidy(required - needed);
       item.shortage_quantity = tidy(needed);
       if (needed > 1e-9) {
-        const shortageInPackageUnit = convertQuantity(needed, row.unit, packageUnit);
-        if (shortageInPackageUnit == null) {
+        if (capacity == null || capacity <= 0) {
           item.reason = 'Review the unit before adding this shortage to Grocery.';
           missingShop++;
         } else {
-          item.packs = Math.max(1, Math.ceil(shortageInPackageUnit / packageQuantity - 1e-10));
+          item.packs = Math.max(1, Math.ceil(needed / capacity - 1e-10));
           if (price == null) { missingShop++; item.reason = 'Price needed for the shopping estimate.'; }
           else { item.shopping_cost_cents = item.packs * price; shopKnown += item.shopping_cost_cents; }
         }
