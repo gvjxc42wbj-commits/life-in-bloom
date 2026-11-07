@@ -83,6 +83,11 @@
     let readingAssignmentOpen=false, readingAssignmentDraft={id:'',title:'',prompt:'',body:'',tutor_questions:'',due_on:'',status:'draft'};
     let readAloudRecorder=null, readAloudStream=null, readAloudChunks=[], readAloudStartedAt=0, readAloudBlob=null, readAloudDuration=0, readAloudPreviewUrl='', readAloudClarity='', readAloudConfidence='', readAloudNotes='';
     let pianoSeedChecked='', pianoPracticeOpen=false, pianoRepertoireOpen=false, pianoAppEditId='', pianoAppDraft=null;
+    let animationSeedChecked='', animationTutorOpen=false, animationResourceOpen=false, animationProjectOpen=false;
+    let animationTutorDraft={name:'',specialty:'',platform:'',profile_url:'',notes:''};
+    let animationResourceDraft={id:'',source:'YouTube',title:'',url:'',subject:'',duration_minutes:'',skill_target:'',watched:false,practiced:false,demonstrated:false,notes:''};
+    let animationProjectDraft={id:'',title:'',software:'Blender',skills:'',started_on:'',status:'not_started',independence:'guided',game_ready:false,notes:'',self_review:''};
+    let animationMediaMeta={title:'Animation preview',version_label:'v1',project_id:''};
     let pianoPracticeDraft={duration_minutes:'20',source:'independent',course_name:'',lesson_name:'',piece_name:'',accuracy_percent:'',notes:''};
     let pianoRepertoireDraft={title:'',kind:'piece',status:'learning',source:'',notes:''};
     let pianoMediaMeta={title:'Practice sample',piece_name:'',notes:''};
@@ -623,6 +628,37 @@
       if(readingView==='coach'&&selected)return renderReadingCoach(current,selected);
       return renderReadingHome(current);
     }
+    function animationRows(current,key){
+      const user=current.user&&current.user.id,household=current.household&&current.household.id;
+      return (current[key]||[]).filter(row=>row&&row.user_id===user&&row.household_id===household);
+    }
+    function animationSkillInfo(key){
+      return {
+        principles:['🎞️','Animation principles','Timing, spacing, anticipation, follow-through, squash & stretch'],
+        keyframes:['🔑','Keyframe animation','Animate objects with keyframes and edit their timing'],
+        '2d':['✏️','2D animation','Create a short frame-by-frame sequence'],
+        '3d':['🧊','3D animation','Animate a 3D object through planned motion'],
+        graph_editor:['📈','Graph Editor','Refine motion using animation curves'],
+        rigging:['🦴','Rigging','Build or control a basic character rig'],
+        character_movement:['🚶','Character movement','Produce recognizable movement such as a walk cycle'],
+        rendering:['🎬','Rendering & exporting','Export a completed animation with appropriate settings'],
+        storytelling:['📖','Storytelling','Create a short animated scene with a clear beginning and ending']
+      }[key]||['🎞️',key,''];
+    }
+    function animationStateLabel(value){
+      return {not_assessed:'Not Assessed',learning:'Learning',practicing:'Practicing',independent:'Independent',demonstrated:'Demonstrated'}[value]||'Not Assessed';
+    }
+    function animationMediaRows(current){
+      return animationRows(current,'animationMedia').slice().sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+    }
+    function hydrateAnimationMedia(rows){
+      if(!root.document||!store.getAnimationMediaUrl)return;
+      for(const row of rows){
+        const node=root.document.querySelector('[data-animation-media-id="'+row.id+'"]');
+        if(!node||node.dataset.loaded==='true')continue;
+        Promise.resolve(store.getAnimationMediaUrl(row)).then(url=>{const live=root.document&&root.document.querySelector('[data-animation-media-id="'+row.id+'"]');if(live){if(live.tagName==='A')live.href=url;else live.src=url;live.dataset.loaded='true';}}).catch(()=>{});
+      }
+    }
     function renderPianoDashboard(current,today) {
       const apps=pianoRows(current,'pianoAppProgress').slice().sort((a,b)=>String(a.app_name).localeCompare(String(b.app_name))||String(a.course_name).localeCompare(String(b.course_name)));
       const sessions=pianoRows(current,'pianoPracticeSessions').slice().sort((a,b)=>String(b.occurred_on).localeCompare(String(a.occurred_on))||String(b.created_at||'').localeCompare(String(a.created_at||'')));
@@ -674,6 +710,53 @@
         + '<section class="panel piano-media"><div class="habit-heading"><div><p class="page-kicker">Practice journal · private files</p><h2>Audio & Video Progress</h2><p class="habit-help">Save recordings over time so you can hear rhythm, confidence, smoothness, dynamics, and independence improve. Video can also help you review hands, tension, and posture.</p></div><label class="button primary">Upload audio / video<input type="file" accept="audio/*,video/*" data-piano-media-upload hidden></label></div><div class="piano-media-meta"><label>Title<input data-piano-media-field="title" value="'+esc(pianoMediaMeta.title)+'"></label><label>Piece / exercise<input data-piano-media-field="piece_name" value="'+esc(pianoMediaMeta.piece_name)+'"></label><label>Notes<input data-piano-media-field="notes" value="'+esc(pianoMediaMeta.notes)+'"></label></div><div class="piano-media-list">'+mediaCards+'</div></section>'
         + '<section class="panel piano-milestones"><p class="page-kicker">First three months</p><h2>Learning Milestones</h2><div class="piano-milestone-grid"><article><b>Month 1</b><h3>Establish foundations</h3><p>Identify keys, begin basic notation/rhythm, learn simple chord shapes, and save your first independent playing sample.</p></article><article><b>Month 2</b><h3>Develop coordination</h3><p>Play a simple melody at a steady tempo, change between familiar chords, and begin two-hand coordination.</p></article><article><b>Month 3</b><h3>Demonstrate progress</h3><p>Record one simple classical piece and one basic pop accompaniment pattern independently with reasonably steady rhythm.</p></article></div></section>'
         + '<section class="panel piano-history"><div class="habit-heading"><div><p class="page-kicker">Practice journal</p><h2>Recent Sessions</h2></div></div><div class="piano-session-list">'+history+'</div></section>'
+        + '</section>';
+    }
+
+    function renderAnimationDashboard(current,today){
+      const tutor=animationRows(current,'animationTutor')[0]||null;
+      const resources=animationRows(current,'animationResources').slice().sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
+      const skills=animationRows(current,'animationSkills');
+      const projects=animationRows(current,'animationProjects').slice().sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
+      const media=animationMediaRows(current);
+      if(current.user&&current.household&&!current.offline&&current.status==='ready'&&animationSeedChecked!==current.user.id+':'+current.household.id&&store.ensureAnimationDefaults){
+        animationSeedChecked=current.user.id+':'+current.household.id;
+        Promise.resolve(store.ensureAnimationDefaults()).catch(()=>{animationSeedChecked='';});
+      }
+      const finished=projects.filter(p=>p.status==='finished').length;
+      const watched=resources.filter(r=>r.watched).length, practiced=resources.filter(r=>r.practiced).length, demonstrated=resources.filter(r=>r.demonstrated).length;
+      const tutorCard='<section class="panel animation-tutor"><div class="habit-heading"><div><p class="page-kicker">My Animation Tutor</p><h2>'+(tutor&&tutor.name?esc(tutor.name):'Tutor Not Added')+'</h2><p class="habit-help">'+(tutor&&tutor.specialty?esc(tutor.specialty):'Add a tutor later for profile links, lessons, homework, and feedback.')+'</p></div><span class="animation-tutor-avatar">🧑‍🏫</span></div>'+(tutor&&tutor.profile_url?'<a class="button primary" href="'+esc(tutor.profile_url)+'" target="_blank" rel="noopener noreferrer">Open tutor profile ↗</a>':'')+button('animation-tutor-edit',tutor?'Edit tutor':'Add Tutor','',true)+'</section>';
+      let tutorForm='';
+      if(animationTutorOpen){
+        const d=animationTutorDraft;
+        tutorForm='<form class="habit-form animation-inline-form" data-animation-tutor-form><div class="habit-form-grid"><label class="habit-field"><span>Name</span><input maxlength="240" data-animation-tutor-field="name" value="'+esc(d.name)+'"></label><label class="habit-field"><span>Specialty</span><input maxlength="240" data-animation-tutor-field="specialty" value="'+esc(d.specialty)+'"></label><label class="habit-field"><span>Platform</span><input maxlength="120" data-animation-tutor-field="platform" value="'+esc(d.platform)+'"></label><label class="habit-field"><span>Profile URL</span><input type="url" data-animation-tutor-field="profile_url" value="'+esc(d.profile_url)+'"></label></div><label class="habit-field"><span>Notes</span><textarea rows="3" data-animation-tutor-field="notes">'+esc(d.notes)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save tutor</button>'+button('animation-tutor-cancel','Cancel')+'</div></form>';
+      }
+      let resourceForm='';
+      if(animationResourceOpen){
+        const d=animationResourceDraft;
+        resourceForm='<form class="habit-form animation-inline-form" data-animation-resource-form><div class="habit-form-grid"><label class="habit-field"><span>Source</span><select data-animation-resource-field="source">'+['Coursera','YouTube','Blender','Adobe','Other'].map(v=>'<option value="'+v+'"'+(d.source===v?' selected':'')+'>'+v+'</option>').join('')+'</select></label><label class="habit-field"><span>Title</span><input required maxlength="300" data-animation-resource-field="title" value="'+esc(d.title)+'"></label><label class="habit-field"><span>URL</span><input type="url" data-animation-resource-field="url" value="'+esc(d.url)+'"></label><label class="habit-field"><span>Subject</span><input data-animation-resource-field="subject" value="'+esc(d.subject)+'"></label><label class="habit-field"><span>Duration (minutes)</span><input type="number" min="1" data-animation-resource-field="duration_minutes" value="'+esc(d.duration_minutes)+'"></label><label class="habit-field"><span>Skill target</span><input data-animation-resource-field="skill_target" value="'+esc(d.skill_target)+'"></label></div><label class="habit-field"><span>Notes</span><textarea rows="3" data-animation-resource-field="notes">'+esc(d.notes)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save resource</button>'+button('animation-resource-cancel','Cancel')+'</div></form>';
+      }
+      let projectForm='';
+      if(animationProjectOpen){
+        const d=animationProjectDraft;
+        projectForm='<form class="habit-form animation-inline-form" data-animation-project-form><div class="habit-form-grid"><label class="habit-field"><span>Project title</span><input required maxlength="300" data-animation-project-field="title" value="'+esc(d.title)+'"></label><label class="habit-field"><span>Software</span><input data-animation-project-field="software" value="'+esc(d.software)+'"></label><label class="habit-field"><span>Skills practiced</span><input data-animation-project-field="skills" value="'+esc(d.skills)+'"></label><label class="habit-field"><span>Start date</span><input type="date" data-animation-project-field="started_on" value="'+esc(d.started_on)+'"></label><label class="habit-field"><span>Status</span><select data-animation-project-field="status">'+['not_started','planning','in_progress','revision','finished'].map(v=>'<option value="'+v+'"'+(d.status===v?' selected':'')+'>'+esc(v.replace('_',' '))+'</option>').join('')+'</select></label><label class="habit-field"><span>Independence</span><select data-animation-project-field="independence">'+['guided','assisted','independent'].map(v=>'<option value="'+v+'"'+(d.independence===v?' selected':'')+'>'+v+'</option>').join('')+'</select></label></div><label class="habit-field"><span>Project notes</span><textarea rows="3" data-animation-project-field="notes">'+esc(d.notes)+'</textarea></label><label class="habit-field"><span>Self-review</span><textarea rows="4" data-animation-project-field="self_review" placeholder="Smooth movement? Good timing? Unwanted pauses? Independent? What would you improve?">'+esc(d.self_review)+'</textarea></label><label class="animation-check"><input type="checkbox" data-animation-project-field="game_ready"'+(d.game_ready?' checked':'')+'> Suitable for a Unity/game project</label><div class="habit-actions"><button class="button primary" type="submit">Save project</button>'+button('animation-project-cancel','Cancel')+'</div></form>';
+      }
+      const software='<div class="animation-software-grid"><article><span>🧊</span><h3>Blender</h3><p>3D animation, rigging, keyframes, Dope Sheet, Graph Editor, cameras, rendering, and optional Grease Pencil.</p><small>Available · progress not assessed</small></article><article><span>🎨</span><h3>Adobe Creative Cloud</h3><p>2D animation, illustration, motion graphics, compositing, and asset creation.</p><small>Available · choose individual apps as you study them</small></article></div>';
+      const resourceCards=resources.length?resources.map(r=>'<article><div><p class="page-kicker">'+esc(r.source)+'</p><strong>'+esc(r.title)+'</strong><small>'+esc(r.subject||'subject not entered')+(r.duration_minutes?' · '+r.duration_minutes+' min':'')+'</small></div><div class="animation-resource-status"><label><input type="checkbox" data-animation-resource-toggle data-id="'+esc(r.id)+'" data-field="watched"'+(r.watched?' checked':'')+'> Watched</label><label><input type="checkbox" data-animation-resource-toggle data-id="'+esc(r.id)+'" data-field="practiced"'+(r.practiced?' checked':'')+'> Practiced</label><label><input type="checkbox" data-animation-resource-toggle data-id="'+esc(r.id)+'" data-field="demonstrated"'+(r.demonstrated?' checked':'')+'> Demonstrated</label></div>'+(r.url?'<a href="'+esc(r.url)+'" target="_blank" rel="noopener noreferrer">Open resource ↗</a>':'')+'</article>').join(''):'<p class="habit-help">No Coursera, YouTube, Blender, or Adobe learning resources saved yet.</p>';
+      const skillCards=['principles','keyframes','2d','3d','graph_editor','rigging','character_movement','rendering','storytelling'].map(key=>{const info=animationSkillInfo(key),row=skills.find(x=>x.skill_key===key)||{skill_key:key,state:'not_assessed'};return '<article class="animation-skill-card"><span>'+info[0]+'</span><div><strong>'+esc(info[1])+'</strong><small>'+esc(info[2])+'</small></div><select data-animation-skill data-key="'+key+'">'+['not_assessed','learning','practicing','independent','demonstrated'].map(v=>'<option value="'+v+'"'+(row.state===v?' selected':'')+'>'+animationStateLabel(v)+'</option>').join('')+'</select></article>';}).join('');
+      const starterProjects=[['Bouncing Ball','Blender','Timing, spacing, squash & stretch','Suggested'],['Blooming Flower','2D animation','Frames, layers, motion','Suggested'],['Walk Cycle','Blender','Rigging & character movement','Future'],['Animated Title','Adobe','Typography & motion graphics','Future']];
+      const projectCards=(projects.length?projects.map(p=>'<article class="animation-project-card"><div><strong>'+esc(p.title)+'</strong><small>'+esc(p.software||'software not entered')+' · '+esc(p.status.replace('_',' '))+' · '+esc(p.independence)+'</small>'+(p.skills?'<p>'+esc(p.skills)+'</p>':'')+'</div>'+button('animation-project-edit','Edit',' data-id="'+esc(p.id)+'"')+'<label class="button">Upload preview<input type="file" accept="image/*,video/*,application/pdf" data-animation-media-upload data-id="'+esc(p.id)+'" hidden></label></article>').join(''):'<div class="animation-starter-grid">'+starterProjects.map(p=>'<article><span>🎬</span><strong>'+p[0]+'</strong><small>'+p[1]+' · '+p[2]+'</small><b>'+p[3]+'</b></article>').join('')+'</div>');
+      const mediaCards=media.length?media.slice(0,16).map(m=>'<article class="animation-media-card">'+(m.media_type==='video'?'<video controls preload="metadata" data-animation-media-id="'+esc(m.id)+'"></video>':m.media_type==='image'||m.media_type==='gif'?'<img alt="" data-animation-media-id="'+esc(m.id)+'">':'<a target="_blank" rel="noopener" data-animation-media-id="'+esc(m.id)+'">Open PDF</a>')+'<div><strong>'+esc(m.title)+'</strong><small>'+esc(m.version_label||'')+'</small></div>'+button('animation-media-delete','Remove',' data-id="'+esc(m.id)+'"')+'</article>').join(''):'<p class="habit-help">No private animation previews uploaded yet.</p>';
+      if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydrateAnimationMedia(media)));
+      return '<section class="animation-dashboard">'
+        + '<section class="animation-banner"><div><p class="page-kicker">Skills in Bloom · Animation</p><h2>Animation in Bloom</h2><p>Learn. Create. Animate. Grow.</p></div><span>🎞️</span></section>'
+        + '<div class="animation-top-grid"><section class="panel animation-journey"><p class="page-kicker">Your Animation Journey</p><h2>Beginner</h2><p class="habit-help">Initial skill assessment pending. Track what you study, what you practice, and what you can create independently as three separate things.</p><div class="animation-metrics"><span><strong>2</strong><small>software families</small></span><span><strong>2</strong><small>learning sources</small></span><span><strong>'+finished+'</strong><small>projects finished</small></span></div></section>'+tutorCard+'</div>'+tutorForm
+        + '<section class="panel"><div class="habit-heading"><div><p class="page-kicker">Your Creative Software</p><h2>Blender & Adobe</h2></div></div>'+software+'</section>'
+        + '<section class="panel animation-learning"><div class="habit-heading"><div><p class="page-kicker">Learning Center</p><h2>Courses & Tutorials</h2><p class="habit-help">A watched tutorial is study. Recreating it is practice. Making something similar without following it is stronger evidence of independence.</p></div>'+button('animation-resource-add','+ Add Learning Resource','',true)+'</div><div class="animation-learning-summary"><span>Watched '+watched+'</span><span>Practiced '+practiced+'</span><span>Demonstrated '+demonstrated+'</span></div>'+resourceForm+'<div class="animation-resource-list">'+resourceCards+'</div></section>'
+        + '<section class="panel animation-skills"><div class="habit-heading"><div><p class="page-kicker">Practical Skills Rubric</p><h2>Skill Progress</h2><p class="habit-help">A completed tutorial never marks a skill mastered automatically. Use an exercise or finished project as evidence.</p></div></div><div class="animation-skill-grid">'+skillCards+'</div></section>'
+        + '<section class="panel animation-projects"><div class="habit-heading"><div><p class="page-kicker">My Animation Portfolio</p><h2>Projects & Version History</h2><p class="habit-help">Keep guided exercises separate from independent work, and save previews so you can compare early attempts with later revisions.</p></div>'+button('animation-project-add','+ Add Project','',true)+'</div>'+projectForm+'<div class="animation-project-list">'+projectCards+'</div><div class="animation-media-list">'+mediaCards+'</div></section>'
+        + '<section class="panel animation-roadmap"><p class="page-kicker">First 12 Weeks</p><h2>Foundational Animation Roadmap</h2><div class="animation-roadmap-grid"><article><b>Weeks 1–4</b><h3>Understand how animation works</h3><p>Timeline, keyframes, FPS, movement, timing, and a bouncing-ball project with variations in speed and weight.</p></article><article><b>Weeks 5–8</b><h3>Explore 2D & 3D techniques</h3><p>Try a short 2D animation, refine Blender work, and study spacing, anticipation, easing, and motion quality.</p></article><article><b>Weeks 9–12</b><h3>Create independently</h3><p>Plan and complete a simple 5–10 second scene. Save the draft, revisions, and final export as your first meaningful portfolio milestone.</p></article></div></section>'
+        + '<section class="panel animation-feedback"><p class="page-kicker">Feedback & Self-Review</p><h2>Questions to Ask After Every Exercise</h2><div class="animation-review-grid"><span>Does the movement look smooth?</span><span>Does the timing communicate weight?</span><span>Are there unwanted pauses?</span><span>Did I complete this independently?</span><span>What would I improve next time?</span><span>What evidence shows this skill is improving?</span></div></section>'
         + '</section>';
     }
 
@@ -837,6 +920,7 @@
       }
       if (selectedCategory === 'reading') return renderReading(current);
       if (selectedCategory === 'piano') return renderPianoDashboard(current, today);
+      if (selectedCategory === 'animation') return renderAnimationDashboard(current, today);
       if (selectedCategory === 'math') return renderMathDashboard(current, skills, sessions, today);
       if (selectedCategory === 'engineering') html += renderEngineeringDashboard(current, skills, sessions, today);
       if (skillOpen) html += renderSkillForm(current);
