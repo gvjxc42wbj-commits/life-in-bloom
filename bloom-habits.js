@@ -987,6 +987,86 @@
       return '<section class="painting-dashboard"><section class="painting-banner"><div><p class="page-kicker">Skills in Bloom · Painting</p><h2>Painting Portfolio</h2><p>Your artwork, your process, and your growth over time.</p></div><span>🖌️</span></section><section class="panel painting-summary"><div><strong>'+artworks.length+'</strong><small>artworks</small></div><div><strong>'+versions.length+'</strong><small>progress stages</small></div><div><strong>'+artworks.filter(a=>a.status==='finished').length+'</strong><small>finished pieces</small></div></section><section class="panel painting-portfolio"><div class="habit-heading"><div><p class="page-kicker">My Portfolio</p><h2>All Artwork</h2><p class="habit-help">Open any piece to see its complete progression from early stage to final work.</p></div>'+button('painting-add-artwork','+ Add artwork','',true)+'</div>'+artworkForm+'<div class="painting-portfolio-grid">'+cards+'</div></section></section>';
     }
 
+    function renderPlantLog(current,today){
+      const plants=plantRows(current,'plants').filter(p=>!p.archived).slice().sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
+      const schedules=plantRows(current,'plantCareSchedules').filter(r=>r.active!==false);
+      const events=plantRows(current,'plantEvents').slice().sort((a,b)=>String(b.occurred_at||'').localeCompare(String(a.occurred_at||'')));
+      const media=plantMediaRows(current);
+      const selected=plants.find(p=>p.id===selectedPlantId)||null;
+
+      let plantForm='';
+      if(plantProfileOpen){
+        const d=plantDraft;
+        plantForm='<form class="habit-form plant-inline-form" data-plant-form><div class="habit-form-grid">'
+          +'<label class="habit-field"><span>Plant name</span><input required maxlength="240" data-plant-field="name" value="'+esc(d.name)+'" placeholder="For example, Monstera"></label>'
+          +'<label class="habit-field"><span>Species</span><input maxlength="240" data-plant-field="species" value="'+esc(d.species)+'"></label>'
+          +'<label class="habit-field"><span>Variety</span><input maxlength="240" data-plant-field="variety" value="'+esc(d.variety)+'"></label>'
+          +'<label class="habit-field"><span>Acquired on</span><input type="date" data-plant-field="acquired_on" value="'+esc(d.acquired_on)+'"></label>'
+          +'<label class="habit-field"><span>Planted / germinated on</span><input type="date" data-plant-field="planted_on" value="'+esc(d.planted_on)+'"></label>'
+          +'<label class="habit-field"><span>Stage</span><select data-plant-field="stage">'+['seed','seedling','juvenile','growing','mature','flowering','fruiting','dormant','retired'].map(v=>'<option value="'+v+'"'+(d.stage===v?' selected':'')+'>'+v+'</option>').join('')+'</select></label>'
+          +'<label class="habit-field"><span>Location</span><input maxlength="240" data-plant-field="location" value="'+esc(d.location)+'" placeholder="Living room window, grow tent..."></label>'
+          +'<label class="habit-field"><span>Source</span><input maxlength="240" data-plant-field="source" value="'+esc(d.source)+'" placeholder="Seed, cutting, nursery..."></label>'
+          +'<label class="habit-field"><span>Pot size</span><input maxlength="120" data-plant-field="pot_size" value="'+esc(d.pot_size)+'"></label>'
+          +'<label class="habit-field"><span>Soil / substrate</span><input maxlength="500" data-plant-field="substrate" value="'+esc(d.substrate)+'"></label>'
+          +'</div><label class="habit-field"><span>Notes</span><textarea rows="4" data-plant-field="notes">'+esc(d.notes)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save plant</button>'+button('plant-cancel','Cancel')+'</div></form>';
+      }
+
+      if(plantView==='profile'&&selected){
+        const ps=schedules.filter(r=>r.plant_id===selected.id);
+        const pe=events.filter(r=>r.plant_id===selected.id);
+        const pm=media.filter(r=>r.plant_id===selected.id);
+        const hero=pm.slice().reverse()[0]||null;
+
+        let scheduleForm='';
+        if(plantScheduleOpen){
+          const d=plantScheduleDraft;
+          scheduleForm='<form class="habit-form plant-inline-form" data-plant-schedule-form><div class="habit-form-grid">'
+            +'<label class="habit-field"><span>Care type</span><select data-plant-schedule-field="care_type">'+['water','feed','light','mist','rotate','prune','repot','check','other'].map(v=>'<option value="'+v+'"'+(d.care_type===v?' selected':'')+'>'+v+'</option>').join('')+'</select></label>'
+            +'<label class="habit-field"><span>Every how many days?</span><input type="number" min="1" max="3650" data-plant-schedule-field="interval_days" value="'+esc(d.interval_days)+'" placeholder="Optional"></label>'
+            +'<label class="habit-field"><span>Time</span><input type="time" data-plant-schedule-field="time_of_day" value="'+esc(d.time_of_day)+'"></label>'
+            +'<label class="habit-field"><span>Duration (minutes)</span><input type="number" min="1" max="1440" data-plant-schedule-field="duration_minutes" value="'+esc(d.duration_minutes)+'" placeholder="Useful for lights"></label>'
+            +'<label class="habit-field"><span>Amount / setting</span><input maxlength="240" data-plant-schedule-field="amount_text" value="'+esc(d.amount_text)+'" placeholder="1 cup, half-strength, 12 hr..."></label>'
+            +'<label class="habit-field"><span>Starts on</span><input type="date" data-plant-schedule-field="start_on" value="'+esc(d.start_on)+'"></label>'
+            +'</div><label class="habit-field"><span>Instructions</span><textarea rows="3" data-plant-schedule-field="instructions">'+esc(d.instructions)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save care schedule</button>'+button('plant-schedule-cancel','Cancel')+'</div></form>';
+        }
+
+        let eventForm='';
+        if(plantEventOpen){
+          const d=plantEventDraft;
+          eventForm='<form class="habit-form plant-inline-form" data-plant-event-form><div class="habit-form-grid">'
+            +'<label class="habit-field"><span>Event type</span><select data-plant-event-field="event_type">'+['water','feed','light','mist','rotate','prune','repot','measure','photo','problem','treatment','flower','harvest','note','other'].map(v=>'<option value="'+v+'"'+(d.event_type===v?' selected':'')+'>'+v+'</option>').join('')+'</select></label>'
+            +'<label class="habit-field"><span>Title</span><input maxlength="240" data-plant-event-field="title" value="'+esc(d.title)+'" placeholder="What happened?"></label>'
+            +'<label class="habit-field"><span>Measurement</span><input type="number" step="any" data-plant-event-field="value_numeric" value="'+esc(d.value_numeric)+'" placeholder="Optional"></label>'
+            +'<label class="habit-field"><span>Unit</span><input maxlength="80" data-plant-event-field="value_unit" value="'+esc(d.value_unit)+'" placeholder="in, cm, leaves..."></label>'
+            +'</div><label class="habit-field"><span>Notes</span><textarea rows="4" data-plant-event-field="notes">'+esc(d.notes)+'</textarea></label><div class="habit-actions"><button class="button primary" type="submit">Save life event</button>'+button('plant-event-cancel','Cancel')+'</div></form>';
+        }
+
+        const careCards=ps.length?ps.map(r=>'<article class="plant-care-card"><span>'+plantCareIcon(r.care_type)+'</span><div><strong>'+esc(r.care_type)+'</strong><small>'+(r.interval_days?'Every '+r.interval_days+' day'+(r.interval_days===1?'':'s'):'Custom schedule')+(r.time_of_day?' · '+esc(String(r.time_of_day).slice(0,5)):'')+(r.duration_minutes?' · '+r.duration_minutes+' min':'')+'</small>'+(r.amount_text?'<p>'+esc(r.amount_text)+'</p>':'')+(r.instructions?'<p>'+esc(r.instructions)+'</p>':'')+'</div></article>').join(''):'<p class="habit-help">No care schedules saved yet.</p>';
+
+        const timeline=pe.length?pe.map(e=>{
+          const files=pm.filter(m=>m.event_id===e.id);
+          return '<article class="plant-timeline-card"><div class="plant-event-icon">'+plantEventIcon(e.event_type)+'</div><div><div class="habit-heading"><div><strong>'+esc(e.title||e.event_type)+'</strong><small>'+esc(new Date(e.occurred_at).toLocaleString())+'</small></div><label class="button">Add photo<input type="file" accept="image/*,application/pdf" data-plant-event-upload data-id="'+esc(e.id)+'" multiple hidden></label></div>'+(e.value_numeric!=null?'<p><b>Measurement:</b> '+esc(e.value_numeric)+' '+esc(e.value_unit||'')+'</p>':'')+(e.notes?'<p>'+esc(e.notes)+'</p>':'')+(files.length?'<div class="plant-event-media">'+files.map(m=>m.mime_type==='application/pdf'?'<a target="_blank" rel="noopener" data-plant-media-id="'+esc(m.id)+'">Open PDF</a>':'<img alt="" data-plant-media-id="'+esc(m.id)+'">').join('')+'</div>':'')+'</div></article>';
+        }).join(''):'<p class="habit-help">No life events logged yet. Watering, feeding, growth, repotting, flowers, problems, photos, and notes can all live here.</p>';
+
+        if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydratePlantMedia(pm)));
+        return '<section class="plant-dashboard"><section class="plant-banner"><div><p class="page-kicker">Plants in Bloom</p><h2>'+esc(selected.name)+'</h2><p>'+esc(selected.species||'Species not entered')+' · '+esc(plantAgeLabel(selected,today))+'</p></div>'+button('plant-back','← My Plants')+'</section>'
+          +'<section class="panel plant-profile-hero"><div class="plant-profile-photo">'+(hero&&hero.mime_type!=='application/pdf'?'<img alt="" data-plant-media-id="'+esc(hero.id)+'">':'<div class="plant-empty-photo">🌿</div>')+'</div><div><p class="page-kicker">Plant Profile</p><h2>'+esc(selected.name)+'</h2><p class="habit-help">'+esc(selected.notes||'No profile notes yet.')+'</p><dl class="plant-meta"><div><dt>Age</dt><dd>'+esc(plantAgeLabel(selected,today))+'</dd></div><div><dt>Stage</dt><dd>'+esc(selected.stage)+'</dd></div><div><dt>Location</dt><dd>'+esc(selected.location||'Not entered')+'</dd></div><div><dt>Pot</dt><dd>'+esc(selected.pot_size||'Not entered')+'</dd></div></dl><div class="habit-actions">'+button('plant-edit','Edit profile',' data-id="'+esc(selected.id)+'"')+button('plant-event-add','+ Log care / life event','',true)+'</div></div></section>'
+          +plantForm+eventForm
+          +'<section class="panel plant-care"><div class="habit-heading"><div><p class="page-kicker">Care Schedule</p><h2>Water · Feed · Light · More</h2><p class="habit-help">This is the plan. Actual care gets logged separately in the life timeline.</p></div>'+button('plant-schedule-add','+ Add schedule','',true)+'</div>'+scheduleForm+'<div class="plant-care-grid">'+careCards+'</div></section>'
+          +'<section class="panel plant-quick-log"><p class="page-kicker">Quick Care</p><h2>Log What You Did</h2><div class="plant-quick-buttons">'+['water','feed','mist','rotate','prune','repot','measure','problem','note'].map(v=>button('plant-quick-event',plantEventIcon(v)+' '+v,' data-type="'+v+'"')).join('')+'</div></section>'
+          +'<section class="panel plant-life"><div class="habit-heading"><div><p class="page-kicker">Through the Plant’s Life</p><h2>Life Timeline</h2><p class="habit-help">Every care event, measurement, photo, problem, treatment, flowering event, harvest, and note stays with this plant permanently.</p></div></div><div class="plant-timeline">'+timeline+'</div></section></section>';
+      }
+
+      const cards=plants.length?plants.map(p=>{
+        const pe=events.filter(e=>e.plant_id===p.id),pm=media.filter(m=>m.plant_id===p.id),thumb=pm.slice().reverse()[0];
+        const lastWater=pe.find(e=>e.event_type==='water');
+        return '<article class="plant-card"><button type="button" class="plant-card-open" data-habit-action="plant-open" data-id="'+esc(p.id)+'"><div class="plant-card-photo">'+(thumb&&thumb.mime_type!=='application/pdf'?'<img alt="" data-plant-media-id="'+esc(thumb.id)+'">':'<span>🌿</span>')+'</div><div><h3>'+esc(p.name)+'</h3><p>'+esc(p.species||'Species not entered')+'</p><small>'+esc(plantAgeLabel(p,today))+' · '+esc(p.stage)+'</small>'+(lastWater?'<small>Last watered '+esc(dateLabel(String(lastWater.occurred_at).slice(0,10)))+'</small>':'')+'</div></button>'+button('plant-edit','Edit',' data-id="'+esc(p.id)+'"')+'</article>';
+      }).join(''):'<div class="plant-empty"><span>🌱</span><h3>Add your first plant</h3><p>Each plant gets its own profile, care schedule, photos, and life history.</p></div>';
+
+      if(root.requestAnimationFrame)root.requestAnimationFrame(()=>root.requestAnimationFrame(()=>hydratePlantMedia(media)));
+      return '<section class="plant-dashboard"><section class="plant-banner"><div><p class="page-kicker">Skills in Bloom · Plants</p><h2>Plant Log</h2><p>Your plants, their care, and their lives over time.</p></div><span>🌿</span></section><section class="panel plant-summary"><div><strong>'+plants.length+'</strong><small>plants</small></div><div><strong>'+schedules.length+'</strong><small>care schedules</small></div><div><strong>'+events.length+'</strong><small>life events logged</small></div></section><section class="panel plant-collection"><div class="habit-heading"><div><p class="page-kicker">My Plants</p><h2>Plant Collection</h2><p class="habit-help">Open a plant to see its profile, age, schedules, growth photos, and full life timeline.</p></div>'+button('plant-add','+ Add plant','',true)+'</div>'+plantForm+'<div class="plant-grid">'+cards+'</div></section></section>';
+    }
+
     function renderMathDashboard(current, skills, sessions, today) {
       const mathSkills=skills.filter(skill=>skill.category==='math');
       const ids=new Set(mathSkills.map(skill=>skill.id));
@@ -1151,6 +1231,7 @@
       if (selectedCategory === 'language') return renderSpanishDashboard(current, today);
       if (selectedCategory === 'writing') return renderDailyJournal(current, today);
       if (selectedCategory === 'painting') return renderPaintingPortfolio(current, today);
+      if (selectedCategory === 'cooking') return renderPlantLog(current, today);
       if (selectedCategory === 'math') return renderMathDashboard(current, skills, sessions, today);
       if (selectedCategory === 'engineering') html += renderEngineeringDashboard(current, skills, sessions, today);
       if (skillOpen) html += renderSkillForm(current);
